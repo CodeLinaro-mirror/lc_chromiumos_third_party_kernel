@@ -3141,5 +3141,7 @@ unsigned long wp_shared_mapping_range(struct address_space *mapping,
 				      pgoff_t first_index, pgoff_t nr);
 #endif
 
+extern int min_filelist_kbytes;
+
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */
