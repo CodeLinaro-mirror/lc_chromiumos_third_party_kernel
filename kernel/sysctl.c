@@ -2664,6 +2664,8 @@ static struct ctl_table kern_table[] = {
 	{ }
 };
 
+extern int sysctl_disk_based_swap;
+
 static struct ctl_table vm_table[] = {
 	{
 		.procname	= "overcommit_memory",
@@ -3127,6 +3129,17 @@ static struct ctl_table vm_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_ONE,
+	},
+#endif
+#ifdef CONFIG_DISK_BASED_SWAP
+	{
+		.procname       = "disk_based_swap",
+		.data           = &sysctl_disk_based_swap,
+		.maxlen         = sizeof(sysctl_disk_based_swap),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1         = SYSCTL_ZERO,
+		.extra2         = SYSCTL_ONE,
 	},
 #endif
 	{ }
