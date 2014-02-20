@@ -170,12 +170,12 @@ static void vb2_dma_sg_put(void *buf_priv)
 	}
 }
 
-static void vb2_dma_sg_prepare(void *buf_priv)
+static int vb2_dma_sg_prepare(void *buf_priv)
 {
 	struct vb2_dma_sg_buf *buf = buf_priv;
 	struct sg_table *sgt = &buf->sg_table;
 
-	dma_map_sg(buf->dev, sgt->sgl, sgt->nents, buf->dma_dir);
+	return dma_map_sg(buf->dev, sgt->sgl, sgt->nents, buf->dma_dir) ? 0 : -EIO;
 }
 
 static void vb2_dma_sg_finish(void *buf_priv)

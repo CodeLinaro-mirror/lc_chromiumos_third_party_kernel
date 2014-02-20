@@ -111,16 +111,17 @@ static unsigned int vb2_dc_num_users(void *buf_priv)
 	return atomic_read(&buf->refcount);
 }
 
-static void vb2_dc_prepare(void *buf_priv)
+static int vb2_dc_prepare(void *buf_priv)
 {
 	struct vb2_dc_buf *buf = buf_priv;
 	struct sg_table *sgt = buf->dma_sgt;
 
 	/* DMABUF exporter will flush the cache for us */
 	if (!sgt || buf->db_attach)
-		return;
+		return 0;
 
 	dma_sync_sg_for_device(buf->dev, sgt->sgl, sgt->nents, buf->dma_dir);
+	return 0;
 }
 
 static void vb2_dc_finish(void *buf_priv)
