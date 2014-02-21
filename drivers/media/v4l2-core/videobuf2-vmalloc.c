@@ -25,7 +25,7 @@ struct vb2_vmalloc_buf {
 	void				*vaddr;
 	struct page			**pages;
 	struct vm_area_struct		*vma;
-	int				write;
+	enum dma_data_direction		dma_dir;
 	unsigned long			size;
 	unsigned int			n_pages;
 	atomic_t			refcount;
@@ -38,8 +38,8 @@ struct vb2_vmalloc_buf {
 
 static void vb2_vmalloc_put(void *buf_priv);
 
-static void *vb2_vmalloc_alloc(void *alloc_ctx, unsigned long size, int write,
-			       gfp_t gfp_flags)
+static void *vb2_vmalloc_alloc(void *alloc_ctx, unsigned long size,
+			       enum dma_data_direction dma_dir, gfp_t gfp_flags)
 {
 	struct vb2_vmalloc_buf *buf;
 
@@ -74,7 +74,8 @@ static void vb2_vmalloc_put(void *buf_priv)
 }
 
 static void *vb2_vmalloc_get_userptr(void *alloc_ctx, unsigned long vaddr,
-				     unsigned long size, int write)
+				     unsigned long size,
+				     enum dma_data_direction dma_dir)
 {
 	struct vb2_vmalloc_buf *buf;
 	unsigned long first, last;
@@ -86,7 +87,7 @@ static void *vb2_vmalloc_get_userptr(void *alloc_ctx, unsigned long vaddr,
 	if (!buf)
 		return NULL;
 
-	buf->write = write;
+	buf->dma_dir = dma_dir;
 	offset = vaddr & ~PAGE_MASK;
 	buf->size = size;
 
@@ -111,7 +112,8 @@ static void *vb2_vmalloc_get_userptr(void *alloc_ctx, unsigned long vaddr,
 		/* current->mm->mmap_sem is taken by videobuf2 core */
 		n_pages = get_user_pages(current, current->mm,
 					 vaddr & PAGE_MASK, buf->n_pages,
-					 write, 1, /* force */
+					 dma_dir == DMA_FROM_DEVICE,
+					 1, /* force */
 					 buf->pages, NULL);
 		if (n_pages != buf->n_pages)
 			goto fail_get_user_pages;
@@ -148,7 +150,7 @@ static void vb2_vmalloc_put_userptr(void *buf_priv)
 		if (vaddr)
 			vm_unmap_ram((void *)vaddr, buf->n_pages);
 		for (i = 0; i < buf->n_pages; ++i) {
-			if (buf->write)
+			if (buf->dma_dir == DMA_FROM_DEVICE)
 				set_page_dirty_lock(buf->pages[i]);
 			put_page(buf->pages[i]);
 		}
@@ -414,7 +416,7 @@ static void vb2_vmalloc_detach_dmabuf(void *mem_priv)
 }
 
 static void *vb2_vmalloc_attach_dmabuf(void *alloc_ctx, struct dma_buf *dbuf,
-	unsigned long size, int write)
+	unsigned long size, enum dma_data_direction dma_dir)
 {
 	struct vb2_vmalloc_buf *buf;
 
@@ -426,7 +428,7 @@ static void *vb2_vmalloc_attach_dmabuf(void *alloc_ctx, struct dma_buf *dbuf,
 		return ERR_PTR(-ENOMEM);
 
 	buf->dbuf = dbuf;
-	buf->write = write;
+	buf->dma_dir = dma_dir;
 	buf->size = size;
 
 	return buf;
