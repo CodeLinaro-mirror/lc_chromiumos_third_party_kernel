@@ -35,7 +35,8 @@ struct vb2_vmalloc_buf {
 
 static void vb2_vmalloc_put(void *buf_priv);
 
-static void *vb2_vmalloc_alloc(void *alloc_ctx, unsigned long size, gfp_t gfp_flags)
+static void *vb2_vmalloc_alloc(void *alloc_ctx, unsigned long size, int write,
+			       gfp_t gfp_flags)
 {
 	struct vb2_vmalloc_buf *buf;
 
