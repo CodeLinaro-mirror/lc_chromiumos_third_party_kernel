@@ -1346,13 +1346,43 @@ static void __fill_vb2_buffer(struct vb2_buffer *vb, const struct v4l2_buffer *b
 	}
 }
 
+static int __buf_memory_prepare(struct vb2_buffer *vb)
+{
+	int ret = call_vb_qop(vb, buf_prepare_for_cpu, vb);
+	unsigned int plane;
+
+	if (ret)
+		return ret;
+
+	/* sync buffers */
+	for (plane = 0; plane < vb->num_planes; ++plane) {
+		ret = call_memop(vb, prepare, vb->planes[plane].mem_priv);
+		if (ret) {
+			for (; plane; plane--)
+				call_void_memop(vb, finish, vb->planes[plane - 1].mem_priv);
+			call_void_vb_qop(vb, buf_finish_for_cpu, vb);
+			dprintk(1, "buffer memory preparation failed\n");
+			return ret;
+		}
+	}
+
+	ret = call_vb_qop(vb, buf_prepare, vb);
+	if (ret) {
+		dprintk(1, "buffer preparation failed\n");
+		for (plane = 0; plane < vb->num_planes; ++plane)
+			call_void_memop(vb, finish, vb->planes[plane].mem_priv);
+		call_void_vb_qop(vb, buf_finish_for_cpu, vb);
+	}
+	return ret;
+}
+
 /**
  * __qbuf_mmap() - handle qbuf of an MMAP buffer
  */
 static int __qbuf_mmap(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 {
 	__fill_vb2_buffer(vb, b, vb->v4l2_planes);
-	return call_vb_qop(vb, buf_prepare, vb);
+	return __buf_memory_prepare(vb);
 }
 
 /**
@@ -1437,11 +1467,10 @@ static int __qbuf_userptr(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		}
 	}
 
-	ret = call_vb_qop(vb, buf_prepare, vb);
+	ret = __buf_memory_prepare(vb);
 	if (ret) {
-		dprintk(1, "buffer preparation failed\n");
 		call_void_vb_qop(vb, buf_cleanup, vb);
-		goto err;
+		return ret;
 	}
 
 	return 0;
@@ -1561,9 +1590,8 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		}
 	}
 
-	ret = call_vb_qop(vb, buf_prepare, vb);
+	ret = __buf_memory_prepare(vb);
 	if (ret) {
-		dprintk(1, "buffer preparation failed\n");
 		call_void_vb_qop(vb, buf_cleanup, vb);
 		goto err;
 	}
@@ -1627,12 +1655,6 @@ static int __buf_prepare(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 	vb->v4l2_buf.timestamp.tv_sec = 0;
 	vb->v4l2_buf.timestamp.tv_usec = 0;
 	vb->v4l2_buf.sequence = 0;
-
-	ret = call_vb_qop(vb, buf_prepare_for_cpu, vb);
-	if (ret) {
-		dprintk(1, "buf_prepare_for_cpu failed\n");
-		return ret;
-	}
 
 	switch (q->memory) {
 	case V4L2_MEMORY_MMAP:
