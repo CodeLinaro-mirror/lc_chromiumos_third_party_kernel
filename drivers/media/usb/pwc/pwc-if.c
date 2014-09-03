@@ -614,7 +614,7 @@ static int buffer_prepare(struct vb2_buffer *vb)
 	return 0;
 }
 
-static void buffer_finish(struct vb2_buffer *vb)
+static void buffer_finish_for_cpu(struct vb2_buffer *vb)
 {
 	struct pwc_device *pdev = vb2_get_drv_priv(vb->vb2_queue);
 	struct pwc_frame_buf *buf = container_of(vb, struct pwc_frame_buf, vb);
@@ -700,7 +700,7 @@ static struct vb2_ops pwc_vb_queue_ops = {
 	.queue_setup		= queue_setup,
 	.buf_init		= buffer_init,
 	.buf_prepare		= buffer_prepare,
-	.buf_finish		= buffer_finish,
+	.buf_finish_for_cpu	= buffer_finish_for_cpu,
 	.buf_cleanup		= buffer_cleanup,
 	.buf_queue		= buffer_queue,
 	.start_streaming	= start_streaming,

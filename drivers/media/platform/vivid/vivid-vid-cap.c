@@ -200,7 +200,7 @@ static int vid_cap_buf_prepare(struct vb2_buffer *vb)
 	return 0;
 }
 
-static void vid_cap_buf_finish(struct vb2_buffer *vb)
+static void vid_cap_buf_finish_for_cpu(struct vb2_buffer *vb)
 {
 	struct vivid_dev *dev = vb2_get_drv_priv(vb->vb2_queue);
 	struct v4l2_timecode *tc = &vb->v4l2_buf.timecode;
@@ -283,7 +283,7 @@ static void vid_cap_stop_streaming(struct vb2_queue *vq)
 const struct vb2_ops vivid_vid_cap_qops = {
 	.queue_setup		= vid_cap_queue_setup,
 	.buf_prepare		= vid_cap_buf_prepare,
-	.buf_finish		= vid_cap_buf_finish,
+	.buf_finish_for_cpu	= vid_cap_buf_finish_for_cpu,
 	.buf_queue		= vid_cap_buf_queue,
 	.start_streaming	= vid_cap_start_streaming,
 	.stop_streaming		= vid_cap_stop_streaming,

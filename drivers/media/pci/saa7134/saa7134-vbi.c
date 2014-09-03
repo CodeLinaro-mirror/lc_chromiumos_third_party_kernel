@@ -169,7 +169,7 @@ static int buffer_init(struct vb2_buffer *vb2)
 	return 0;
 }
 
-static void buffer_finish(struct vb2_buffer *vb2)
+static void buffer_finish_for_cpu(struct vb2_buffer *vb2)
 {
 	struct saa7134_dmaqueue *dmaq = vb2->vb2_queue->drv_priv;
 	struct saa7134_dev *dev = dmaq->dev;
@@ -183,7 +183,7 @@ struct vb2_ops saa7134_vbi_qops = {
 	.queue_setup	= queue_setup,
 	.buf_init	= buffer_init,
 	.buf_prepare	= buffer_prepare,
-	.buf_finish	= buffer_finish,
+	.buf_finish_for_cpu = buffer_finish_for_cpu,
 	.buf_queue	= saa7134_vb2_buffer_queue,
 	.wait_prepare	= vb2_ops_wait_prepare,
 	.wait_finish	= vb2_ops_wait_finish,

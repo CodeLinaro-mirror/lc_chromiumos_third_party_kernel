@@ -227,8 +227,10 @@ struct vb2_buffer {
 	u32		cnt_mem_mmap;
 
 	u32		cnt_buf_init;
+	u32		cnt_buf_prepare_for_cpu;
 	u32		cnt_buf_prepare;
 	u32		cnt_buf_finish;
+	u32		cnt_buf_finish_for_cpu;
 	u32		cnt_buf_cleanup;
 	u32		cnt_buf_queue;
 
@@ -268,17 +270,43 @@ struct vb2_buffer {
  *			perform additional buffer-related initialization;
  *			initialization failure (return != 0) will prevent
  *			queue setup from completing successfully; optional.
- * @buf_prepare:	called every time the buffer is queued from userspace
+ * @buf_prepare_for_cpu:called every time the buffer is queued from userspace
  *			and from the VIDIOC_PREPARE_BUF ioctl; drivers may
- *			perform any initialization required before each hardware
- *			operation in this callback; drivers that support
- *			VIDIOC_CREATE_BUFS must also validate the buffer size;
- *			if an error is returned, the buffer will not be queued
- *			in driver; optional.
+ *			use this to access and modify the contents of the buffer
+ *			before it is prepared for DMA in the next step
+ *			(@buf_prepare). Drivers that support VIDIOC_CREATE_BUFS
+ *			must also validate the buffer size. If an error is
+ *			returned, the buffer will not be queued	in the driver;
+ *			optional.
+ * @buf_prepare:	called every time the buffer is queued from userspace
+ *			and from the VIDIOC_PREPARE_BUF ioctl; at this point
+ *			the buffer is prepared for DMA and the drivers may no
+ *			longer access the contents of the buffer. The driver
+ *			must perform any initialization required before each
+ *			hardware operation in this callback; drivers that
+ *			support	VIDIOC_CREATE_BUFS must also validate the
+ *			buffer size, if they haven't done that yet in
+ *			@buf_prepare_for_cpu. If an error is returned, the
+ *			buffer will not be queued in the driver; optional.
  * @buf_finish:		called before every dequeue of the buffer back to
- *			userspace; drivers may perform any operations required
- *			before userspace accesses the buffer; optional. The
- *			buffer state can be one of the following: DONE and
+ *			userspace; the contents of the buffer cannot be
+ *			accessed by the cpu at this stage as it is still setup
+ *			for DMA. Drivers may perform any operations required
+ *			before userspace accesses the buffer; optional.
+ *			The buffer state can be one of the following: DONE and
+ *			ERROR occur while streaming is in progress, and the
+ *			PREPARED state occurs when the queue has been canceled
+ *			and all pending buffers are being returned to their
+ *			default DEQUEUED state. Typically you only have to do
+ *			something if the state is VB2_BUF_STATE_DONE, since in
+ *			all other cases the buffer contents will be ignored
+ *			anyway.
+ * @buf_finish_for_cpu:	called before every dequeue of the buffer back to
+ *			userspace; at this stage the contents of the buffer is
+ *			accessible to the CPU. Drivers may perform any
+ *			operations required before userspace accesses the
+ *			buffer; optional.
+ *			The buffer state can be one of the following: DONE and
  *			ERROR occur while streaming is in progress, and the
  *			PREPARED state occurs when the queue has been canceled
  *			and all pending buffers are being returned to their
@@ -323,8 +351,10 @@ struct vb2_ops {
 	void (*wait_finish)(struct vb2_queue *q);
 
 	int (*buf_init)(struct vb2_buffer *vb);
+	int (*buf_prepare_for_cpu)(struct vb2_buffer *vb);
 	int (*buf_prepare)(struct vb2_buffer *vb);
 	void (*buf_finish)(struct vb2_buffer *vb);
+	void (*buf_finish_for_cpu)(struct vb2_buffer *vb);
 	void (*buf_cleanup)(struct vb2_buffer *vb);
 
 	int (*start_streaming)(struct vb2_queue *q, unsigned int count);

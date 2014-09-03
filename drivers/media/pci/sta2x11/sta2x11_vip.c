@@ -327,7 +327,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 	}
 	spin_unlock(&vip->lock);
 }
-static void buffer_finish(struct vb2_buffer *vb)
+static void buffer_finish_for_cpu(struct vb2_buffer *vb)
 {
 	struct sta2x11_vip *vip = vb2_get_drv_priv(vb->vb2_queue);
 	struct vip_buffer *vip_buf = to_vip_buffer(vb);
@@ -380,7 +380,7 @@ static struct vb2_ops vip_video_qops = {
 	.queue_setup		= queue_setup,
 	.buf_init		= buffer_init,
 	.buf_prepare		= buffer_prepare,
-	.buf_finish		= buffer_finish,
+	.buf_finish_for_cpu	= buffer_finish_for_cpu,
 	.buf_queue		= buffer_queue,
 	.start_streaming	= start_streaming,
 	.stop_streaming		= stop_streaming,

@@ -404,7 +404,7 @@ static int go7007_buf_prepare(struct vb2_buffer *vb)
 	return 0;
 }
 
-static void go7007_buf_finish(struct vb2_buffer *vb)
+static void go7007_buf_finish_for_cpu(struct vb2_buffer *vb)
 {
 	struct vb2_queue *vq = vb->vb2_queue;
 	struct go7007 *go = vb2_get_drv_priv(vq);
@@ -478,7 +478,7 @@ static struct vb2_ops go7007_video_qops = {
 	.queue_setup    = go7007_queue_setup,
 	.buf_queue      = go7007_buf_queue,
 	.buf_prepare    = go7007_buf_prepare,
-	.buf_finish     = go7007_buf_finish,
+	.buf_finish_for_cpu = go7007_buf_finish_for_cpu,
 	.start_streaming = go7007_start_streaming,
 	.stop_streaming = go7007_stop_streaming,
 	.wait_prepare   = vb2_ops_wait_prepare,

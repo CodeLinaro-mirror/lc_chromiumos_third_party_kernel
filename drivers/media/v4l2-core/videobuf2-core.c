@@ -501,14 +501,17 @@ static int __vb2_queue_free(struct vb2_queue *q, unsigned int buffers)
 				  vb->cnt_mem_map_dmabuf != vb->cnt_mem_unmap_dmabuf ||
 				  vb->cnt_buf_queue != vb->cnt_buf_done ||
 				  vb->cnt_buf_prepare != vb->cnt_buf_finish ||
+				  vb->cnt_buf_prepare_for_cpu != vb->cnt_buf_finish_for_cpu ||
 				  vb->cnt_buf_init != vb->cnt_buf_cleanup;
 
 		if (unbalanced || debug) {
 			pr_info("vb2:   counters for queue %p, buffer %d:%s\n",
 				q, buffer, unbalanced ? " UNBALANCED!" : "");
-			pr_info("vb2:     buf_init: %u buf_cleanup: %u buf_prepare: %u buf_finish: %u\n",
-				vb->cnt_buf_init, vb->cnt_buf_cleanup,
-				vb->cnt_buf_prepare, vb->cnt_buf_finish);
+			pr_info("vb2:     buf_init: %u buf_cleanup: %u\n",
+				vb->cnt_buf_init, vb->cnt_buf_cleanup);
+			pr_info("vb2:     buf_prepare_for_cpu: %u buf_prepare: %u buf_finish: %u buf_finish_for_cpu: %u\n",
+				vb->cnt_buf_prepare_for_cpu, vb->cnt_buf_prepare,
+				vb->cnt_buf_finish, vb->cnt_buf_finish_for_cpu);
 			pr_info("vb2:     buf_queue: %u buf_done: %u\n",
 				vb->cnt_buf_queue, vb->cnt_buf_done);
 			pr_info("vb2:     alloc: %u put: %u prepare: %u finish: %u mmap: %u\n",
@@ -1192,6 +1195,8 @@ void vb2_buffer_done(struct vb2_buffer *vb, enum vb2_buffer_state state)
 	dprintk(4, "done processing on buffer %d, state: %d\n",
 			vb->v4l2_buf.index, state);
 
+	call_void_vb_qop(vb, buf_finish, vb);
+
 	/* sync buffers */
 	for (plane = 0; plane < vb->num_planes; ++plane)
 		call_void_memop(vb, finish, vb->planes[plane].mem_priv);
@@ -1622,6 +1627,12 @@ static int __buf_prepare(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 	vb->v4l2_buf.timestamp.tv_usec = 0;
 	vb->v4l2_buf.sequence = 0;
 
+	ret = call_vb_qop(vb, buf_prepare_for_cpu, vb);
+	if (ret) {
+		dprintk(1, "buf_prepare_for_cpu failed\n");
+		return ret;
+	}
+
 	switch (q->memory) {
 	case V4L2_MEMORY_MMAP:
 		ret = __qbuf_mmap(vb, b);
@@ -1637,8 +1648,10 @@ static int __buf_prepare(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		ret = -EINVAL;
 	}
 
-	if (ret)
+	if (ret) {
 		dprintk(1, "buffer preparation failed: %d\n", ret);
+		call_void_vb_qop(vb, buf_finish_for_cpu, vb);
+	}
 	vb->state = ret ? VB2_BUF_STATE_DEQUEUED : VB2_BUF_STATE_PREPARED;
 
 	return ret;
@@ -2048,7 +2061,7 @@ static int vb2_internal_dqbuf(struct vb2_queue *q, struct v4l2_buffer *b, bool n
 		return -EINVAL;
 	}
 
-	call_void_vb_qop(vb, buf_finish, vb);
+	call_void_vb_qop(vb, buf_finish_for_cpu, vb);
 
 	/* Fill buffer information for the userspace */
 	__fill_v4l2_buffer(vb, b);
@@ -2076,7 +2089,7 @@ static int vb2_internal_dqbuf(struct vb2_queue *q, struct v4l2_buffer *b, bool n
  * Should be called from vidioc_dqbuf ioctl handler of a driver.
  * This function:
  * 1) verifies the passed buffer,
- * 2) calls buf_finish callback in the driver (if provided), in which
+ * 2) calls buf_finish_for_cpu callback in the driver (if provided), in which
  *    driver can perform any additional operations that may be required before
  *    returning the buffer to userspace, such as cache sync,
  * 3) the buffer struct members are filled with relevant information for
@@ -2139,7 +2152,7 @@ static void __vb2_queue_cancel(struct vb2_queue *q)
 
 	/*
 	 * Reinitialize all buffers for next use.
-	 * Make sure to call buf_finish for any queued buffers. Normally
+	 * Make sure to call buf_finish_for_cpu for any queued buffers. Normally
 	 * that's done in dqbuf, but that's not going to happen when we
 	 * cancel the whole queue. Note: this code belongs here, not in
 	 * __vb2_dqbuf() since in vb2_internal_dqbuf() there is a critical
@@ -2151,7 +2164,7 @@ static void __vb2_queue_cancel(struct vb2_queue *q)
 
 		if (vb->state != VB2_BUF_STATE_DEQUEUED) {
 			vb->state = VB2_BUF_STATE_PREPARED;
-			call_void_vb_qop(vb, buf_finish, vb);
+			call_void_vb_qop(vb, buf_finish_for_cpu, vb);
 		}
 		__vb2_dqbuf(vb);
 	}

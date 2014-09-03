@@ -667,7 +667,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 	vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
 }
 
-static void buffer_finish(struct vb2_buffer *vb)
+static void buffer_finish_for_cpu(struct vb2_buffer *vb)
 {
 	struct qcam *qcam = vb2_get_drv_priv(vb->vb2_queue);
 	void *vbuf = vb2_plane_vaddr(vb, 0);
@@ -699,7 +699,7 @@ static void buffer_finish(struct vb2_buffer *vb)
 static struct vb2_ops qcam_video_qops = {
 	.queue_setup		= queue_setup,
 	.buf_queue		= buffer_queue,
-	.buf_finish		= buffer_finish,
+	.buf_finish_for_cpu	= buffer_finish_for_cpu,
 	.wait_prepare		= vb2_ops_wait_prepare,
 	.wait_finish		= vb2_ops_wait_finish,
 };
