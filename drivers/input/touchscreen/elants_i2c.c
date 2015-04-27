@@ -154,6 +154,8 @@ struct elants_data {
 
 	/* Must be last to be used for DMA operations */
 	u8 buf[MAX_PACKET_SIZE] ____cacheline_aligned;
+
+	bool unbinding;
 };
 
 static int elants_i2c_send(struct i2c_client *client,
@@ -1209,6 +1211,12 @@ static void elants_i2c_power_off(void *_data)
 {
 	struct elants_data *ts = _data;
 
+	if (ts->unbinding) {
+		dev_info(&ts->client->dev,
+			 "Not disabling regulators to continue allowing userspace i2c-dev access\n");
+		return;
+	}
+
 	if (!IS_ERR_OR_NULL(ts->reset_gpio)) {
 		/*
 		 * Activate reset gpio to prevent leakage through the
@@ -1378,6 +1386,19 @@ static int elants_i2c_probe(struct i2c_client *client,
 	return 0;
 }
 
+static int elants_i2c_remove(struct i2c_client *client)
+{
+	struct elants_data *ts = i2c_get_clientdata(client);
+
+	/*
+	 * Let elants_i2c_power_off know that it needs to keep
+	 * regulators on.
+	 */
+	ts->unbinding = true;
+
+	return 0;
+}
+
 static int __maybe_unused elants_i2c_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
@@ -1475,6 +1496,7 @@ MODULE_DEVICE_TABLE(of, elants_of_match);
 
 static struct i2c_driver elants_i2c_driver = {
 	.probe = elants_i2c_probe,
+	.remove = elants_i2c_remove,
 	.id_table = elants_i2c_id,
 	.driver = {
 		.name = DEVICE_NAME,
