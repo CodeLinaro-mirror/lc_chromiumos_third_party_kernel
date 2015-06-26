@@ -3,6 +3,7 @@
 
 #include <linux/console.h>
 #include <linux/init.h>
+#include <linux/kfifo.h>
 #include <linux/serial.h>
 #include <linux/serial_core.h>
 
