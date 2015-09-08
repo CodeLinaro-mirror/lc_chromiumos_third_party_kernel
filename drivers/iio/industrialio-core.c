@@ -132,6 +132,7 @@ static const char * const iio_modifier_names[] = {
 	[IIO_MOD_PM10] = "pm10",
 	[IIO_MOD_ETHANOL] = "ethanol",
 	[IIO_MOD_H2] = "h2",
+	[IIO_MOD_DOUBLE_TAP] = "double_tap",
 };
 
 /* relies on pairs of these shared then separate */
