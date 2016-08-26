@@ -21,8 +21,16 @@
 #include <linux/cpu.h>
 #include <linux/cpu_cooling.h>
 #include <linux/energy_model.h>
+#include <linux/ratelimit.h>
 
 #include <trace/events/thermal.h>
+
+static DEFINE_RATELIMIT_STATE(cpu_cooling_ratelimit_state, 30 * HZ, 1);
+
+static int cpu_cooling_ratelimit(void)
+{
+	return __ratelimit(&cpu_cooling_ratelimit_state);
+}
 
 /*
  * Cooling state <-> CPUFreq frequency
@@ -457,6 +465,15 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 		capacity /= cpufreq_cdev->policy->cpuinfo.max_freq;
 		arch_set_thermal_pressure(cpus, max_capacity - capacity);
 		ret = 0;
+	}
+
+	if (cpu_cooling_ratelimit()) {
+		struct device *cpu_dev;
+
+		cpu_dev = get_cpu_device(cpufreq_cdev->policy->cpu);
+		dev_info(cpu_dev,
+			 "Cooling state set to %lu. New max freq = %u\n",
+			 state, cpufreq_cdev->freq_table[state].frequency);
 	}
 
 	return ret;
