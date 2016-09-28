@@ -26,6 +26,7 @@
 #include <linux/of_device.h>
 #include <linux/of_address.h>
 #include <linux/mdio.h>
+#include <linux/debugfs.h>
 
 #include "ar40xx.h"
 
@@ -1880,6 +1881,199 @@ static struct attribute_group mii_info_group = {
 	.attrs = mii_info_attrs
 };
 
+static ssize_t ar40xx_phy_read_reg_get(struct file *fp, char __user *ubuf,
+				       size_t sz, loff_t *ppos)
+{
+	struct ar40xx_priv *priv = (struct ar40xx_priv *)fp->private_data;
+	char lbuf[40];
+
+	if (!priv)
+		return -EFAULT;
+
+	snprintf(lbuf, sizeof(lbuf), "phy%x(0x%x): 0x%x\n",
+		 priv->phy_addr, priv->reg_addr, priv->reg_val);
+
+	return simple_read_from_buffer(ubuf, sz, ppos,
+					lbuf, strlen(lbuf));
+}
+
+static ssize_t ar40xx_phy_read_reg_set(struct file *fp, const char __user *ubuf,
+				       size_t sz, loff_t *ppos)
+{
+	struct ar40xx_priv *priv = (struct ar40xx_priv *)fp->private_data;
+	struct mii_bus *bus;
+	char lbuf[32];
+	size_t lbuf_size;
+	char *options = lbuf;
+	char *this_opt;
+	int ret;
+	unsigned int reg_addr, phy_addr, reg_type;
+
+	if (!priv || !priv->mii_bus)
+		return -EFAULT;
+
+	bus = priv->mii_bus;
+
+	lbuf_size = min(sz, (sizeof(lbuf) - 1));
+	if (copy_from_user(lbuf, ubuf, lbuf_size))
+		return -EFAULT;
+	lbuf[lbuf_size] = 0;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	ret = kstrtouint(this_opt, 0, &phy_addr);
+	if (ret || (options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	ret = kstrtouint(this_opt, 0, &reg_type);
+	if (ret || (options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	ret = kstrtouint(this_opt, 0, &reg_addr);
+	if (ret)
+		goto fail;
+
+	/* reg read */
+	priv->phy_addr = (u32)phy_addr;
+	priv->reg_addr = (u32)reg_addr;
+	priv->reg_type = (u32)reg_type;
+	if (reg_type == AR40XX_PHY_STD)
+		priv->reg_val = mdiobus_read(priv->mii_bus,
+				phy_addr, reg_addr);
+	else
+		priv->reg_val = ar40xx_phy_mmd_read(priv,
+				phy_addr, reg_type, reg_addr);
+
+	return lbuf_size;
+
+fail:
+	dev_err(&bus->dev, "Format: phy_addr reg_type reg_addr\n");
+	return -EINVAL;
+}
+
+static ssize_t ar40xx_phy_write_reg_set(struct file *fp,
+					const char __user *ubuf,
+					size_t sz, loff_t *ppos)
+{
+	struct ar40xx_priv *priv = (struct ar40xx_priv *)fp->private_data;
+	struct mii_bus *bus;
+	char lbuf[32];
+	size_t lbuf_size;
+	char *options = lbuf;
+	char *this_opt;
+	int ret;
+	unsigned int phy_addr, reg_type, reg_addr, reg_value;
+
+	if (!priv || !priv->mii_bus)
+		return -EFAULT;
+
+	bus = priv->mii_bus;
+
+	lbuf_size = min(sz, (sizeof(lbuf) - 1));
+	if (copy_from_user(lbuf, ubuf, lbuf_size))
+		return -EFAULT;
+	lbuf[lbuf_size] = 0;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	ret = kstrtouint(this_opt, 0, &phy_addr);
+	if (ret || (options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	ret = kstrtouint(this_opt, 0, &reg_type);
+	if (ret || (options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	ret = kstrtouint(this_opt, 0, &reg_addr);
+	if (ret || (options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	ret = kstrtouint(this_opt, 0, &reg_value);
+	if (ret)
+		goto fail;
+
+	if (phy_addr > (AR40XX_NUM_PHYS - 1))
+		return -EINVAL;
+
+	if (reg_type == AR40XX_PHY_STD)
+		mdiobus_write(priv->mii_bus, phy_addr, reg_addr, reg_value);
+	else
+		ar40xx_phy_mmd_write(priv, phy_addr, reg_type,
+				     reg_addr, reg_value);
+
+	return lbuf_size;
+
+fail:
+	dev_err(&bus->dev, "Format: phy_addr reg_type reg_addr reg_value\n");
+	return -EINVAL;
+}
+
+static const struct file_operations ar40xx_phy_read_reg_ops = {
+	.open = simple_open,
+	.read = ar40xx_phy_read_reg_get,
+	.write = ar40xx_phy_read_reg_set,
+	.llseek = no_llseek,
+};
+
+static const struct file_operations ar40xx_phy_write_reg_ops = {
+	.open = simple_open,
+	.write = ar40xx_phy_write_reg_set,
+	.llseek = no_llseek,
+};
+
+static int ar40xx_phy_init_debugfs_entries(struct ar40xx_priv *priv)
+{
+	priv->top_dentry = debugfs_create_dir(priv->dev.devname, NULL);
+	if (!priv->top_dentry)
+		return -ENOMEM;
+
+	priv->write_dentry = debugfs_create_file("phy-write-reg", 0600,
+				priv->top_dentry,
+				priv, &ar40xx_phy_write_reg_ops);
+	if (!priv->write_dentry) {
+		debugfs_remove_recursive(priv->top_dentry);
+		return -ENOMEM;
+	}
+
+	priv->read_dentry = debugfs_create_file("phy-read-reg", 0600,
+				priv->top_dentry,
+				priv, &ar40xx_phy_read_reg_ops);
+	if (!priv->read_dentry) {
+		debugfs_remove_recursive(priv->top_dentry);
+		return -ENOMEM;
+	}
+
+	priv->phy_addr = 0;
+	priv->reg_val = 0;
+	priv->reg_addr = 0;
+
+	return 0;
+}
+
 /* Platform driver probe function */
 
 static int ar40xx_probe(struct platform_device *pdev)
@@ -1993,7 +2187,9 @@ static int ar40xx_probe(struct platform_device *pdev)
 	}
 	ar40xx_start(priv);
 
-	return 0;
+	ret = ar40xx_phy_init_debugfs_entries(priv);
+	if (!ret)
+		return 0;
 
 err_unregister_switch:
 	unregister_switch(&priv->dev);
@@ -2005,6 +2201,8 @@ err_unregister_phy:
 static int ar40xx_remove(struct platform_device *pdev)
 {
 	struct ar40xx_priv *priv = ar40xx_priv;
+
+	debugfs_remove_recursive(priv->top_dentry);
 
 	cancel_delayed_work_sync(&priv->qm_dwork);
 	cancel_delayed_work_sync(&priv->mib_work);
