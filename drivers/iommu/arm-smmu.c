@@ -48,6 +48,7 @@
 #include <linux/of_iommu.h>
 #include <linux/pci.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
@@ -212,6 +213,9 @@ struct arm_smmu_device {
 	u32				num_global_irqs;
 	u32				num_context_irqs;
 	unsigned int			*irqs;
+	struct clk_bulk_data		*clocks;
+	int				num_clks;
+	const char * const		*clk_names;
 
 	u32				cavium_id_base; /* Specific to Cavium */
 
@@ -1682,6 +1686,25 @@ static int arm_smmu_id_size_to_bits(int size)
 	}
 }
 
+static int arm_smmu_init_clocks(struct arm_smmu_device *smmu)
+{
+	int i;
+	int num = smmu->num_clks;
+
+	if (num < 1)
+		return 0;
+
+	smmu->clocks = devm_kcalloc(smmu->dev, num,
+				    sizeof(*smmu->clocks), GFP_KERNEL);
+	if (!smmu->clocks)
+		return -ENOMEM;
+
+	for (i = 0; i < num; i++)
+		smmu->clocks->id = smmu->clk_names[i];
+
+	return devm_clk_bulk_get(smmu->dev, num, smmu->clocks);
+}
+
 static int arm_smmu_device_cfg_probe(struct arm_smmu_device *smmu)
 {
 	unsigned long size;
@@ -1894,10 +1917,12 @@ static int arm_smmu_device_cfg_probe(struct arm_smmu_device *smmu)
 struct arm_smmu_match_data {
 	enum arm_smmu_arch_version version;
 	enum arm_smmu_implementation model;
+	const char * const *clks;
+	int num_clks;
 };
 
 #define ARM_SMMU_MATCH_DATA(name, ver, imp)	\
-static struct arm_smmu_match_data name = { .version = ver, .model = imp }
+static const struct arm_smmu_match_data name = { .version = ver, .model = imp }
 
 ARM_SMMU_MATCH_DATA(smmu_generic_v1, ARM_SMMU_V1, GENERIC_SMMU);
 ARM_SMMU_MATCH_DATA(smmu_generic_v2, ARM_SMMU_V2, GENERIC_SMMU);
@@ -1998,6 +2023,8 @@ static int arm_smmu_device_dt_probe(struct platform_device *pdev,
 	data = of_device_get_match_data(dev);
 	smmu->version = data->version;
 	smmu->model = data->model;
+	smmu->clk_names = data->clks;
+	smmu->num_clks = data->num_clks;
 
 	parse_driver_options(smmu);
 
@@ -2095,6 +2122,10 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 		}
 		smmu->irqs[i] = irq;
 	}
+
+	err = arm_smmu_init_clocks(smmu);
+	if (err)
+		return err;
 
 	err = arm_smmu_device_cfg_probe(smmu);
 	if (err)
@@ -2194,7 +2225,26 @@ static int __maybe_unused arm_smmu_pm_resume(struct device *dev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(arm_smmu_pm_ops, NULL, arm_smmu_pm_resume);
+static int __maybe_unused arm_smmu_resume(struct device *dev)
+{
+	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
+
+	return clk_bulk_prepare_enable(smmu->num_clks, smmu->clocks);
+}
+
+static int __maybe_unused arm_smmu_suspend(struct device *dev)
+{
+	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
+
+	clk_bulk_disable_unprepare(smmu->num_clks, smmu->clocks);
+
+	return 0;
+}
+
+static const struct dev_pm_ops arm_smmu_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(NULL, arm_smmu_pm_resume)
+	SET_RUNTIME_PM_OPS(arm_smmu_suspend, arm_smmu_resume, NULL)
+};
 
 static struct platform_driver arm_smmu_driver = {
 	.driver	= {
