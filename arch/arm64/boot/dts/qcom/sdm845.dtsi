@@ -12,6 +12,7 @@
 
 #include <dt-bindings/clock/qcom,gcc-sdm845.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/spmi/spmi.h>
 
 / {
@@ -28,6 +29,17 @@
 		device_type = "memory";
 		/* We expect the bootloader to fill in the reg */
 		reg = <0 0 0 0>;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		removed_region2: removed_region2@85fc0000 {
+			no-map;
+			reg = <0 0x85fc0000 0 0x2f40000>;
+		};
 	};
 
 	cpus {
@@ -405,7 +417,26 @@
 		#clock-cells = <1>;
 		#reset-cells = <1>;
 	};
+
+	cmd_db: qcom,cmd-db@861e0000 {
+		compatible = "qcom,cmd-db";
+		reg = <0xc3f000c 8>;
+	};
+
+	apps_rsc: mailbox@179e0000 {
+		compatible = "qcom,tcs-drv";
+		label = "apps_rsc";
+		reg = <0x179e0000 0x100>, <0x179e0d00 0x3000>;
+		interrupts = <0 5 0>;
+		#mbox-cells = <1>;
+		qcom,drv-id = <2>;
+		qcom,tcs-config = <2 2>,
+				<0 3>,
+				<1 3>,
+				<3 1>;
+	};
 };
 
 /*#include "pm8998.dtsi"*/
 #include "sdm845-pinctrl.dtsi"
+#include "sdm845-regulator.dtsi"
