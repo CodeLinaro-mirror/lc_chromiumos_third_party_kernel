@@ -205,3 +205,12 @@ config SDM_GCC_845
 	  sdm845 devices.
 	  Say Y if you want to use peripheral devices such as UART, SPI,
 	  i2c, USB, UFS, SD/eMMC, PCIe, etc.
+
+config MSM_CLK_RPMH
+	tristate "RPMh Clock Driver"
+	depends on COMMON_CLK_QCOM && QCOM_RPMH_API
+	help
+	  RPMh manages shared resources on some Qualcomm Technologies, Inc.
+	  SoCs. It accepts requests from other hardware subsystems via RSC.
+	  Say Y to support the clocks managed by RPMh VRM/ARC on platforms
+	  such as sdm845.
