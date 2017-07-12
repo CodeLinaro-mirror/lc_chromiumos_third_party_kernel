@@ -418,6 +418,14 @@
 		#reset-cells = <1>;
 	};
 
+	clock_dispcc: qcom,dispcc@af00000 {
+		compatible = "qcom,dispcc-sdm845-v2", "syscon";
+		reg = <0xaf00000 0x10000>;
+		reg-names = "cc_base";
+		#clock-cells = <1>;
+		#reset-cells = <1>;
+	};
+
 	cmd_db: qcom,cmd-db@861e0000 {
 		compatible = "qcom,cmd-db";
 		reg = <0xc3f000c 8>;
