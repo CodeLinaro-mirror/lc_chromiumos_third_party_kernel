@@ -22,6 +22,7 @@ enum {
 	CLK_ALPHA_PLL_TYPE_DEFAULT,
 	CLK_ALPHA_PLL_TYPE_HUAYRA,
 	CLK_ALPHA_PLL_TYPE_BRAMMO,
+	CLK_ALPHA_PLL_TYPE_FABIA,
 	CLK_ALPHA_PLL_TYPE_MAX,
 };
 
@@ -56,6 +57,10 @@ struct clk_alpha_pll {
  * @offset: base address of registers
  * @pll_type: alpha pll type
  * @width: width of post-divider
+ * @post_div_shift: shift to differentiate between odd & even post-divider
+ * @post_div_table: table with PLL odd and even post-divider settings
+ * @num_post_div: Number of PLL post-divider settings
+ *
  * @clkr: regmap clock handle
  */
 struct clk_alpha_pll_postdiv {
@@ -64,11 +69,15 @@ struct clk_alpha_pll_postdiv {
 	u8 width;
 
 	struct clk_regmap clkr;
+	int post_div_shift;
+	const struct clk_div_table *post_div_table;
+	size_t num_post_div;
 };
 
 struct alpha_pll_config {
 	u32 l;
 	u32 alpha;
+	u32 frac;
 	u32 alpha_hi;
 	u32 config_ctl_val;
 	u32 config_ctl_hi_val;
@@ -91,7 +100,12 @@ extern const struct clk_ops clk_alpha_pll_hwfsm_ops;
 extern const struct clk_ops clk_alpha_pll_postdiv_ops;
 extern const struct clk_ops clk_alpha_pll_postdiv_ro_ops;
 
+extern const struct clk_ops clk_fabia_fixed_pll_ops;
+extern const struct clk_ops clk_fabia_pll_postdiv_ops;
+
 void clk_alpha_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 			     const struct alpha_pll_config *config);
+void clk_fabia_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
+				const struct alpha_pll_config *config);
 
 #endif
