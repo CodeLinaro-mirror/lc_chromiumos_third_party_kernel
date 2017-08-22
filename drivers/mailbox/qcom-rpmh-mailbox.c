@@ -32,6 +32,9 @@
 #include <dt-bindings/soc/qcom,rpmh-rsc.h>
 #include "mailbox.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/rpmh.h>
+
 #define MAX_CMDS_PER_TCS		16
 #define MAX_TCS_PER_TYPE		3
 
@@ -302,6 +305,8 @@ static irqreturn_t tcs_irq_handler(int irq, void *p)
 			}
 		}
 
+		trace_rpmh_notify_irq(drv->name, m, resp->msg->payload[0].addr,
+						resp->err);
 		write_tcs_reg(base, RSC_DRV_CMD_ENABLE, m, 0, 0);
 		write_tcs_reg(base, RSC_DRV_IRQ_CLEAR, 0, 0, BIT(m));
 		atomic_set(&drv->tcs_in_use[m], 0);
@@ -329,7 +334,8 @@ static void tcs_notify_tx_done(unsigned long data)
 	struct tcs_response *resp;
 	unsigned long flags;
 	struct mbox_chan *chan;
-	int err;
+	int err, m;
+	struct tcs_mbox_msg *msg;
 
 	do {
 		spin_lock_irqsave(&drv->drv_lock, flags);
@@ -343,7 +349,10 @@ static void tcs_notify_tx_done(unsigned long data)
 		spin_unlock_irqrestore(&drv->drv_lock, flags);
 		chan = resp->chan;
 		err = resp->err;
+		m = resp->m;
+		msg = resp->msg;
 		free_response(resp);
+		trace_rpmh_notify(drv->name, m, msg->payload[0].addr, err);
 		mbox_chan_txdone(chan, err);
 
 	} while (1);
@@ -374,6 +383,8 @@ static void __tcs_buffer_write(struct rsc_drv *drv, int m, int n,
 		write_tcs_reg(base, RSC_DRV_CMD_MSGID, m, n + i, msgid);
 		write_tcs_reg(base, RSC_DRV_CMD_ADDR, m, n + i, cmd->addr);
 		write_tcs_reg(base, RSC_DRV_CMD_DATA, m, n + i, cmd->data);
+		trace_rpmh_send_msg(drv->name, m, n + i, msgid, cmd->addr,
+						cmd->data, cmd->complete);
 	}
 
 	write_tcs_reg(base, RSC_DRV_CMD_WAIT_FOR_CMPL, m, 0, cmd_complete);
