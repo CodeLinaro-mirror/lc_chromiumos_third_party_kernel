@@ -31,6 +31,7 @@ enum rpmh_state {
 struct tcs_mbox_msg {
 	enum rpmh_state state;	/* request state */
 	bool is_complete;	/* wait for resp from accelerator */
+	bool invalidate;	/* invalidate sleep and wake TCSes */
 	u32 num_payload;	/* Limited to MAX_RPMH_PAYLOAD in one msg */
 	struct tcs_cmd *payload;/* array of tcs_cmds */
 };

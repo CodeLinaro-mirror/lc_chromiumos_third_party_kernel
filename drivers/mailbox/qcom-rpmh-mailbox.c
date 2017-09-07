@@ -242,6 +242,51 @@ static inline struct tcs_mbox *get_tcs_of_type(struct rsc_drv *drv, int type)
 	return tcs;
 }
 
+/**
+ * tcs_mbox_invalidate - Invalidate sleep and wake TCSes
+ *
+ * @drv: the mailbox controller
+ */
+static int tcs_mbox_invalidate(struct rsc_drv *drv)
+{
+	struct tcs_mbox *tcs;
+	int m;
+	int inv_types[] = { WAKE_TCS, SLEEP_TCS };
+	int type = 0;
+	unsigned long drv_flags, flags;
+	int ret = 0;
+
+	/* Lock the DRV and clear sleep and wake TCSes */
+	spin_lock_irqsave(&drv->drv_lock, drv_flags);
+	do {
+		tcs = get_tcs_of_type(drv, inv_types[type]);
+		if (IS_ERR(tcs))
+			continue;
+
+		spin_lock_irqsave(&tcs->tcs_lock, flags);
+		if (!bitmap_empty(tcs->slots, MAX_TCS_SLOTS)) {
+			/* Clear the enable register for each TCS of the type */
+			for (m = tcs->tcs_offset;
+				m < tcs->tcs_offset + tcs->num_tcs; m++)
+				if (!tcs_is_free(drv, m)) {
+					spin_unlock_irqrestore(&tcs->tcs_lock,
+									flags);
+					ret = -EAGAIN;
+					goto drv_unlock;
+				}
+				write_tcs_reg_sync(drv->reg_base,
+						RSC_DRV_CMD_ENABLE, m, 0, 0);
+			/* Mark the TCS slots as free */
+			bitmap_zero(tcs->slots, MAX_TCS_SLOTS);
+		}
+		spin_unlock_irqrestore(&tcs->tcs_lock, flags);
+	} while (++type < ARRAY_SIZE(inv_types));
+drv_unlock:
+	spin_unlock_irqrestore(&drv->drv_lock, drv_flags);
+
+	return ret;
+}
+
 static inline struct tcs_mbox *get_tcs_for_msg(struct rsc_drv *drv,
 						struct tcs_mbox_msg *msg)
 {
@@ -655,8 +700,8 @@ static int chan_tcs_ctrl_write(struct mbox_chan *chan, void *data)
 	struct rsc_drv *drv = container_of(chan->mbox, struct rsc_drv, mbox);
 	struct tcs_mbox_msg *msg = data;
 
-	if (!msg || !msg->payload || !msg->num_payload ||
-			msg->num_payload > MAX_RPMH_PAYLOAD) {
+	if (!msg || ((!msg->payload || !msg->num_payload) && !msg->invalidate)
+				|| msg->num_payload > MAX_RPMH_PAYLOAD) {
 		pr_err("Payload error\n");
 		return -EINVAL;
 	}
@@ -664,6 +709,9 @@ static int chan_tcs_ctrl_write(struct mbox_chan *chan, void *data)
 	/* Data sent to this API will not be sent immediately */
 	if (msg->state == RPMH_ACTIVE_ONLY_STATE)
 		return -EFAULT;
+
+	if (msg->invalidate)
+		return tcs_mbox_invalidate(drv);
 
 	/* Post the message to the TCS without trigger */
 	return tcs_ctrl_write(drv, msg);
