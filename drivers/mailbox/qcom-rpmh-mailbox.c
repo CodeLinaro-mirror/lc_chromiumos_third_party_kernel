@@ -291,6 +291,7 @@ static inline struct tcs_mbox *get_tcs_for_msg(struct rsc_drv *drv,
 						struct tcs_mbox_msg *msg)
 {
 	int type = -1;
+	struct tcs_mbox *tcs;
 
 	switch (msg->state) {
 	case RPMH_ACTIVE_ONLY_STATE:
@@ -309,7 +310,22 @@ static inline struct tcs_mbox *get_tcs_for_msg(struct rsc_drv *drv,
 	if (type < 0)
 		return ERR_PTR(-EINVAL);
 
-	return get_tcs_of_type(drv, type);
+	/*
+	 * If we are making an active request on a RSC that does not have a
+	 * dedicated TCS for active state use, then re-purpose a wake TCS to
+	 * send active votes.
+	 * NOTE: The driver must be aware that this RSC does not have a
+	 * dedicated AMC, and therefore would invalidate the sleep and wake
+	 * TCSes before making an active state request.
+	 */
+	tcs = get_tcs_of_type(drv, type);
+	if (msg->state == RPMH_ACTIVE_ONLY_STATE && IS_ERR(tcs)) {
+		tcs = get_tcs_of_type(drv, WAKE_TCS);
+		if (!IS_ERR(tcs))
+			tcs_mbox_invalidate(drv);
+	}
+
+	return tcs;
 }
 
 static inline void send_tcs_response(struct tcs_response *resp)
