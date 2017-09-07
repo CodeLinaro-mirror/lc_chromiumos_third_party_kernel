@@ -14,6 +14,7 @@
 #define pr_fmt(fmt) "%s " fmt, KBUILD_MODNAME
 
 #include <linux/atomic.h>
+#include <linux/bitmap.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/jiffies.h>
@@ -37,6 +38,7 @@
 
 #define MAX_CMDS_PER_TCS		16
 #define MAX_TCS_PER_TYPE		3
+#define MAX_TCS_SLOTS			MAX_CMDS_PER_TCS * MAX_TCS_PER_TYPE
 
 #define RSC_DRV_TCS_OFFSET		672
 #define RSC_DRV_CMD_OFFSET		20
@@ -97,6 +99,8 @@ struct tcs_mbox {
 	spinlock_t tcs_lock;	/* TCS type lock */
 	struct tcs_response *responses[MAX_TCS_PER_TYPE];
 				/* Response object for each TCS */
+	u32 *cmd_addr;		/* Flattened cache of cmds in TCS */
+	DECLARE_BITMAP(slots, MAX_TCS_SLOTS);
 };
 
 /* One per MBOX controller */
@@ -246,6 +250,12 @@ static inline struct tcs_mbox *get_tcs_for_msg(struct rsc_drv *drv,
 	switch (msg->state) {
 	case RPMH_ACTIVE_ONLY_STATE:
 		type = ACTIVE_TCS;
+		break;
+	case RPMH_WAKE_ONLY_STATE:
+		type = WAKE_TCS;
+		break;
+	case RPMH_SLEEP_STATE:
+		type = SLEEP_TCS;
 		break;
 	default:
 		break;
@@ -552,8 +562,116 @@ tx_fail:
 	return ret;
 }
 
+static int find_match(struct tcs_mbox *tcs, struct tcs_cmd *cmd, int len)
+{
+	bool found = false;
+	int i = 0, j;
+
+	/* Check for already cached commands */
+	while ((i = find_next_bit(tcs->slots, MAX_TCS_SLOTS, i)) <
+			MAX_TCS_SLOTS) {
+		if (tcs->cmd_addr[i] != cmd[0].addr) {
+			i++;
+			continue;
+		}
+		/* sanity check to ensure the seq is same */
+		for (j = 1; j < len; j++) {
+			WARN((tcs->cmd_addr[i + j] != cmd[j].addr),
+				"Message does not match previous sequence.\n");
+			return -EINVAL;
+		}
+		found = true;
+		break;
+	}
+
+	return found ? i : -1;
+}
+
+static int find_slots(struct tcs_mbox *tcs, struct tcs_mbox_msg *msg,
+						int *m, int *n)
+{
+	int slot, offset;
+	int i = 0;
+
+	/* Find if we already have the msg in our TCS */
+	slot = find_match(tcs, msg->payload, msg->num_payload);
+	if (slot >= 0)
+		goto copy_data;
+
+	/* Do over, until we can fit the full payload in a TCS */
+	do {
+		slot = bitmap_find_next_zero_area(tcs->slots, MAX_TCS_SLOTS,
+				i, msg->num_payload, 0);
+		if (slot == MAX_TCS_SLOTS)
+			break;
+		i += tcs->ncpt;
+	} while (slot + msg->num_payload - 1 >= i);
+
+	if (slot == MAX_TCS_SLOTS)
+		return -ENOMEM;
+
+copy_data:
+	bitmap_set(tcs->slots, slot, msg->num_payload);
+	/* Copy the addresses of the resources over to the slots */
+	for (i = 0; tcs->cmd_addr && i < msg->num_payload; i++)
+		tcs->cmd_addr[slot + i] = msg->payload[i].addr;
+
+	offset = slot / tcs->ncpt;
+	*m = offset + tcs->tcs_offset;
+	*n = slot % tcs->ncpt;
+
+	return 0;
+}
+
+static int tcs_ctrl_write(struct rsc_drv *drv, struct tcs_mbox_msg *msg)
+{
+	struct tcs_mbox *tcs;
+	int m = 0, n = 0;
+	unsigned long flags;
+	int ret = 0;
+
+	tcs = get_tcs_for_msg(drv, msg);
+	if (IS_ERR(tcs))
+		return PTR_ERR(tcs);
+
+	spin_lock_irqsave(&tcs->tcs_lock, flags);
+	/* find the m-th TCS and the n-th position in the TCS to write to */
+	ret = find_slots(tcs, msg, &m, &n);
+	if (!ret)
+		__tcs_buffer_write(drv, m, n, msg);
+	spin_unlock_irqrestore(&tcs->tcs_lock, flags);
+
+	return ret;
+}
+
+/**
+ * chan_tcs_ctrl_write: Write message to the controller, no ACK sent.
+ *
+ * @chan: the MBOX channel
+ * @data: the tcs_mbox_msg*
+ */
+static int chan_tcs_ctrl_write(struct mbox_chan *chan, void *data)
+{
+	struct rsc_drv *drv = container_of(chan->mbox, struct rsc_drv, mbox);
+	struct tcs_mbox_msg *msg = data;
+
+	if (!msg || !msg->payload || !msg->num_payload ||
+			msg->num_payload > MAX_RPMH_PAYLOAD) {
+		pr_err("Payload error\n");
+		return -EINVAL;
+	}
+
+	/* Data sent to this API will not be sent immediately */
+	if (msg->state == RPMH_ACTIVE_ONLY_STATE)
+		return -EFAULT;
+
+	/* Post the message to the TCS without trigger */
+	return tcs_ctrl_write(drv, msg);
+}
+
 static const struct mbox_chan_ops mbox_ops = {
 	.send_data = chan_tcs_write,
+	.write_controller_data = chan_tcs_ctrl_write,
 };
 
 static struct mbox_chan *of_tcs_mbox_xlate(struct mbox_controller *mbox,
@@ -659,6 +777,18 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 		tcs->tcs_mask = ((1 << tcs->num_tcs) - 1) << st;
 		tcs->tcs_offset = st;
 		st += tcs->num_tcs;
+
+		/*
+		 * Allocate memory to cache sleep and wake requests to
+		 * avoid reading TCS register memory.
+		 */
+		if (tcs->type == ACTIVE_TCS)
+			continue;
+
+		tcs->cmd_addr = devm_kzalloc(&pdev->dev, sizeof(u32) *
+				tcs->num_tcs * tcs->ncpt, GFP_KERNEL);
+		if (!tcs->cmd_addr)
+			return -ENOMEM;
 	}
 
 	for_each_node_with_property(np, "mboxes") {
