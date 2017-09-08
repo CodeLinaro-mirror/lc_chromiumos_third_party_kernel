@@ -12,6 +12,7 @@
  */
 
 #include <linux/atomic.h>
+#include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -71,6 +72,7 @@ struct rpmh_mbox {
 	bool dirty;
 	/* Cache sleep and wake requests sent as batch */
 	struct rpmh_msg *batch_cache[2 * RPMH_MAX_REQ_IN_BATCH];
+	bool in_solver_mode;
 };
 
 struct rpmh_client {
@@ -104,6 +106,55 @@ static void rpmh_tx_done(struct mbox_client *cl, void *msg, int r)
 		if (compl)
 			complete(compl);
 }
+
+static int check_ctrlr_state(struct rpmh_client *rc, enum rpmh_state state)
+{
+	struct rpmh_mbox *rpm = rc->rpmh;
+	unsigned long flags;
+	int ret = 0;
+
+	/* Do not allow setting active votes when in solver mode */
+	spin_lock_irqsave(&rpm->lock, flags);
+	if (rpm->in_solver_mode && state == RPMH_ACTIVE_ONLY_STATE)
+		ret = -EBUSY;
+	spin_unlock_irqrestore(&rpm->lock, flags);
+
+	return ret;
+}
+
+/**
+ * rpmh_mode_solver_set: Indicate that the RSC controller hardware has
+ * been configured to be in solver mode
+ *
+ * @rc: The RPMH handle
+ * @enable: Boolean value indicating if the controller is in solver mode.
+ *
+ * When solver mode is enabled, passthru API will not be able to send wake
+ * votes, just awake and active votes.
+ */
+int rpmh_mode_solver_set(struct rpmh_client *rc, bool enable)
+{
+	struct rpmh_mbox *rpm;
+	unsigned long flags;
+
+	if (IS_ERR_OR_NULL(rc))
+		return -EINVAL;
+
+	rpm = rc->rpmh;
+	do {
+		spin_lock_irqsave(&rpm->lock, flags);
+		if (mbox_controller_is_idle(rc->chan)) {
+			rpm->in_solver_mode = enable;
+			spin_unlock_irqrestore(&rpm->lock, flags);
+			break;
+		}
+		spin_unlock_irqrestore(&rpm->lock, flags);
+		udelay(10);
+	} while (1);
+
+	return 0;
+}
+EXPORT_SYMBOL(rpmh_mode_solver_set);
 
 /**
  * wait_for_tx_done: Wait forever until the response is received.
@@ -275,6 +326,11 @@ int rpmh_write_async(struct rpmh_client *rc, enum rpmh_state state,
 			struct tcs_cmd *cmd, int n)
 {
 	struct rpmh_msg *rpm_msg;
+	int ret;
+
+	ret = check_ctrlr_state(rc, state);
+	if (ret)
+		return ret;
 
 	rpm_msg = __get_rpmh_msg_async(rc, state, cmd, n);
 	if (IS_ERR(rpm_msg))
@@ -307,6 +363,10 @@ int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 
 	might_sleep();
 
+	ret = check_ctrlr_state(rc, state);
+	if (ret)
+		return ret;
+
 	memcpy(rpm_msg.cmd, cmd, n * sizeof(*cmd));
 	rpm_msg.msg.num_payload = n;
 
@@ -336,9 +396,14 @@ int rpmh_write_single_async(struct rpmh_client *rc, enum rpmh_state state,
 {
 	struct rpmh_msg *rpm_msg;
 	struct tcs_cmd cmd;
+	int ret;
 
 	if (IS_ERR_OR_NULL(rc))
 		return -EINVAL;
+
+	ret = check_ctrlr_state(rc, state);
+	if (ret)
+		return ret;
 
 	cmd.addr = addr;
 	cmd.data = data;
@@ -377,6 +442,10 @@ int rpmh_write_single(struct rpmh_client *rc, enum rpmh_state state,
 		return -EINVAL;
 
 	might_sleep();
+
+	ret = check_ctrlr_state(rc, state);
+	if (ret)
+		return ret;
 
 	rpm_msg.cmd[0].addr = addr;
 	rpm_msg.cmd[0].data = data;
@@ -486,6 +555,10 @@ int rpmh_write_batch(struct rpmh_client *rc, enum rpmh_state state,
 
 	if (IS_ERR_OR_NULL(rc) || !cmd || !n)
 		return -EINVAL;
+
+	ret = check_ctrlr_state(rc, state);
+	if (ret)
+		return ret;
 
 	while (n[count++] > 0)
 		;

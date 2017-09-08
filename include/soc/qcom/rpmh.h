@@ -38,6 +38,8 @@ int rpmh_flush(struct rpmh_client *rc);
 
 int rpmh_invalidate(struct rpmh_client *rc);
 
+int rpmh_mode_solver_set(struct rpmh_client *rc, bool enable);
+
 struct rpmh_client *rpmh_get_byname(struct platform_device *pdev,
 			const char *name);
 
@@ -70,6 +72,9 @@ static inline int rpmh_flush(struct rpmh_client *rc)
 { return -ENODEV; }
 
 static inline int rpmh_invalidate(struct rpmh_client *rc)
+{ return -ENODEV; }
+
+static inline int rpmh_mode_solver_set(struct rpmh_client *rc, bool enable)
 { return -ENODEV; }
 
 static inline struct rpmh_client *rpmh_get_byname(struct platform_device *pdev,
