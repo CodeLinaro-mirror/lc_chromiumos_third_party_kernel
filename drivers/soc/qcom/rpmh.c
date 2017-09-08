@@ -43,6 +43,7 @@
 		.completion = q,			\
 		.wait_count = c,			\
 		.rc = rc,				\
+		.free = NULL,				\
 	}
 
 struct rpmh_req {
@@ -59,6 +60,7 @@ struct rpmh_msg {
 	atomic_t *wait_count;
 	struct rpmh_client *rc;
 	int err; /* relay error from mbox for sync calls */
+	struct rpmh_msg *free;
 };
 
 struct rpmh_mbox {
@@ -90,6 +92,9 @@ static void rpmh_tx_done(struct mbox_client *cl, void *msg, int r)
 		dev_err(rpm_msg->rc->dev,
 			"RPMH TX fail in msg addr 0x%x, err=%d\n",
 			rpm_msg->msg.payload[0].addr, r);
+
+	if (rpm_msg->free)
+		kfree(rpm_msg->free);
 
 	/* Signal the blocking thread we are done */
 	if (wc && atomic_dec_and_test(wc))
@@ -229,6 +234,52 @@ int __rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 
 	return ret;
 }
+
+struct rpmh_msg *__get_rpmh_msg_async(struct rpmh_client *rc,
+		enum rpmh_state state, struct tcs_cmd *cmd, int n)
+{
+	struct rpmh_msg *rpm_msg;
+
+	if (IS_ERR_OR_NULL(rc) || !cmd || n <= 0 || n > MAX_RPMH_PAYLOAD)
+		return ERR_PTR(-EINVAL);
+
+	rpm_msg = kcalloc(1, sizeof(*rpm_msg), GFP_ATOMIC);
+	if (!rpm_msg)
+		return ERR_PTR(-ENOMEM);
+
+	memcpy(rpm_msg->cmd, cmd, n * sizeof(*cmd));
+
+	rpm_msg->msg.state = state;
+	rpm_msg->msg.payload = rpm_msg->cmd;
+	rpm_msg->msg.num_payload = n;
+	rpm_msg->free = rpm_msg;
+
+	return rpm_msg;
+}
+
+/**
+ * rpmh_write_async: Write a set of RPMH commands
+ *
+ * @rc: The RPMh handle got from rpmh_get_dev_channel
+ * @state: Active/sleep set
+ * @cmd: The payload data
+ * @n: The number of elements in payload
+ *
+ * Write a set of RPMH commands, the order of commands is maintained
+ * and will be sent as a single shot.
+ */
+int rpmh_write_async(struct rpmh_client *rc, enum rpmh_state state,
+			struct tcs_cmd *cmd, int n)
+{
+	struct rpmh_msg *rpm_msg;
+
+	rpm_msg = __get_rpmh_msg_async(rc, state, cmd, n);
+	if (IS_ERR(rpm_msg))
+		return PTR_ERR(rpm_msg);
+
+	return __rpmh_write(rc, state, rpm_msg);
+}
+EXPORT_SYMBOL(rpmh_write_async);
 
 /**
  * rpmh_write: Write a set of RPMH commands and block until response
