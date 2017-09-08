@@ -19,6 +19,12 @@
 struct rpmh_client;
 
 #ifdef CONFIG_QCOM_RPMH_API
+int rpmh_write_single(struct rpmh_client *rc, enum rpmh_state state,
+			u32 addr, u32 data);
+
+int rpmh_write_single_async(struct rpmh_client *rc,
+			enum rpmh_state state, u32 addr, u32 data);
+
 int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 			struct tcs_cmd *cmd, int n);
 
@@ -37,6 +43,14 @@ struct rpmh_client *rpmh_get_byindex(struct platform_device *pdev,
 
 void rpmh_release(struct rpmh_client *rc);
 #else
+static inline int rpmh_write_single(struct rpmh_client *rc,
+			enum rpmh_state state, u32 addr, u32 data)
+{ return -ENODEV; }
+
+static inline int rpmh_write_single_async(struct rpmh_client *rc,
+			enum rpmh_state state, u32 addr, u32 data)
+{ return -ENODEV; }
+
 static inline int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 			struct tcs_cmd *cmd, int n)
 { return -ENODEV; }

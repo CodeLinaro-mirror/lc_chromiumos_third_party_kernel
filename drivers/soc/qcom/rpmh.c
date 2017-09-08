@@ -317,6 +317,78 @@ int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 }
 EXPORT_SYMBOL(rpmh_write);
 
+/**
+ * rpmh_write_single_async: Write a single RPMH command
+ *
+ * @rc: The RPMh handle got from rpmh_get_dev_channel
+ * @state: Active/sleep set
+ * @addr: The ePCB address
+ * @data: The data
+ *
+ * Write a single value in fast-path. Fire and forget.
+ * May be called from atomic contexts.
+ */
+int rpmh_write_single_async(struct rpmh_client *rc, enum rpmh_state state,
+			u32 addr, u32 data)
+{
+	struct rpmh_msg *rpm_msg;
+	struct tcs_cmd cmd;
+
+	if (IS_ERR_OR_NULL(rc))
+		return -EINVAL;
+
+	cmd.addr = addr;
+	cmd.data = data;
+
+	rpm_msg = __get_rpmh_msg_async(rc, state, &cmd, 1);
+	if (IS_ERR(rpm_msg))
+		return PTR_ERR(rpm_msg);
+
+	return __rpmh_write(rc, state, rpm_msg);
+}
+EXPORT_SYMBOL(rpmh_write_single_async);
+
+/**
+ * rpmh_write_single: Write a single RPMH command and
+ * wait for completion of the command.
+ *
+ * @rc: The RPMh handle got from rpmh_get_dev_channel
+ * @state: Active/sleep set
+ * @addr: The ePCB address
+ * @offset: Offset of the resource
+ * @data: The data
+ *
+ * Write a single value in slow-path and wait for the request to be
+ * complete. Blocks until the request is completed on the accelerator.
+ * Do not call from atomic contexts.
+ */
+int rpmh_write_single(struct rpmh_client *rc, enum rpmh_state state,
+			u32 addr, u32 data)
+{
+	DECLARE_COMPLETION_ONSTACK(compl);
+	atomic_t wait_count = ATOMIC_INIT(1);
+	DEFINE_RPMH_MSG_ONSTACK(rc, state, &compl, &wait_count, rpm_msg);
+	int ret;
+
+	if (IS_ERR_OR_NULL(rc))
+		return -EINVAL;
+
+	might_sleep();
+
+	rpm_msg.cmd[0].addr = addr;
+	rpm_msg.cmd[0].data = data;
+	rpm_msg.msg.num_payload = 1;
+
+	ret = __rpmh_write(rc, state, &rpm_msg);
+	if (ret < 0)
+		return ret;
+
+	wait_for_tx_done(rc, &compl, addr, data);
+
+	return rpm_msg.err;
+}
+EXPORT_SYMBOL(rpmh_write_single);
+
 static inline int is_req_valid(struct rpmh_req *req)
 {
 	return (req->sleep_val != UINT_MAX && req->wake_val != UINT_MAX
