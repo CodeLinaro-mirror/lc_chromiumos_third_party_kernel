@@ -14,11 +14,13 @@
 #include <linux/atomic.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
+#include <linux/list.h>
 #include <linux/mailbox_client.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/wait.h>
 
@@ -61,6 +63,9 @@ struct rpmh_msg {
 
 struct rpmh_mbox {
 	struct device_node *mbox_dn;
+	struct list_head resources;
+	spinlock_t lock;
+	bool dirty;
 };
 
 struct rpmh_client {
@@ -125,29 +130,104 @@ static inline void wait_for_tx_done(struct rpmh_client *rc,
 	} while (true);
 }
 
+static struct rpmh_req *__find_req(struct rpmh_client *rc, u32 addr)
+{
+	struct rpmh_req *p, *req = NULL;
+
+	list_for_each_entry(p, &rc->rpmh->resources, list) {
+		if (p->addr == addr) {
+			req = p;
+			break;
+		}
+	}
+
+	return req;
+}
+
+static struct rpmh_req *cache_rpm_request(struct rpmh_client *rc,
+			enum rpmh_state state, struct tcs_cmd *cmd)
+{
+	struct rpmh_req *req;
+	struct rpmh_mbox *rpm = rc->rpmh;
+	unsigned long flags;
+
+	spin_lock_irqsave(&rpm->lock, flags);
+	req = __find_req(rc, cmd->addr);
+	if (req)
+		goto existing;
+
+	req = kzalloc(sizeof(*req), GFP_ATOMIC);
+	if (!req) {
+		req = ERR_PTR(-ENOMEM);
+		goto unlock;
+	}
+
+	req->addr = cmd->addr;
+	req->sleep_val = req->wake_val = UINT_MAX;
+	INIT_LIST_HEAD(&req->list);
+	list_add_tail(&req->list, &rpm->resources);
+
+existing:
+	switch (state) {
+	case RPMH_ACTIVE_ONLY_STATE:
+		if (req->sleep_val != UINT_MAX)
+			req->wake_val = cmd->data;
+		break;
+	case RPMH_WAKE_ONLY_STATE:
+		req->wake_val = cmd->data;
+		break;
+	case RPMH_SLEEP_STATE:
+		req->sleep_val = cmd->data;
+		break;
+	default:
+		break;
+	};
+
+unlock:
+	rpm->dirty = true;
+	spin_unlock_irqrestore(&rpm->lock, flags);
+
+	return req;
+}
+
 /**
- * __rpmh_write: send the RPMH request
+ * __rpmh_write: Cache and send the RPMH request
  *
  * @rc: The RPMH client
  * @state: Active/Sleep request type
  * @rpm_msg: The data that needs to be sent (payload).
+ *
+ * Cache the RPMH request and send if the state is ACTIVE_ONLY.
+ * SLEEP/WAKE_ONLY requests are not sent to the controller at
+ * this time. Use rpmh_flush() to send them to the controller.
  */
 int __rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 			struct rpmh_msg *rpm_msg)
 {
+	struct rpmh_req *req;
 	int ret = 0;
+	int i;
+
+	/* Cache the request in our store and link the payload */
+	for (i = 0; i < rpm_msg->msg.num_payload; i++) {
+		req = cache_rpm_request(rc, state, &rpm_msg->msg.payload[i]);
+		if (IS_ERR(req))
+			return PTR_ERR(req);
+	}
 
 	rpm_msg->msg.state = state;
 
+	/* Send to mailbox only if active */
 	if (state == RPMH_ACTIVE_ONLY_STATE) {
 		ret = mbox_send_message(rc->chan, &rpm_msg->msg);
+		if (ret > 0)
+			ret = 0;
 	} else {
-		ret = mbox_write_controller_data(rc->chan, &rpm_msg->msg);
 		/* Clean up our call by spoofing tx_done */
 		rpmh_tx_done(&rc->client, &rpm_msg->msg, ret);
 	}
 
-	return (ret < 0) ? ret : 0;
+	return ret;
 }
 
 /**
@@ -185,6 +265,113 @@ int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 	return rpm_msg.err;
 }
 EXPORT_SYMBOL(rpmh_write);
+
+static inline int is_req_valid(struct rpmh_req *req)
+{
+	return (req->sleep_val != UINT_MAX && req->wake_val != UINT_MAX
+			&& req->sleep_val != req->wake_val);
+}
+
+int send_single(struct rpmh_client *rc, enum rpmh_state state, u32 addr,
+				u32 data)
+{
+	DEFINE_RPMH_MSG_ONSTACK(rc, state, NULL, NULL, rpm_msg);
+
+	/* Wake sets are always complete and sleep sets are not */
+	rpm_msg.msg.is_complete = (state == RPMH_WAKE_ONLY_STATE);
+	rpm_msg.cmd[0].addr = addr;
+	rpm_msg.cmd[0].data = data;
+	rpm_msg.msg.num_payload = 1;
+	rpm_msg.msg.is_complete = false;
+
+	return mbox_write_controller_data(rc->chan, &rpm_msg.msg);
+}
+
+/**
+ * rpmh_flush: Flushes the buffered active and sleep sets to TCS
+ *
+ * @rc: The RPMh handle got from rpmh_get_dev_channel
+ *
+ * This function is generally called from the sleep code from the last CPU
+ * that is powering down the entire system.
+ *
+ * Returns -EBUSY if the controller is busy, probably waiting on a response
+ * to a RPMH request sent earlier.
+ */
+int rpmh_flush(struct rpmh_client *rc)
+{
+	struct rpmh_req *p;
+	struct rpmh_mbox *rpm = rc->rpmh;
+	int ret;
+	unsigned long flags;
+
+	if (IS_ERR_OR_NULL(rc))
+		return -EINVAL;
+
+	spin_lock_irqsave(&rpm->lock, flags);
+	if (!rpm->dirty) {
+		pr_debug("Skipping flush, TCS has latest data.\n");
+		spin_unlock_irqrestore(&rpm->lock, flags);
+		return 0;
+	}
+	spin_unlock_irqrestore(&rpm->lock, flags);
+
+	/*
+	 * Nobody else should be calling this function other than system PM,,
+	 * hence we can run without locks.
+	 */
+	list_for_each_entry(p, &rc->rpmh->resources, list) {
+		if (!is_req_valid(p)) {
+			pr_debug("%s: skipping RPMH req: a:0x%x s:0x%x w:0x%x",
+				__func__, p->addr, p->sleep_val, p->wake_val);
+			continue;
+		}
+		ret = send_single(rc, RPMH_SLEEP_STATE, p->addr, p->sleep_val);
+		if (ret)
+			return ret;
+		ret = send_single(rc, RPMH_WAKE_ONLY_STATE, p->addr,
+						p->wake_val);
+		if (ret)
+			return ret;
+	}
+
+	spin_lock_irqsave(&rpm->lock, flags);
+	rpm->dirty = false;
+	spin_unlock_irqrestore(&rpm->lock, flags);
+
+	return 0;
+}
+EXPORT_SYMBOL(rpmh_flush);
+
+/**
+ * rpmh_invalidate: Invalidate all sleep and active sets
+ * sets.
+ *
+ * @rc: The RPMh handle got from rpmh_get_dev_channel
+ *
+ * Invalidate the sleep and active values in the TCS blocks.
+ * Nothing to do here.
+ */
+int rpmh_invalidate(struct rpmh_client *rc)
+{
+	DEFINE_RPMH_MSG_ONSTACK(rc, 0, NULL, NULL, rpm_msg);
+	struct rpmh_mbox *rpm;
+	unsigned long flags;
+
+	if (IS_ERR_OR_NULL(rc))
+		return -EINVAL;
+
+	rpm = rc->rpmh;
+	rpm_msg.msg.invalidate = true;
+	rpm_msg.msg.is_complete = false;
+
+	spin_lock_irqsave(&rpm->lock, flags);
+	rpm->dirty = true;
+	spin_unlock_irqrestore(&rpm->lock, flags);
+
+	return mbox_write_controller_data(rc->chan, &rpm_msg.msg);
+}
+EXPORT_SYMBOL(rpmh_invalidate);
 
 /**
  * get_mbox: Get the MBOX controller
@@ -241,6 +428,8 @@ static struct rpmh_mbox *get_mbox(struct platform_device *pdev,
 	rpmh = &mbox_ctrlr[i];
 
 	rpmh->mbox_dn = spec.np;
+	INIT_LIST_HEAD(&rpmh->resources);
+	spin_lock_init(&rpmh->lock);
 
 found:
 	of_node_put(spec.np);

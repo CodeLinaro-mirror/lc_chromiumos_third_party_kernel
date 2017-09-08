@@ -22,6 +22,10 @@ struct rpmh_client;
 int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 			struct tcs_cmd *cmd, int n);
 
+int rpmh_flush(struct rpmh_client *rc);
+
+int rpmh_invalidate(struct rpmh_client *rc);
+
 struct rpmh_client *rpmh_get_byname(struct platform_device *pdev,
 			const char *name);
 
@@ -32,6 +36,12 @@ void rpmh_release(struct rpmh_client *rc);
 #else
 static inline int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 			struct tcs_cmd *cmd, int n)
+{ return -ENODEV; }
+
+static inline int rpmh_flush(struct rpmh_client *rc)
+{ return -ENODEV; }
+
+static inline int rpmh_invalidate(struct rpmh_client *rc)
 { return -ENODEV; }
 
 static inline struct rpmh_client *rpmh_get_byname(struct platform_device *pdev,
