@@ -98,6 +98,18 @@ conditions.
                   accessed before master gets enabled and linked to its
                   SMMU.
 
+- child nodes:    ARM MMU-500 implements a TBU (page table cache or TLB) for
+                  each connected master besides a single TCU that controls
+                  and manages the address translations.
+                  Each of the child nodes represents a TBU that is attached to
+                  the master. This child node will have following property:
+
+  - compatible:      must be "arm,mmu-500-tbu" for TBU child nodes of arm,mmu-500
+                     smmu.
+  - stream-id-range: array representing the starting stream id and the number
+                     of supported stream-ids. This gives information about
+                     the range of stream-ids that are supported by this TBU.
+
 ** Deprecated properties:
 
 - mmu-masters (deprecated in favour of the generic "iommus" binding) :
@@ -186,4 +198,18 @@ conditions.
 		clocks = <&mmcc SMMU_MDP_AXI_CLK>,
 			 <&mmcc SMMU_MDP_AHB_CLK>;
 		clock-names = "bus", "iface";
+	};
+
+	smmu5: iommu {
+		compatible = "arm,mmu-500";
+		reg = <0xd00000 0x10000>;
+		...
+		...
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		tbu: tbu@0 {
+			compatible = "arm,mmu-500-tbu";
+			stream-id-range = <0x0 0x400>;
+		};
 	};

@@ -224,6 +224,8 @@ struct arm_smmu_device {
 
 	/* IOMMU core code handle */
 	struct iommu_device		iommu;
+
+	struct list_head		tbu_list;
 };
 
 enum arm_smmu_context_fmt {
@@ -332,6 +334,33 @@ static int __find_legacy_master_phandle(struct device *dev, void *data)
 
 static struct platform_driver arm_smmu_driver;
 static struct iommu_ops arm_smmu_ops;
+
+struct arm_smmu500_tbu {
+	struct device *dev;
+	u32 sid_range[2];
+	struct list_head list;
+	struct arm_smmu_device *smmu;
+};
+
+static struct device *arm_mmu500_find_tbu(struct device *parent, u16 sid)
+{
+	struct arm_smmu_device *smmu = dev_get_drvdata(parent);
+	struct arm_smmu500_tbu *tbu;
+	u32 start, end;
+	struct device *dev = NULL;
+
+	list_for_each_entry(tbu, &smmu->tbu_list, list) {
+		start = tbu->sid_range[0];
+		end = start + tbu->sid_range[1];
+
+		if (start <= sid && sid < end) {
+			dev = tbu->dev;
+			break;
+		}
+	}
+
+	return dev;
+}
 
 static int arm_smmu_register_legacy_master(struct device *dev,
 					   struct arm_smmu_device **smmu)
@@ -927,6 +956,7 @@ static void arm_smmu_destroy_domain_context(struct iommu_domain *domain)
 	if (!smmu || domain->type == IOMMU_DOMAIN_IDENTITY)
 		return;
 
+	/* FIXME: Power on separate tbu devices here */
 	ret = pm_runtime_get_sync(smmu->dev);
 	if (ret)
 		return;
@@ -1369,6 +1399,7 @@ static int arm_smmu_add_device(struct device *dev)
 	struct iommu_fwspec *fwspec = dev->iommu_fwspec;
 	struct device_link *link;
 	int i, ret;
+	struct device **tbu_dev;
 
 	if (using_legacy_binding) {
 		ret = arm_smmu_register_legacy_master(dev, &smmu);
@@ -1415,29 +1446,59 @@ static int arm_smmu_add_device(struct device *dev)
 	while (i--)
 		cfg->smendx[i] = INVALID_SMENDX;
 
-	ret = pm_runtime_get_sync(smmu->dev);
-	if (ret)
-		goto out_cfg_free;
+	/*
+	 * Find out the TBUs corresponding to all SIDs emitted by this master
+	 * and then create the device link between them.
+	 */
+	tbu_dev = kcalloc(fwspec->num_ids, sizeof(*tbu_dev), GFP_KERNEL);
+	if (!tbu_dev)
+		return -ENOMEM;
+
+	/* FIXME: This TBU device runtime pm look messed up;
+	 * The tbu device find thing needs a fix; find all the TBUs
+	 * for the available SIDs and power-on each of them.
+	 */
+	for (i = 0; i < fwspec->num_ids; i++) {
+		u16 sid = fwspec->ids[i];
+
+		tbu_dev[i] = arm_mmu500_find_tbu(smmu->dev, sid);
+		if (!tbu_dev[i]) {
+			pm_runtime_get_sync(smmu->dev);
+			break;
+		}
+
+		ret = pm_runtime_get_sync(tbu_dev[i]);
+		if (ret)
+			goto out_cfg_free;
+	}
 
 	ret = arm_smmu_master_alloc_smes(dev);
 	if (ret) {
-		pm_runtime_put_sync(smmu->dev);
+		while (i--)
+			pm_runtime_put_sync(tbu_dev[i]);
 		goto out_cfg_free;
 	}
 
 	iommu_device_link(&smmu->iommu, dev);
 
-	pm_runtime_put_sync(smmu->dev);
+	while (i--) {
+		pm_runtime_put_sync(tbu_dev[i]);
 
-	/*
-	 * Establish the link between smmu and master, so that the
-	 * smmu gets runtime enabled/disabled as per the master's
-	 * needs.
-	 */
-	link = device_link_add(dev, smmu->dev, DL_FLAG_PM_RUNTIME);
-	if (!link)
-		dev_warn(smmu->dev, "Unable to create device link between %s and %s\n",
-			 dev_name(smmu->dev), dev_name(dev));
+		/*
+		 * Establish the link between smmu and master, so that the
+		 * smmu gets runtime enabled/disabled as per the master's
+		 * needs.
+		 * TBU devices are children to the smmu device, so creating link
+		 * between TBU devices and master takes care of turning on the smmu
+		 * as well.
+		 */
+		link = device_link_add(dev, tbu_dev[i], DL_FLAG_PM_RUNTIME);
+		if (!link)
+			dev_warn(smmu->dev, "Unable to create device link between %s and %s\n",
+				 dev_name(tbu_dev[i]), dev_name(dev));
+	}
+
+	kfree(tbu_dev);
 
 	return 0;
 
@@ -1453,7 +1514,8 @@ static void arm_smmu_remove_device(struct device *dev)
 	struct iommu_fwspec *fwspec = dev->iommu_fwspec;
 	struct arm_smmu_master_cfg *cfg;
 	struct arm_smmu_device *smmu;
-	int ret;
+	int ret, i;
+	struct device **tbu_dev;
 
 	if (!fwspec || fwspec->ops != &arm_smmu_ops)
 		return;
@@ -1466,15 +1528,31 @@ static void arm_smmu_remove_device(struct device *dev)
 	 * smmu is already purged at this point.
 	 * So enable the power to smmu explicitly.
 	 */
-
-	ret = pm_runtime_get_sync(smmu->dev);
-	if (ret)
+	tbu_dev = kcalloc(fwspec->num_ids, sizeof(*tbu_dev), GFP_KERNEL);
+	if (!tbu_dev)
 		return;
+
+	for (i = 0; i < fwspec->num_ids; i++) {
+		u16 sid = fwspec->ids[i];
+
+		tbu_dev[i] = arm_mmu500_find_tbu(smmu->dev, sid);
+		if (!tbu_dev[i]) {
+			pm_runtime_get_sync(smmu->dev);
+			break;
+		}
+
+		ret = pm_runtime_get_sync(tbu_dev[i]);
+		if (ret)
+			return;
+	}
 
 	iommu_device_unlink(&smmu->iommu, dev);
 	arm_smmu_master_free_smes(fwspec);
 
-	pm_runtime_put_sync(smmu->dev);
+	while (i--)
+		pm_runtime_put_sync(tbu_dev[i]);
+
+	kfree(tbu_dev);
 
 	iommu_group_remove_device(dev);
 	kfree(fwspec->iommu_priv);
@@ -2002,6 +2080,32 @@ static const struct of_device_id arm_smmu_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, arm_smmu_of_match);
 
+static const struct of_device_id arm_smmu_tbu_of_match[] = {
+	{ .compatible = "arm,mmu-500-tbu", },
+	{},
+};
+MODULE_DEVICE_TABLE(of, arm_smmu_tbu_of_match);
+
+static int arm_smmu_tbu_register(struct device *dev, void *cookie)
+{
+	struct arm_smmu_device *smmu = cookie;
+	struct arm_smmu500_tbu *tbu;
+
+	if (!dev->driver) {
+		dev_err(dev, "TBU failed probe, SMMUV500 cannot continue!\n");
+		return -EINVAL;
+	}
+
+	tbu = dev_get_drvdata(dev);
+
+	INIT_LIST_HEAD(&tbu->list);
+	tbu->smmu = smmu;
+	list_add_tail(&tbu->list, &smmu->tbu_list);
+
+	return 0;
+}
+
+
 #ifdef CONFIG_ACPI
 static int acpi_smmu_get_data(u32 model, struct arm_smmu_device *smmu)
 {
@@ -2130,6 +2234,7 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	resource_size_t ioaddr;
 	struct arm_smmu_device *smmu;
 	struct device *dev = &pdev->dev;
+	struct arm_smmu500_tbu *tbu;
 	int num_irqs, i, err;
 
 	smmu = devm_kzalloc(dev, sizeof(*smmu), GFP_KERNEL);
@@ -2146,6 +2251,8 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 
 	if (err)
 		return err;
+
+	INIT_LIST_HEAD(&smmu->tbu_list);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	ioaddr = res->start;
@@ -2184,16 +2291,32 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 		smmu->irqs[i] = irq;
 	}
 
+	/* MMU 500 has one TCU and multiple TBU config */
+	if (of_device_is_compatible(dev->of_node, "arm,mmu-500")) {
+		err = of_platform_populate(dev->of_node, NULL, NULL, dev);
+		if (err) {
+			dev_err(dev, "failed to register TBU children\n");
+			return err;
+		}
+
+		err = device_for_each_child(dev, smmu, arm_smmu_tbu_register);
+		if (err)
+			return -EPROBE_DEFER;
+	}
+
 	err = arm_smmu_init_clocks(smmu);
 	if (err)
 		return err;
 
 	platform_set_drvdata(pdev, smmu);
+
 	pm_runtime_enable(dev);
 
-	err = pm_runtime_get_sync(dev);
-	if (err)
-		return err;
+	/* enable all TBUs */
+	list_for_each_entry(tbu, &smmu->tbu_list, list)
+		err = pm_runtime_get_sync(tbu->dev);
+		if (err)
+			return err;
 
 	err = arm_smmu_device_cfg_probe(smmu);
 	if (err)
@@ -2238,7 +2361,9 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 
 	arm_smmu_device_reset(smmu);
 	arm_smmu_test_smr_masks(smmu);
-	pm_runtime_put_sync(dev);
+
+	list_for_each_entry(tbu, &smmu->tbu_list, list)
+		pm_runtime_put_sync(tbu->dev);
 
 	/*
 	 * For ACPI and generic DT bindings, an SMMU will be probed before
@@ -2268,6 +2393,7 @@ device_initcall_sync(arm_smmu_legacy_bus_init);
 static int arm_smmu_device_remove(struct platform_device *pdev)
 {
 	struct arm_smmu_device *smmu = platform_get_drvdata(pdev);
+	struct arm_smmu500_tbu *tbu;
 
 	if (!smmu)
 		return -ENODEV;
@@ -2277,7 +2403,9 @@ static int arm_smmu_device_remove(struct platform_device *pdev)
 
 	/* Turn the thing off */
 	writel(sCR0_CLIENTPD, ARM_SMMU_GR0_NS(smmu) + ARM_SMMU_GR0_sCR0);
-	pm_runtime_force_suspend(smmu->dev);
+
+	list_for_each_entry(tbu, &smmu->tbu_list, list)
+		pm_runtime_force_suspend(tbu->dev);
 
 	return 0;
 }
@@ -2326,7 +2454,70 @@ static struct platform_driver arm_smmu_driver = {
 	.remove	= arm_smmu_device_remove,
 	.shutdown = arm_smmu_device_shutdown,
 };
-module_platform_driver(arm_smmu_driver);
+
+static int arm_smmu_tbu_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct arm_smmu500_tbu *tbu;
+	int err;
+
+	tbu = devm_kzalloc(dev, sizeof(*tbu), GFP_KERNEL);
+	if (!tbu)
+		return -ENOMEM;
+
+	tbu->dev = &pdev->dev;
+
+	err = of_property_read_u32_array(dev->of_node, "stream-id-range",
+					 tbu->sid_range, 2);
+	if (err)
+		dev_err(dev, "failed to read stream id range\n");
+
+	pm_runtime_enable(dev);
+
+	dev_set_drvdata(dev, tbu);
+
+	return 0;
+}
+
+static int arm_smmu_tbu_remove(struct platform_device *pdev)
+{
+	pm_runtime_disable(&pdev->dev);
+
+	return 0;
+}
+
+static struct platform_driver arm_smmu_tbu_driver = {
+	.driver	= {
+		.name		= "arm-mmu-500-tbu",
+		.of_match_table	= of_match_ptr(arm_smmu_tbu_of_match),
+	},
+	.probe	= arm_smmu_tbu_probe,
+	.remove	= arm_smmu_tbu_remove,
+};
+
+static int __init arm_smmu_init(void)
+{
+	int ret;
+
+	ret = platform_driver_register(&arm_smmu_tbu_driver);
+	if (ret)
+		return ret;
+
+	ret = platform_driver_register(&arm_smmu_driver);
+	if (ret)
+		platform_driver_unregister(&arm_smmu_tbu_driver);
+
+	return ret;
+}
+
+static void __init arm_smmu_exit(void)
+{
+	platform_driver_unregister(&arm_smmu_driver);
+	platform_driver_unregister(&arm_smmu_tbu_driver);
+}
+
+module_init(arm_smmu_init);
+module_exit(arm_smmu_exit);
 
 IOMMU_OF_DECLARE(arm_smmuv1, "arm,smmu-v1", NULL);
 IOMMU_OF_DECLARE(arm_smmuv2, "arm,smmu-v2", NULL);
