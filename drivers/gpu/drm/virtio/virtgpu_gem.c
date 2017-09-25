@@ -116,7 +116,7 @@ int virtio_gpu_gem_object_open(struct drm_gem_object *obj,
 	struct virtio_gpu_fpriv *vfpriv = file->driver_priv;
 	struct virtio_gpu_object_array *objs;
 
-	if (!vgdev->has_virgl_3d)
+	if (!vgdev->has_virgl_3d || !qobj->hw_res_handle)
 		goto out_notify;
 
 	objs = virtio_gpu_array_alloc(1);
