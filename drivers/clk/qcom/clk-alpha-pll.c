@@ -44,13 +44,10 @@
 /*
  * Even though 40 bits are present, use only 32 for ease of calculation.
  */
-#define ALPHA_REG_BITWIDTH	40
-#define ALPHA_REG_16BIT_WIDTH	16
 #define ALPHA_BITWIDTH		32
 
-/* Returns the Alpha register width for pll */
-#define pll_alpha_width(pll)	(pll->flags & SUPPORTS_16BIT_ALPHA ?	\
-				 ALPHA_REG_16BIT_WIDTH : ALPHA_REG_BITWIDTH)
+/* Returns the Alpha register width for pll type */
+#define pll_alpha_width(type)	(alpha_pll_props[type].alpha_width)
 
 /* Returns the alpha_pll_clk_ops for pll type */
 #define pll_clk_ops(hw)		(alpha_pll_props[to_clk_alpha_pll(hw)->	   \
@@ -127,10 +124,12 @@ struct alpha_pll_clk_ops {
  * struct alpha_pll_props - contains the various properties which
  *			    will be fixed for PLL type.
  * @reg_offsets: register offsets mapping array
+ * @alpha_width: alpha value width
  * @ops: clock operations for alpha PLL
  */
 struct alpha_pll_props {
 	u8 reg_offsets[PLL_MAX_REGS];
+	u8 alpha_width;
 	struct alpha_pll_clk_ops ops;
 };
 
@@ -423,8 +422,8 @@ alpha_pll_default_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 	u32 l, low, high, ctl;
 	u64 a = 0, prate = parent_rate;
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
-	u32 off = pll->offset, alpha_width = pll_alpha_width(pll);
 	u8 type = pll->pll_type;
+	u32 off = pll->offset, alpha_width = pll_alpha_width(type);
 
 	regmap_read(pll->clkr.regmap, off + pll_l(type), &l);
 
@@ -451,8 +450,8 @@ static int alpha_pll_default_set_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
 	const struct pll_vco *vco;
-	u32 l, off = pll->offset, alpha_width = pll_alpha_width(pll);
 	u8 type = pll->pll_type;
+	u32 l, off = pll->offset, alpha_width = pll_alpha_width(type);
 	u64 a;
 
 	rate = alpha_pll_round_rate(rate, prate, &l, &a, alpha_width);
@@ -487,7 +486,7 @@ static long alpha_pll_default_round_rate(struct clk_hw *hw, unsigned long rate,
 					 unsigned long *prate)
 {
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
-	u32 l, alpha_width = pll_alpha_width(pll);
+	u32 l, alpha_width = pll_alpha_width(pll->pll_type);
 	u64 a;
 	unsigned long min_freq, max_freq;
 
@@ -640,6 +639,7 @@ alpha_pll_props alpha_pll_props[CLK_ALPHA_PLL_TYPE_MAX] = {
 			[PLL_TEST_CTL_U] = 0x20,
 			[PLL_STATUS] = 0x24,
 		},
+		.alpha_width = 40,
 		.ops = {
 			.enable = alpha_pll_default_enable,
 			.disable = alpha_pll_default_disable,
