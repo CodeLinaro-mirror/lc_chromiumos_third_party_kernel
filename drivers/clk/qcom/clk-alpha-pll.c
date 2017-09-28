@@ -20,7 +20,6 @@
 #include "clk-alpha-pll.h"
 #include "common.h"
 
-#define PLL_MODE		0x00
 # define PLL_OUTCTRL		BIT(0)
 # define PLL_BYPASSNL		BIT(1)
 # define PLL_RESET_N		BIT(2)
@@ -77,12 +76,12 @@ static int wait_for_pll(struct clk_alpha_pll *pll, u32 mask, bool inverse,
 	const char *name = clk_hw_get_name(&pll->clkr.hw);
 
 	off = pll->offset;
-	ret = regmap_read(pll->clkr.regmap, off + PLL_MODE, &val);
+	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return ret;
 
 	for (count = 100; count > 0; count--) {
-		ret = regmap_read(pll->clkr.regmap, off + PLL_MODE, &val);
+		ret = regmap_read(pll->clkr.regmap, off, &val);
 		if (ret)
 			return ret;
 		if (inverse && !(val & mask))
@@ -139,7 +138,7 @@ void clk_alpha_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 	regmap_update_bits(regmap, off + PLL_USER_CTL, mask, val);
 
 	if (pll->flags & SUPPORTS_FSM_MODE)
-		qcom_pll_set_fsm_mode(regmap, off + PLL_MODE, 6, 0);
+		qcom_pll_set_fsm_mode(regmap, off, 6, 0);
 }
 
 static int clk_alpha_pll_hwfsm_enable(struct clk_hw *hw)
@@ -149,7 +148,7 @@ static int clk_alpha_pll_hwfsm_enable(struct clk_hw *hw)
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
 
 	off = pll->offset;
-	ret = regmap_read(pll->clkr.regmap, off + PLL_MODE, &val);
+	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return ret;
 
@@ -158,7 +157,7 @@ static int clk_alpha_pll_hwfsm_enable(struct clk_hw *hw)
 	if (pll->flags & SUPPORTS_OFFLINE_REQ)
 		val &= ~PLL_OFFLINE_REQ;
 
-	ret = regmap_write(pll->clkr.regmap, off + PLL_MODE, val);
+	ret = regmap_write(pll->clkr.regmap, off, val);
 	if (ret)
 		return ret;
 
@@ -175,12 +174,12 @@ static void clk_alpha_pll_hwfsm_disable(struct clk_hw *hw)
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
 
 	off = pll->offset;
-	ret = regmap_read(pll->clkr.regmap, off + PLL_MODE, &val);
+	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return;
 
 	if (pll->flags & SUPPORTS_OFFLINE_REQ) {
-		ret = regmap_update_bits(pll->clkr.regmap, off + PLL_MODE,
+		ret = regmap_update_bits(pll->clkr.regmap, off,
 					 PLL_OFFLINE_REQ, PLL_OFFLINE_REQ);
 		if (ret)
 			return;
@@ -191,7 +190,7 @@ static void clk_alpha_pll_hwfsm_disable(struct clk_hw *hw)
 	}
 
 	/* Disable hwfsm */
-	ret = regmap_update_bits(pll->clkr.regmap, off + PLL_MODE,
+	ret = regmap_update_bits(pll->clkr.regmap, off,
 				 PLL_FSM_ENA, 0);
 	if (ret)
 		return;
@@ -206,7 +205,7 @@ static int pll_is_enabled(struct clk_hw *hw, u32 mask)
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
 
 	off = pll->offset;
-	ret = regmap_read(pll->clkr.regmap, off + PLL_MODE, &val);
+	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return ret;
 
@@ -232,7 +231,7 @@ static int clk_alpha_pll_enable(struct clk_hw *hw)
 	off = pll->offset;
 
 	mask = PLL_OUTCTRL | PLL_RESET_N | PLL_BYPASSNL;
-	ret = regmap_read(pll->clkr.regmap, off + PLL_MODE, &val);
+	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return ret;
 
@@ -248,7 +247,7 @@ static int clk_alpha_pll_enable(struct clk_hw *hw)
 	if ((val & mask) == mask)
 		return 0;
 
-	ret = regmap_update_bits(pll->clkr.regmap, off + PLL_MODE,
+	ret = regmap_update_bits(pll->clkr.regmap, off,
 				 PLL_BYPASSNL, PLL_BYPASSNL);
 	if (ret)
 		return ret;
@@ -260,7 +259,7 @@ static int clk_alpha_pll_enable(struct clk_hw *hw)
 	mb();
 	udelay(5);
 
-	ret = regmap_update_bits(pll->clkr.regmap, off + PLL_MODE,
+	ret = regmap_update_bits(pll->clkr.regmap, off,
 				 PLL_RESET_N, PLL_RESET_N);
 	if (ret)
 		return ret;
@@ -269,7 +268,7 @@ static int clk_alpha_pll_enable(struct clk_hw *hw)
 	if (ret)
 		return ret;
 
-	ret = regmap_update_bits(pll->clkr.regmap, off + PLL_MODE,
+	ret = regmap_update_bits(pll->clkr.regmap, off,
 				 PLL_OUTCTRL, PLL_OUTCTRL);
 
 	/* Ensure that the write above goes through before returning. */
@@ -285,7 +284,7 @@ static void clk_alpha_pll_disable(struct clk_hw *hw)
 
 	off = pll->offset;
 
-	ret = regmap_read(pll->clkr.regmap, off + PLL_MODE, &val);
+	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return;
 
@@ -296,14 +295,14 @@ static void clk_alpha_pll_disable(struct clk_hw *hw)
 	}
 
 	mask = PLL_OUTCTRL;
-	regmap_update_bits(pll->clkr.regmap, off + PLL_MODE, mask, 0);
+	regmap_update_bits(pll->clkr.regmap, off, mask, 0);
 
 	/* Delay of 2 output clock ticks required until output is disabled */
 	mb();
 	udelay(1);
 
 	mask = PLL_RESET_N | PLL_BYPASSNL;
-	regmap_update_bits(pll->clkr.regmap, off + PLL_MODE, mask, 0);
+	regmap_update_bits(pll->clkr.regmap, off, mask, 0);
 }
 
 static unsigned long alpha_pll_calc_rate(u64 prate, u32 l, u32 a)
