@@ -17,6 +17,12 @@
 #include <linux/clk-provider.h>
 #include "clk-regmap.h"
 
+/* Alpha PLL types */
+enum {
+	CLK_ALPHA_PLL_TYPE_DEFAULT,
+	CLK_ALPHA_PLL_TYPE_MAX,
+};
+
 struct pll_vco {
 	unsigned long min_freq;
 	unsigned long max_freq;
@@ -27,6 +33,7 @@ struct pll_vco {
  * struct clk_alpha_pll - phase locked loop (PLL)
  * @offset: base address of registers
  * @vco_table: array of VCO settings
+ * @pll_type: alpha pll type
  * @clkr: regmap clock handle
  */
 struct clk_alpha_pll {
@@ -38,6 +45,7 @@ struct clk_alpha_pll {
 #define SUPPORTS_16BIT_ALPHA	BIT(1)
 #define SUPPORTS_FSM_MODE	BIT(2)
 	u8 flags;
+	u8 pll_type;
 
 	struct clk_regmap clkr;
 };
@@ -45,11 +53,13 @@ struct clk_alpha_pll {
 /**
  * struct clk_alpha_pll_postdiv - phase locked loop (PLL) post-divider
  * @offset: base address of registers
+ * @pll_type: alpha pll type
  * @width: width of post-divider
  * @clkr: regmap clock handle
  */
 struct clk_alpha_pll_postdiv {
 	u32 offset;
+	u8 pll_type;
 	u8 width;
 
 	struct clk_regmap clkr;
