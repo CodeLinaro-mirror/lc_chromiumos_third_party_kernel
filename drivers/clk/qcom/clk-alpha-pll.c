@@ -49,6 +49,9 @@
 /* Returns the Alpha register width for pll type */
 #define pll_alpha_width(type)	(alpha_pll_props[type].alpha_width)
 
+/* Returns the flags for pll type */
+#define pll_flags(type)		(alpha_pll_props[type].flags)
+
 /* Returns the alpha_pll_clk_ops for pll type */
 #define pll_clk_ops(hw)		(alpha_pll_props[to_clk_alpha_pll(hw)->	   \
 				 pll_type].ops)
@@ -130,6 +133,9 @@ struct alpha_pll_clk_ops {
 struct alpha_pll_props {
 	u8 reg_offsets[PLL_MAX_REGS];
 	u8 alpha_width;
+
+#define HAVE_64BIT_CONFIG_CTL	BIT(0)
+	u8 flags;
 	struct alpha_pll_clk_ops ops;
 };
 
@@ -180,13 +186,17 @@ void clk_alpha_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 {
 	u32 val, mask;
 	u32 off = pll->offset;
-	u8 type = pll->pll_type;
+	u8 type = pll->pll_type, flags = pll_flags(type);
 
 	regmap_write(regmap, off + pll_l(type), config->l);
 	regmap_write(regmap, off + pll_alpha(type), config->alpha);
 	regmap_write(regmap, off + pll_cfg_ctl(type), config->config_ctl_val);
 	regmap_write(regmap, off + pll_cfg_ctl_u(type),
 		     config->config_ctl_hi_val);
+
+	if (flags & HAVE_64BIT_CONFIG_CTL)
+		regmap_write(regmap, off + pll_cfg_ctl_u(type),
+			     config->config_ctl_hi_val);
 
 	val = config->main_output_mask;
 	val |= config->aux_output_mask;
