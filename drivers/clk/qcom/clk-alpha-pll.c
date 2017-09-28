@@ -31,7 +31,10 @@
 # define PLL_VOTE_FSM_ENA	BIT(20)
 # define PLL_FSM_ENA		BIT(20)
 # define PLL_VOTE_FSM_RESET	BIT(21)
+# define PLL_UPDATE		BIT(22)
+# define PLL_UPDATE_BYPASS	BIT(23)
 # define PLL_OFFLINE_ACK	BIT(28)
+# define ALPHA_PLL_ACK_LATCH	BIT(29)
 # define PLL_ACTIVE_FLAG	BIT(30)
 # define PLL_LOCK_DET		BIT(31)
 
@@ -134,7 +137,8 @@ struct alpha_pll_props {
 	u8 reg_offsets[PLL_MAX_REGS];
 	u8 alpha_width;
 
-#define HAVE_64BIT_CONFIG_CTL	BIT(0)
+#define HAVE_64BIT_CONFIG_CTL		BIT(0)
+#define SUPPORTS_DYNAMIC_UPDATE		BIT(1)
 	u8 flags;
 	struct alpha_pll_clk_ops ops;
 };
@@ -180,6 +184,15 @@ static int wait_for_pll(struct clk_alpha_pll *pll, u32 mask, bool inverse,
 
 #define wait_for_pll_offline(pll) \
 	wait_for_pll(pll, PLL_OFFLINE_ACK, 0, "offline")
+
+#define wait_for_pll_update(pll) \
+	wait_for_pll(pll, PLL_UPDATE, 1, "update")
+
+#define wait_for_pll_update_ack_set(pll) \
+	wait_for_pll(pll, ALPHA_PLL_ACK_LATCH, 0, "update_ack_set")
+
+#define wait_for_pll_update_ack_clear(pll) \
+	wait_for_pll(pll, ALPHA_PLL_ACK_LATCH, 1, "update_ack_clear")
 
 void clk_alpha_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 			     const struct alpha_pll_config *config)
@@ -461,6 +474,54 @@ alpha_pll_default_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 	return alpha_pll_calc_rate(prate, l, a, alpha_width);
 }
 
+static int clk_alpha_pll_update_latch(struct clk_alpha_pll *pll)
+{
+	int ret;
+	u32 mode, off = pll->offset;
+
+	regmap_read(pll->clkr.regmap, off, &mode);
+
+	/* Latch the input to the PLL */
+	regmap_update_bits(pll->clkr.regmap, off, PLL_UPDATE, PLL_UPDATE);
+
+	/* Make sure PLL_UPDATE request goes through*/
+	mb();
+
+	/* Wait for 2 reference cycle before checking ACK bit */
+	udelay(1);
+
+	/*
+	 * PLL will latch the new L, Alpha and freq control word.
+	 * PLL will respond by raising PLL_ACK_LATCH output when new programming
+	 * has been latched in and PLL is being updated. When
+	 * UPDATE_LOGIC_BYPASS bit is not set, PLL_UPDATE will be cleared
+	 * automatically by hardware when PLL_ACK_LATCH is asserted by PLL.
+	 */
+	if (mode & PLL_UPDATE_BYPASS) {
+		ret = wait_for_pll_update_ack_set(pll);
+		if (ret)
+			return ret;
+
+		regmap_update_bits(pll->clkr.regmap, off, PLL_UPDATE, 0);
+
+		/* Make sure PLL_UPDATE request goes through*/
+		mb();
+	} else {
+		ret = wait_for_pll_update(pll);
+		if (ret)
+			return ret;
+	}
+
+	ret = wait_for_pll_update_ack_clear(pll);
+	if (ret)
+		return ret;
+
+	/* Wait for PLL output to stabilize */
+	udelay(10);
+
+	return 0;
+}
+
 static int alpha_pll_default_set_rate(struct clk_hw *hw, unsigned long rate,
 				      unsigned long prate)
 {
@@ -495,7 +556,11 @@ static int alpha_pll_default_set_rate(struct clk_hw *hw, unsigned long rate,
 	regmap_update_bits(pll->clkr.regmap, off + pll_user_ctl(type),
 			   PLL_ALPHA_EN, PLL_ALPHA_EN);
 
-	return 0;
+	if (!clk_hw_is_enabled(hw) ||
+	    !(pll_flags(type) & SUPPORTS_DYNAMIC_UPDATE))
+		return 0;
+
+	return clk_alpha_pll_update_latch(pll);
 }
 
 static long alpha_pll_default_round_rate(struct clk_hw *hw, unsigned long rate,
