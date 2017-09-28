@@ -39,7 +39,6 @@
 # define PLL_LOCK_DET		BIT(31)
 
 # define PLL_POST_DIV_SHIFT	8
-# define PLL_POST_DIV_MASK	0xf
 # define PLL_ALPHA_EN		BIT(24)
 # define PLL_ALPHA_MODE		BIT(25)
 # define PLL_VCO_SHIFT		20
@@ -822,7 +821,7 @@ clk_alpha_pll_postdiv_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 		    &ctl);
 
 	ctl >>= PLL_POST_DIV_SHIFT;
-	ctl &= PLL_POST_DIV_MASK;
+	ctl &= BIT(pll->width) - 1;
 
 	return parent_rate >> fls(ctl);
 }
@@ -836,13 +835,26 @@ static const struct clk_div_table clk_alpha_div_table[] = {
 	{ }
 };
 
+static const struct clk_div_table clk_alpha_2bit_div_table[] = {
+	{ 0x0, 1 },
+	{ 0x1, 2 },
+	{ 0x3, 4 },
+	{ }
+};
+
 static long
 clk_alpha_pll_postdiv_round_rate(struct clk_hw *hw, unsigned long rate,
 				 unsigned long *prate)
 {
 	struct clk_alpha_pll_postdiv *pll = to_clk_alpha_pll_postdiv(hw);
+	const struct clk_div_table *table;
 
-	return divider_round_rate(hw, rate, prate, clk_alpha_div_table,
+	if (pll->width == 2)
+		table = clk_alpha_2bit_div_table;
+	else
+		table = clk_alpha_div_table;
+
+	return divider_round_rate(hw, rate, prate, table,
 				  pll->width, CLK_DIVIDER_POWER_OF_TWO);
 }
 
@@ -857,7 +869,7 @@ static int clk_alpha_pll_postdiv_set_rate(struct clk_hw *hw, unsigned long rate,
 
 	return regmap_update_bits(pll->clkr.regmap, pll->offset +
 				  pll_user_ctl(pll->pll_type),
-				  PLL_POST_DIV_MASK << PLL_POST_DIV_SHIFT,
+				  (BIT(pll->width) - 1) << PLL_POST_DIV_SHIFT,
 				  div << PLL_POST_DIV_SHIFT);
 }
 
