@@ -922,4 +922,28 @@ alpha_pll_props alpha_pll_props[CLK_ALPHA_PLL_TYPE_MAX] = {
 			.set_rate = alpha_pll_huayra_set_rate,
 		},
 	},
+	[CLK_ALPHA_PLL_TYPE_BRAMMO] =  {
+		.reg_offsets = {
+			[PLL_L_VAL] = 0x04,
+			[PLL_ALPHA_VAL] = 0x08,
+			[PLL_ALPHA_VAL_U] = 0x0c,
+			[PLL_USER_CTL] = 0x10,
+			[PLL_CONFIG_CTL] = 0x18,
+			[PLL_TEST_CTL] = 0x1c,
+			[PLL_STATUS] = 0x24,
+		},
+		.alpha_width = 40,
+		.flags = SUPPORTS_DYNAMIC_UPDATE,
+		.ops = {
+			.enable = alpha_pll_default_enable,
+			.disable = alpha_pll_default_disable,
+			.is_enabled = alpha_pll_default_is_enabled,
+			.hwfsm_enable = alpha_pll_default_hwfsm_enable,
+			.hwfsm_disable = alpha_pll_default_hwfsm_disable,
+			.hwfsm_is_enabled = alpha_pll_default_hwfsm_is_enabled,
+			.recalc_rate = alpha_pll_default_recalc_rate,
+			.round_rate = alpha_pll_default_round_rate,
+			.set_rate = alpha_pll_default_set_rate,
+		},
+	},
 };
