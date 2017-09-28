@@ -70,12 +70,11 @@
 static int wait_for_pll(struct clk_alpha_pll *pll, u32 mask, bool inverse,
 			const char *action)
 {
-	u32 val, off;
+	u32 val, off = pll->offset;
 	int count;
 	int ret;
 	const char *name = clk_hw_get_name(&pll->clkr.hw);
 
-	off = pll->offset;
 	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return ret;
@@ -143,11 +142,10 @@ void clk_alpha_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 
 static int clk_alpha_pll_hwfsm_enable(struct clk_hw *hw)
 {
-	int ret;
-	u32 val, off;
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
+	int ret;
+	u32 val, off = pll->offset;
 
-	off = pll->offset;
 	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return ret;
@@ -169,11 +167,10 @@ static int clk_alpha_pll_hwfsm_enable(struct clk_hw *hw)
 
 static void clk_alpha_pll_hwfsm_disable(struct clk_hw *hw)
 {
-	int ret;
-	u32 val, off;
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
+	int ret;
+	u32 val, off = pll->offset;
 
-	off = pll->offset;
 	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return;
@@ -200,11 +197,10 @@ static void clk_alpha_pll_hwfsm_disable(struct clk_hw *hw)
 
 static int pll_is_enabled(struct clk_hw *hw, u32 mask)
 {
-	int ret;
-	u32 val, off;
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
+	int ret;
+	u32 val, off = pll->offset;
 
-	off = pll->offset;
 	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
 		return ret;
@@ -226,9 +222,7 @@ static int clk_alpha_pll_enable(struct clk_hw *hw)
 {
 	int ret;
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
-	u32 val, mask, off;
-
-	off = pll->offset;
+	u32 val, mask, off = pll->offset;
 
 	mask = PLL_OUTCTRL | PLL_RESET_N | PLL_BYPASSNL;
 	ret = regmap_read(pll->clkr.regmap, off, &val);
@@ -280,9 +274,7 @@ static void clk_alpha_pll_disable(struct clk_hw *hw)
 {
 	int ret;
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
-	u32 val, mask, off;
-
-	off = pll->offset;
+	u32 val, mask, off = pll->offset;
 
 	ret = regmap_read(pll->clkr.regmap, off, &val);
 	if (ret)
