@@ -11,7 +11,13 @@
  */
 
 #include <dt-bindings/gpio/gpio.h>
+#include "sdm845.dtsi"
 
-&qupv3_se9_2uart {
-	status = "ok";
+/ {
+
+	soc {
+		qcom,qup_uart@0xa84000 {
+			status = "ok";
+		};
+	};
 };
