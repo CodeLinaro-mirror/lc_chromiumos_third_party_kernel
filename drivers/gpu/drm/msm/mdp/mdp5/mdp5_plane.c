@@ -327,7 +327,7 @@ static int mdp5_plane_atomic_check_with_state(struct drm_crtc_state *crtc_state,
 	min_scale = FRAC_16_16(1, 8);
 	max_scale = FRAC_16_16(8, 1);
 
-	ret = drm_plane_helper_check_state(state, &clip, min_scale,
+	ret = drm_plane_helper_check_state(state, crtc_state, &clip, min_scale,
 					   max_scale, true, true);
 	if (ret)
 		return ret;
@@ -505,7 +505,7 @@ static int mdp5_plane_atomic_async_check(struct drm_plane *plane,
 	min_scale = FRAC_16_16(1, 8);
 	max_scale = FRAC_16_16(8, 1);
 
-	ret = drm_plane_helper_check_state(state, &clip, min_scale,
+	ret = drm_plane_helper_check_state(state, crtc_state, &clip, min_scale,
 					   max_scale, true, true);
 	if (ret)
 		return ret;
