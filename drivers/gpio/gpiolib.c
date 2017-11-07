@@ -1481,22 +1481,36 @@ static struct gpio_chip *find_chip_by_name(const char *name)
 
 static int gpiochip_irqchip_init_valid_mask(struct gpio_chip *gpiochip)
 {
-	if (!gpiochip->irq_need_valid_mask)
-		return 0;
+	if (gpiochip->irq_need_valid_mask) {
+		gpiochip->irq_valid_mask =
+			kcalloc(BITS_TO_LONGS(gpiochip->ngpio),
+				sizeof(long), GFP_KERNEL);
+		if (!gpiochip->irq_valid_mask)
+			return -ENOMEM;
 
-	gpiochip->irq_valid_mask = kcalloc(BITS_TO_LONGS(gpiochip->ngpio),
-					   sizeof(long), GFP_KERNEL);
-	if (!gpiochip->irq_valid_mask)
-		return -ENOMEM;
+		/* Assume by default all GPIOs are valid */
+		bitmap_fill(gpiochip->irq_valid_mask, gpiochip->ngpio);
+	}
 
-	/* Assume by default all GPIOs are valid */
-	bitmap_fill(gpiochip->irq_valid_mask, gpiochip->ngpio);
+	if (gpiochip->line_need_valid_mask) {
+		gpiochip->line_valid_mask =
+			kcalloc(BITS_TO_LONGS(gpiochip->ngpio),
+				sizeof(long), GFP_KERNEL);
+		if (!gpiochip->line_valid_mask)
+			return -ENOMEM;
+
+		/* Assume by default all GPIOs are valid */
+		bitmap_fill(gpiochip->line_valid_mask, gpiochip->ngpio);
+	}
 
 	return 0;
 }
 
 static void gpiochip_irqchip_free_valid_mask(struct gpio_chip *gpiochip)
 {
+	kfree(gpiochip->line_valid_mask);
+	gpiochip->line_valid_mask = NULL;
+
 	kfree(gpiochip->irq_valid_mask);
 	gpiochip->irq_valid_mask = NULL;
 }
@@ -1508,6 +1522,15 @@ static bool gpiochip_irqchip_irq_valid(const struct gpio_chip *gpiochip,
 	if (likely(!gpiochip->irq_valid_mask))
 		return true;
 	return test_bit(offset, gpiochip->irq_valid_mask);
+}
+
+static bool gpiochip_irqchip_line_valid(const struct gpio_chip *gpiochip,
+					unsigned int offset)
+{
+	/* No mask means all valid */
+	if (likely(!gpiochip->line_valid_mask))
+		return true;
+	return test_bit(offset, gpiochip->line_valid_mask);
 }
 
 /**
@@ -3319,6 +3342,10 @@ struct gpio_desc *__must_check gpiod_get_index(struct device *dev,
 		dev_dbg(dev, "lookup for GPIO %s failed\n", con_id);
 		return desc;
 	}
+
+	/* Make sure the GPIO is valid before we request it. */
+	if (!gpiochip_irqchip_line_valid(desc->gdev->chip, idx))
+		return ERR_PTR(-EACCES);
 
 	status = gpiod_request(desc, con_id);
 	if (status < 0)

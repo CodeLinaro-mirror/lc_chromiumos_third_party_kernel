@@ -173,6 +173,8 @@ struct gpio_chip {
 	bool			irq_nested;
 	bool			irq_need_valid_mask;
 	unsigned long		*irq_valid_mask;
+	bool			line_need_valid_mask;
+	unsigned long		*line_valid_mask;
 	struct lock_class_key	*lock_key;
 #endif
 
