@@ -8,6 +8,10 @@ ccflags-y += -fno-stack-protector -DDISABLE_BRANCH_PROFILING \
 
 obj-$(CONFIG_KVM) += hyp.o
 
+ifeq ($(cc-name),clang)
+ccflags-y += -fno-jump-tables
+endif
+
 hyp-y := vgic-v3-sr.o timer-sr.o aarch32.o vgic-v2-cpuif-proxy.o sysreg-sr.o \
 	 debug-sr.o entry.o switch.o fpsimd.o tlb.o hyp-entry.o
 
