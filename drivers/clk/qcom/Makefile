@@ -36,3 +36,4 @@ obj-$(CONFIG_SDM_GCC_845) += gcc-sdm845.o
 obj-$(CONFIG_QCOM_CLK_RPM) += clk-rpm.o
 obj-$(CONFIG_QCOM_CLK_SMD_RPM) += clk-smd-rpm.o
 obj-$(CONFIG_MSM_CLK_RPMH) += clk-rpmh.o
+obj-$(CONFIG_MSM_DISPCC_SDM845) += dispcc-sdm845.o
