@@ -433,6 +433,22 @@
 		#reset-cells = <1>;
 	};
 
+	clock_gpucc: qcom,gpucc@5090000 {
+		compatible = "qcom,gpucc-sdm845", "syscon";
+		reg = <0x5090000 0x9000>;
+		reg-names = "cc_base";
+		#clock-cells = <1>;
+		#reset-cells = <1>;
+	};
+
+	clock_gfx: qcom,gfxcc@5090000 {
+		compatible = "qcom,gfxcc-sdm845";
+		reg = <0x5090000 0x9000>;
+		reg-names = "cc_base";
+		#clock-cells = <1>;
+		#reset-cells = <1>;
+	};
+
 	cmd_db: qcom,cmd-db@861e0000 {
 		compatible = "qcom,cmd-db";
 		reg = <0xc3f000c 8>;
