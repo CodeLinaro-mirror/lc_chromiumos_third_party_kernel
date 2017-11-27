@@ -33,6 +33,7 @@
 #include "clk-branch.h"
 #include "reset.h"
 #include "clk-alpha-pll.h"
+#include "gdsc.h"
 
 #define CX_GMU_CBCR_SLEEP_MASK		0xF
 #define CX_GMU_CBCR_SLEEP_SHIFT		4
@@ -489,6 +490,24 @@ static struct clk_branch gpu_cc_pll_test_clk = {
 	},
 };
 
+static struct gdsc gpu_cx_gdsc = {
+	.gdscr = 0x106c,
+	.gds_hw_ctrl = 0x1540,
+	.pd = {
+		.name = "gpu_cx",
+	},
+	.pwrsts = PWRSTS_OFF_ON,
+	.flags = VOTABLE,
+};
+
+static struct gdsc gpu_gx_gdsc = {
+	.gdscr = 0x100c,
+	.pd = {
+		.name = "gpu_gx",
+	},
+	.pwrsts = PWRSTS_OFF_ON,
+};
+
 static struct clk_regmap *gpu_cc_sdm845_clocks[] = {
 	[GPU_CC_ACD_AHB_CLK] = &gpu_cc_acd_ahb_clk.clkr,
 	[GPU_CC_ACD_CXO_CLK] = &gpu_cc_acd_cxo_clk.clkr,
@@ -512,6 +531,11 @@ static struct clk_regmap *gpu_cc_gfx_sdm845_clocks[] = {
 	[GPU_CC_PLL0_OUT_EVEN] = &gpu_cc_pll0_out_even.clkr,
 	[GPU_CC_GX_GFX3D_CLK_SRC] = &gpu_cc_gx_gfx3d_clk_src.clkr,
 	[GPU_CC_GX_GFX3D_CLK] = &gpu_cc_gx_gfx3d_clk.clkr,
+};
+
+static struct gdsc *gpucc_sdm845_gdscs[] = {
+	[0] = &gpu_cx_gdsc,
+	[1] = &gpu_gx_gdsc,
 };
 
 static const struct qcom_reset_map gpu_cc_sdm845_resets[] = {
@@ -538,6 +562,8 @@ static const struct qcom_cc_desc gpu_cc_sdm845_desc = {
 	.num_clks = ARRAY_SIZE(gpu_cc_sdm845_clocks),
 	.resets = gpu_cc_sdm845_resets,
 	.num_resets = ARRAY_SIZE(gpu_cc_sdm845_resets),
+	.gdscs = gpucc_sdm845_gdscs,
+	.num_gdscs = ARRAY_SIZE(gpucc_sdm845_gdscs),
 };
 
 static const struct qcom_cc_desc gpu_cc_gfx_sdm845_desc = {
