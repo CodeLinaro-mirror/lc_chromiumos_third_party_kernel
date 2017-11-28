@@ -273,13 +273,12 @@ static struct clk_rcg2 gpu_cc_gx_gfx3d_clk_src = {
 	.hid_width = 5,
 	.parent_map = gpu_cc_parent_map_2,
 	.freq_tbl = ftbl_gpu_cc_gx_gfx3d_clk_src,
-	//.flags = FORCE_ENABLE_RCG,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "gpu_cc_gx_gfx3d_clk_src",
 		.parent_names = gpu_cc_parent_names_2,
 		.num_parents = 7,
 		.flags = CLK_SET_RATE_PARENT,
-		.ops =  &clk_rcg2_ops,
+		.ops =  &clk_rcg2_shared_ops,
 	},
 };
 
