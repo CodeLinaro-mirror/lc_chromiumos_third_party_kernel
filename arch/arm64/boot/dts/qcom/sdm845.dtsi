@@ -455,7 +455,7 @@
 	};
 
 	apps_rsc: mailbox@179e0000 {
-		compatible = "qcom,tcs-drv";
+		compatible = "qcom,rpmh_rsc";
 		label = "apps_rsc";
 		reg = <0x179e0000 0x100>, <0x179e0d00 0x3000>;
 		interrupts = <0 5 0>;
