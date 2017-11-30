@@ -2045,6 +2045,7 @@ ARM_SMMU_MATCH_DATA(smmu_generic_v1, ARM_SMMU_V1, GENERIC_SMMU);
 ARM_SMMU_MATCH_DATA(smmu_generic_v2, ARM_SMMU_V2, GENERIC_SMMU);
 ARM_SMMU_MATCH_DATA(arm_mmu401, ARM_SMMU_V1_64K, GENERIC_SMMU);
 ARM_SMMU_MATCH_DATA(cavium_smmuv2, ARM_SMMU_V2, CAVIUM_SMMUV2);
+ARM_SMMU_MATCH_DATA(qcom_smmu500, ARM_SMMU_V2, ARM_MMU500);
 
 static const char * const arm_mmu500_clks[] = {
 	"tcu", "tbu", "iface",
@@ -2076,6 +2077,7 @@ static const struct of_device_id arm_smmu_of_match[] = {
 	{ .compatible = "arm,mmu-500", .data = &arm_mmu500 },
 	{ .compatible = "cavium,smmu-v2", .data = &cavium_smmuv2 },
 	{ .compatible = "qcom,msm8996-smmu-v2", .data = &qcom_msm8996_smmuv2 },
+	{ .compatible = "qcom,smmu-500", .data = &qcom_smmu500 },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, arm_smmu_of_match);
