@@ -11,6 +11,7 @@
  */
 
 #include <dt-bindings/clock/qcom,gcc-sdm845.h>
+#include <dt-bindings/clock/qcom,gpucc-sdm845.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/spmi/spmi.h>
@@ -439,6 +440,7 @@
 		reg-names = "cc_base";
 		#clock-cells = <1>;
 		#reset-cells = <1>;
+		#power-domain-cells = <1>;
 	};
 
 	clock_gfx: qcom,gfxcc@5090000 {
@@ -581,6 +583,29 @@
 			compatible = "arm,mmu-500-tbu";
 			stream-id-range = <0x1c00 0x400>;
 		};
+	};
+
+	kgsl_smmu: arm,smmu-kgsl@5040000 {
+		status = "ok";
+		compatible = "qcom,msm8996-smmu-v2";
+		reg = <0x5040000 0x10000>;
+		#iommu-cells = <1>;
+		#global-interrupts = <2>;
+		interrupts = <GIC_SPI 229 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 231 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 364 IRQ_TYPE_EDGE_RISING>,
+				<GIC_SPI 365 IRQ_TYPE_EDGE_RISING>,
+				<GIC_SPI 366 IRQ_TYPE_EDGE_RISING>,
+				<GIC_SPI 367 IRQ_TYPE_EDGE_RISING>,
+				<GIC_SPI 368 IRQ_TYPE_EDGE_RISING>,
+				<GIC_SPI 369 IRQ_TYPE_EDGE_RISING>,
+				<GIC_SPI 370 IRQ_TYPE_EDGE_RISING>,
+				<GIC_SPI 371 IRQ_TYPE_EDGE_RISING>;
+		clocks = <&clock_gcc GCC_GPU_MEMNOC_GFX_CLK>,
+			<&clock_gcc GCC_GPU_CFG_AHB_CLK>;
+		clock-names = "bus", "iface";
+
+		power-domains = <&clock_gpucc GPU_CX_GDSC>;
 	};
 };
 
