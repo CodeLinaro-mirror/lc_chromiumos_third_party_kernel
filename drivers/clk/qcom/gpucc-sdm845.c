@@ -533,8 +533,8 @@ static struct clk_regmap *gpu_cc_gfx_sdm845_clocks[] = {
 };
 
 static struct gdsc *gpucc_sdm845_gdscs[] = {
-	[0] = &gpu_cx_gdsc,
-	[1] = &gpu_gx_gdsc,
+	[GPU_CX_GDSC] = &gpu_cx_gdsc,
+	[GPU_GX_GDSC] = &gpu_gx_gdsc,
 };
 
 static const struct qcom_reset_map gpu_cc_sdm845_resets[] = {
