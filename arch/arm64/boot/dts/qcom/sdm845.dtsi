@@ -470,6 +470,7 @@
 	};
 
 	apps_smmu: apps-smmu@0x15000000 {
+		status = "disabled";
 		compatible = "qcom,smmu-500";
 		reg = <0x15000000 0x80000>;
 		#iommu-cells = <2>;
@@ -586,7 +587,7 @@
 	};
 
 	kgsl_smmu: arm,smmu-kgsl@5040000 {
-		status = "ok";
+		status = "disabled";
 		compatible = "qcom,msm8996-smmu-v2";
 		reg = <0x5040000 0x10000>;
 		#iommu-cells = <1>;
