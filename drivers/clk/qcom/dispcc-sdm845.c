@@ -963,6 +963,10 @@ static void disp_cc_sdm845_fixup_sdm845v2(struct regmap *regmap)
 {
 	clk_fabia_pll_configure(&disp_cc_pll0, regmap,
 					&disp_cc_pll0_config_v2);
+	disp_cc_mdss_mdp_clk_src.freq_tbl =
+		ftbl_disp_cc_mdss_mdp_clk_src_sdm845_v2;
+	disp_cc_mdss_rot_clk_src.freq_tbl =
+		ftbl_disp_cc_mdss_rot_clk_src_sdm845_v2;
 }
 
 static int disp_cc_sdm845_fixup(struct platform_device *pdev,
