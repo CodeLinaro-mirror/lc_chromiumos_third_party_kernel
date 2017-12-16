@@ -507,6 +507,11 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 	};
 
 	g = &pctrl->soc->groups[offset];
+
+	/* If the GPIO group has no pins, then don't show it. */
+	if (!g->npins)
+		return;
+
 	ctl_reg = readl(pctrl->regs + g->ctl_reg);
 
 	is_out = !!(ctl_reg & BIT(g->oe_bit));
@@ -516,7 +521,7 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 
 	seq_printf(s, " %-8s: %-3s %d", g->name, is_out ? "out" : "in", func);
 	seq_printf(s, " %dmA", msm_regval_to_drive(drive));
-	seq_printf(s, " %s", pulls[pull]);
+	seq_printf(s, " %s\n", pulls[pull]);
 }
 
 static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
@@ -524,15 +529,28 @@ static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	unsigned gpio = chip->base;
 	unsigned i;
 
-	for (i = 0; i < chip->ngpio; i++, gpio++) {
+	for (i = 0; i < chip->ngpio; i++, gpio++)
 		msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
-		seq_puts(s, "\n");
-	}
 }
 
 #else
 #define msm_gpio_dbg_show NULL
 #endif
+
+/*
+ * If the requested GPIO has no pins, then treat it as unavailable.
+ * Otherwise, call the standard request function.
+ */
+static int msm_gpio_request(struct gpio_chip *chip, unsigned int offset)
+{
+	struct msm_pinctrl *pctrl = gpiochip_get_data(chip);
+	const struct msm_pingroup *g = &pctrl->soc->groups[offset];
+
+	if (!g->npins)
+		return -ENODEV;
+
+	return gpiochip_generic_request(chip, offset);
+}
 
 static const struct gpio_chip msm_gpio_template = {
 	.direction_input  = msm_gpio_direction_input,
@@ -540,7 +558,7 @@ static const struct gpio_chip msm_gpio_template = {
 	.get_direction    = msm_gpio_get_direction,
 	.get              = msm_gpio_get,
 	.set              = msm_gpio_set,
-	.request          = gpiochip_generic_request,
+	.request          = msm_gpio_request,
 	.free             = gpiochip_generic_free,
 	.dbg_show         = msm_gpio_dbg_show,
 };
@@ -813,6 +831,8 @@ static int msm_gpio_init(struct msm_pinctrl *pctrl)
 	struct gpio_chip *chip;
 	int ret;
 	unsigned ngpio = pctrl->soc->ngpios;
+	const struct msm_pingroup *groups = pctrl->soc->groups;
+	unsigned int i;
 
 	if (WARN_ON(ngpio > MAX_NR_GPIO))
 		return -EINVAL;
@@ -825,13 +845,29 @@ static int msm_gpio_init(struct msm_pinctrl *pctrl)
 	chip->owner = THIS_MODULE;
 	chip->of_node = pctrl->dev->of_node;
 
+	/* If the GPIO map is sparse, then we need to disable specific IRQs */
+	if (pctrl->soc->sparse) {
+		chip->irq_need_valid_mask = true;
+		chip->line_need_valid_mask = true;
+	}
+
 	ret = gpiochip_add_data(&pctrl->chip, pctrl);
 	if (ret) {
 		dev_err(pctrl->dev, "Failed register gpiochip\n");
 		return ret;
 	}
 
-	ret = gpiochip_add_pin_range(&pctrl->chip, dev_name(pctrl->dev), 0, 0, chip->ngpio);
+	if (chip->line_need_valid_mask) {
+		for (i = 0; i < ngpio; i++)
+			if (!groups[i].npins) {
+				clear_bit(i, pctrl->chip.irq_valid_mask);
+				clear_bit(i, pctrl->chip.line_valid_mask);
+			}
+	}
+
+	ret = gpiochip_add_pin_range(&pctrl->chip, dev_name(pctrl->dev),
+				     0, 0, ngpio);
+
 	if (ret) {
 		dev_err(pctrl->dev, "Failed to add pin range\n");
 		gpiochip_remove(&pctrl->chip);

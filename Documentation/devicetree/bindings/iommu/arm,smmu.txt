@@ -17,6 +17,7 @@ conditions.
                         "arm,mmu-401"
                         "arm,mmu-500"
                         "cavium,smmu-v2"
+                        "qcom,msm8996-smmu-v2"
 
                   depending on the particular implementation and/or the
                   version of the architecture implemented.
@@ -70,6 +71,44 @@ conditions.
                   property is not valid for SMMUs using stream indexing,
                   or using stream matching with #iommu-cells = <2>, and
                   may be ignored if present in such cases.
+
+- clock-names:    Should be "tcu", "tbu" and "iface" for "arm,mmu-400",
+                  "arm,mmu-401" and "arm,mmu-500"
+
+                  Should be "bus", and "iface" for "qcom,msm8996-smmu-v2"
+                  implementation.
+
+                  "tcu" clock is required for smmu's register access using the
+                  programming interface and ptw for downstream bus access.
+                  "tbu" clock is used for TBU accesses for any tlb operations.
+                  The TBU clock can either be in the same clock and power
+                  domain as the TCU clock, or in separate.
+
+                  "bus" clock for "qcom,msm8996-smmu-v2" is requierd for downstream
+                  bus access and for the smmu ptw.
+
+                  "iface" clock is required to access the TCU's programming
+                  interface, apart from the "tcu" clock.
+
+- clocks:         Phandles for respective clocks described by clock-names.
+
+- power-domains:  Phandles to SMMU's power domain specifier. This is
+                  required even if SMMU belongs to the master's power
+                  domain, as the SMMU will have to be enabled and
+                  accessed before master gets enabled and linked to its
+                  SMMU.
+
+- child nodes:    ARM MMU-500 implements a TBU (page table cache or TLB) for
+                  each connected master besides a single TCU that controls
+                  and manages the address translations.
+                  Each of the child nodes represents a TBU that is attached to
+                  the master. This child node will have following property:
+
+  - compatible:      must be "arm,mmu-500-tbu" for TBU child nodes of arm,mmu-500
+                     smmu.
+  - stream-id-range: array representing the starting stream id and the number
+                     of supported stream-ids. This gives information about
+                     the range of stream-ids that are supported by this TBU.
 
 ** Deprecated properties:
 
@@ -129,6 +168,12 @@ conditions.
                 #iommu-cells = <1>;
                 /* always ignore appended 5-bit TBU number */
                 stream-match-mask = 0x7c00;
+
+                clocks = <&gcc GCC_SMMU_CFG_CLK>,
+                         <&gcc GCC_APSS_TCU_CLK>,
+                         <&gcc GCC_MDP_TBU_CLK>;
+
+		clock-names = "iface", "tcu", "tbu";
         };
 
         bus {
@@ -137,3 +182,34 @@ conditions.
                 iommu-map = <0 &smmu3 0 0x400>;
                 ...
         };
+
+	/* Qcom's arm,smmu-v2 implementation for msm8996 */
+	smmu4: iommu {
+		compatible = "qcom,msm8996-smmu-v2";
+		reg = <0xd00000 0x10000>;
+
+		#global-interrupts = <1>;
+		interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 320 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 321 IRQ_TYPE_LEVEL_HIGH>;
+		#iommu-cells = <1>;
+		power-domains = <&mmcc MDSS_GDSC>;
+
+		clocks = <&mmcc SMMU_MDP_AXI_CLK>,
+			 <&mmcc SMMU_MDP_AHB_CLK>;
+		clock-names = "bus", "iface";
+	};
+
+	smmu5: iommu {
+		compatible = "arm,mmu-500";
+		reg = <0xd00000 0x10000>;
+		...
+		...
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		tbu: tbu@0 {
+			compatible = "arm,mmu-500-tbu";
+			stream-id-range = <0x0 0x400>;
+		};
+	};
