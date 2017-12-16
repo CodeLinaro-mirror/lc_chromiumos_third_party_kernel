@@ -1221,31 +1221,14 @@ int gpiochip_add_data(struct gpio_chip *chip, void *data)
 		struct gpio_desc *desc = &gdev->descs[i];
 
 		desc->gdev = gdev;
-		/*
-		 * REVISIT: most hardware initializes GPIOs as inputs
-		 * (often with pullups enabled) so power usage is
-		 * minimized. Linux code should set the gpio direction
-		 * first thing; but until it does, and in case
-		 * chip->get_direction is not set, we may expose the
-		 * wrong direction in sysfs.
+
+		/* REVISIT: most hardware initializes GPIOs as inputs (often
+		 * with pullups enabled) so power usage is minimized. Linux
+		 * code should set the gpio direction first thing; but until
+		 * it does, and in case chip->get_direction is not set, we may
+		 * expose the wrong direction in sysfs.
 		 */
-
-		if (chip->get_direction) {
-			/*
-			 * If we have .get_direction, set up the initial
-			 * direction flag from the hardware.
-			 */
-			int dir = chip->get_direction(chip, i);
-
-			if (!dir)
-				set_bit(FLAG_IS_OUT, &desc->flags);
-		} else if (!chip->direction_input) {
-			/*
-			 * If the chip lacks the .direction_input callback
-			 * we logically assume all lines are outputs.
-			 */
-			set_bit(FLAG_IS_OUT, &desc->flags);
-		}
+		desc->flags = !chip->direction_input ? (1 << FLAG_IS_OUT) : 0;
 	}
 
 #ifdef CONFIG_PINCTRL
@@ -1498,22 +1481,36 @@ static struct gpio_chip *find_chip_by_name(const char *name)
 
 static int gpiochip_irqchip_init_valid_mask(struct gpio_chip *gpiochip)
 {
-	if (!gpiochip->irq_need_valid_mask)
-		return 0;
+	if (gpiochip->irq_need_valid_mask) {
+		gpiochip->irq_valid_mask =
+			kcalloc(BITS_TO_LONGS(gpiochip->ngpio),
+				sizeof(long), GFP_KERNEL);
+		if (!gpiochip->irq_valid_mask)
+			return -ENOMEM;
 
-	gpiochip->irq_valid_mask = kcalloc(BITS_TO_LONGS(gpiochip->ngpio),
-					   sizeof(long), GFP_KERNEL);
-	if (!gpiochip->irq_valid_mask)
-		return -ENOMEM;
+		/* Assume by default all GPIOs are valid */
+		bitmap_fill(gpiochip->irq_valid_mask, gpiochip->ngpio);
+	}
 
-	/* Assume by default all GPIOs are valid */
-	bitmap_fill(gpiochip->irq_valid_mask, gpiochip->ngpio);
+	if (gpiochip->line_need_valid_mask) {
+		gpiochip->line_valid_mask =
+			kcalloc(BITS_TO_LONGS(gpiochip->ngpio),
+				sizeof(long), GFP_KERNEL);
+		if (!gpiochip->line_valid_mask)
+			return -ENOMEM;
+
+		/* Assume by default all GPIOs are valid */
+		bitmap_fill(gpiochip->line_valid_mask, gpiochip->ngpio);
+	}
 
 	return 0;
 }
 
 static void gpiochip_irqchip_free_valid_mask(struct gpio_chip *gpiochip)
 {
+	kfree(gpiochip->line_valid_mask);
+	gpiochip->line_valid_mask = NULL;
+
 	kfree(gpiochip->irq_valid_mask);
 	gpiochip->irq_valid_mask = NULL;
 }
@@ -1525,6 +1522,15 @@ static bool gpiochip_irqchip_irq_valid(const struct gpio_chip *gpiochip,
 	if (likely(!gpiochip->irq_valid_mask))
 		return true;
 	return test_bit(offset, gpiochip->irq_valid_mask);
+}
+
+static bool gpiochip_irqchip_line_valid(const struct gpio_chip *gpiochip,
+					unsigned int offset)
+{
+	/* No mask means all valid */
+	if (likely(!gpiochip->line_valid_mask))
+		return true;
+	return test_bit(offset, gpiochip->line_valid_mask);
 }
 
 /**
@@ -3336,6 +3342,10 @@ struct gpio_desc *__must_check gpiod_get_index(struct device *dev,
 		dev_dbg(dev, "lookup for GPIO %s failed\n", con_id);
 		return desc;
 	}
+
+	/* Make sure the GPIO is valid before we request it. */
+	if (!gpiochip_irqchip_line_valid(desc->gdev->chip, idx))
+		return ERR_PTR(-EACCES);
 
 	status = gpiod_request(desc, con_id);
 	if (status < 0)
