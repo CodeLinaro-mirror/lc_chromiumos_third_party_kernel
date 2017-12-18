@@ -461,6 +461,13 @@ int skl_sst_dsp_init(struct device *dev, void __iomem *mmio_base, int irq,
 	if (ret)
 		return ret;
 
+	/* load_fw requires DSP IRQ is set up. */
+	ret = skl_dsp_acquire_irq(sst);
+	if (ret < 0) {
+		dev_err(dev, "skl_dsp_acquire_irq failed : %d", ret);
+		goto cleanup;
+	}
+
 	ret = sst->fw_ops.load_fw(sst);
 	if (ret < 0) {
 		dev_err(dev, "Load base fw failed : %d", ret);
@@ -470,7 +477,7 @@ int skl_sst_dsp_init(struct device *dev, void __iomem *mmio_base, int irq,
 	if (dsp)
 		*dsp = skl;
 
-	return ret;
+	return 0;
 
 cleanup:
 	skl_sst_dsp_cleanup(dev, skl);
