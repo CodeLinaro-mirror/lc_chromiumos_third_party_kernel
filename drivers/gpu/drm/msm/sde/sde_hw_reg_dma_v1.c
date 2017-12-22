@@ -584,6 +584,7 @@ int reset_v1(struct sde_hw_ctl *ctl)
 
 static void sde_reg_dma_aspace_cb_locked(void *cb_data, bool is_detach)
 {
+#ifdef CONFIG_CHROME_MSM_SMMU
 	struct sde_reg_dma_buffer *dma_buf = NULL;
 	struct msm_gem_address_space *aspace = NULL;
 	u32 iova_aligned, offset;
@@ -625,16 +626,17 @@ static void sde_reg_dma_aspace_cb_locked(void *cb_data, bool is_detach)
 		dma_buf->vaddr = (void *)(((u8 *)dma_buf->vaddr) + offset);
 		dma_buf->next_op_allowed = DECODE_SEL_OP;
 	}
+#endif
 }
 
 static struct sde_reg_dma_buffer *alloc_reg_dma_buf_v1(u32 size)
 {
+#ifdef CONFIG_CHROME_MSM_SMMU
 	struct sde_reg_dma_buffer *dma_buf = NULL;
 	u32 iova_aligned, offset;
 	u32 rsize = size + GUARD_BYTES;
 	struct msm_gem_address_space *aspace = NULL;
 	int rc = 0;
-
 	if (!size || SIZE_DWORD(size) > MAX_DWORDS_SZ) {
 		DRM_ERROR("invalid buffer size %d\n", size);
 		return ERR_PTR(-EINVAL);
@@ -705,10 +707,14 @@ free_gem:
 fail:
 	kfree(dma_buf);
 	return ERR_PTR(rc);
+#endif
+	return 0;
+
 }
 
 static int dealloc_reg_dma_v1(struct sde_reg_dma_buffer *dma_buf)
 {
+#ifdef CONFIG_CHROME_MSM_SMMU
 	if (!dma_buf) {
 		DRM_ERROR("invalid param reg_buf %pK\n", dma_buf);
 		return -EINVAL;
@@ -724,6 +730,7 @@ static int dealloc_reg_dma_v1(struct sde_reg_dma_buffer *dma_buf)
 	}
 
 	kfree(dma_buf);
+#endif
 	return 0;
 }
 

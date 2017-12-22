@@ -3475,10 +3475,11 @@ static int _sde_crtc_vblank_enable_no_lock(
 
 		/* drop lock since power crtc cb may try to re-acquire lock */
 		mutex_unlock(&sde_crtc->crtc_lock);
+		pm_runtime_get_sync(dev->dev);
 		ret = _sde_crtc_power_enable(sde_crtc, true);
 		mutex_lock(&sde_crtc->crtc_lock);
-		if (ret)
-			return ret;
+		//if (ret)
+		//	return ret;
 
 		list_for_each_entry(enc, &dev->mode_config.encoder_list, head) {
 			if (enc->crtc != crtc)
@@ -3508,6 +3509,7 @@ static int _sde_crtc_vblank_enable_no_lock(
 		/* drop lock since power crtc cb may try to re-acquire lock */
 		mutex_unlock(&sde_crtc->crtc_lock);
 		_sde_crtc_power_enable(sde_crtc, false);
+		pm_runtime_put_sync(dev->dev);
 		mutex_lock(&sde_crtc->crtc_lock);
 	}
 
@@ -3847,6 +3849,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	/* disable clk & bw control until clk & bw properties are set */
 	cstate->bw_control = false;
 	cstate->bw_split_vote = false;
+	pm_runtime_put_sync(crtc->dev->dev);
 
 	mutex_unlock(&sde_crtc->crtc_lock);
 }
@@ -3872,6 +3875,8 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
 	SDE_EVT32_VERBOSE(DRMID(crtc));
 	sde_crtc = to_sde_crtc(crtc);
+
+	pm_runtime_get_sync(crtc->dev->dev);
 
 	drm_for_each_encoder(encoder, crtc->dev) {
 		if (encoder->crtc != crtc)
