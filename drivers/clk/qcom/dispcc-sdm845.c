@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -66,8 +66,8 @@ static const struct parent_map disp_cc_parent_map_0[] = {
 
 static const char * const disp_cc_parent_names_0[] = {
 	"bi_tcxo",
-	"dsi0pllbyte",
-	"dsi1pllbyte",
+	"dsi0_phy_pll_out_byteclk",
+	"dsi1_phy_pll_out_byteclk",
 	"core_bi_pll_test_se",
 };
 
@@ -120,8 +120,8 @@ static const struct parent_map disp_cc_parent_map_4[] = {
 
 static const char * const disp_cc_parent_names_4[] = {
 	"bi_tcxo",
-	"dsi0pll",
-	"dsi1pll",
+	"dsi0_phy_pll_out_dsiclk",
+	"dsi1_phy_pll_out_dsiclk",
 	"core_bi_pll_test_se",
 };
 
