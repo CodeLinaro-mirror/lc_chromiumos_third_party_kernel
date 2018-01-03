@@ -563,7 +563,6 @@
 	};
 
 	apps_smmu: apps-smmu@0x15000000 {
-		status = "disabled";
 		compatible = "qcom,smmu-500";
 		reg = <0x15000000 0x80000>;
 		#iommu-cells = <2>;
