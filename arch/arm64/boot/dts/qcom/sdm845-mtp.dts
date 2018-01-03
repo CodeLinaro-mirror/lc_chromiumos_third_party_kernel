@@ -8,6 +8,7 @@
 /dts-v1/;
 
 #include "sdm845.dtsi"
+#include "sdm845-dpu-display.dtsi"
 #include "sdm845-mtp.dtsi"
 
 / {

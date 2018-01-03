@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -66,5 +66,112 @@
 			};
 		};
 
+		pmx_dpu: pmx_dpu {
+			dpu_dsi_active: dpu_dsi_active {
+				mux {
+					pins = "gpio6", "gpio52";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio6", "gpio52";
+					drive-strength = <8>;
+					/*bias-pull-up;*/
+					bias-disable = <0>;
+				};
+			};
+			dpu_dsi_suspend: dpu_dsi_suspend {
+				mux {
+					pins = "gpio6", "gpio52";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio6", "gpio52";
+					drive-strength = <2>;
+					bias-pull-down;
+				};
+			};
+		};
+
+		pmx_dpu_te {
+			dpu_te_active: dpu_te_active {
+				mux {
+					pins = "gpio10";
+					function = "mdp_vsync";
+				};
+
+				config {
+					pins = "gpio10";
+					drive-strength = <2>;   /* 2 mA */
+					bias-pull-down;         /* PULL DOWN */
+				};
+			};
+
+			dpu_te_suspend: dpu_te_suspend {
+				mux {
+					pins = "gpio10";
+					function = "mdp_vsync";
+				};
+
+				config {
+					pins = "gpio10";
+					drive-strength = <2>;   /* 2 mA */
+					bias-pull-down;         /* PULL DOWN */
+				};
+			};
+		};
+
+		dpu_dp_aux_active: dpu_dp_aux_active {
+			mux {
+				pins = "gpio43", "gpio51";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio43", "gpio51";
+				bias-disable = <0>; /* no pull */
+				drive-strength = <8>;
+			};
+		};
+
+		dpu_dp_aux_suspend: dpu_dp_aux_suspend {
+			mux {
+				pins = "gpio43", "gpio51";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio43", "gpio51";
+				bias-pull-down;
+				drive-strength = <2>;
+			};
+		};
+
+		dpu_dp_usbplug_cc_active: dpu_dp_usbplug_cc_active {
+			mux {
+				pins = "gpio38";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio38";
+				bias-disable;
+				drive-strength = <16>;
+			};
+		};
+
+		dpu_dp_usbplug_cc_suspend: dpu_dp_usbplug_cc_suspend {
+			mux {
+				pins = "gpio38";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio38";
+				bias-pull-down;
+				drive-strength = <2>;
+			};
+		};
 	};
 };

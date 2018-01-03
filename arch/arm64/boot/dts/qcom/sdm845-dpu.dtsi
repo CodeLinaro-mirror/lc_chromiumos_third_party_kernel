@@ -15,9 +15,11 @@
 	mdss_mdp: qcom,mdss_mdp@ae00000 {
 		compatible = "qcom,dpu-kms";
 		reg = <0x0ae00000 0x81d40>,
-		      <0x0aeb0000 0x2008>;
+		      <0x0aeb0000 0x2008>,
+		      <0x0aeac000 0xf0>;
 		reg-names = "mdp_phys",
-			"vbif_phys";
+			"vbif_phys",
+			"regdma_phys";
 
 		power-domains = <&clock_dispcc 0>;
 		clocks =
@@ -205,11 +207,29 @@
 		qcom,dpu-qos-cpu-mask = <0x3>;
 		qcom,dpu-qos-cpu-dma-latency = <300>;
 
+		/* offsets are relative to "mdp_phys + qcom,dpu-off */
+		qcom,dpu-inline-rot-clk-ctrl = <0x2bc 0x8>, <0x2bc 0xc>;
+
+		qcom,dpu-reg-dma-off = <0>;
+		qcom,dpu-reg-dma-version = <0x1>;
+		qcom,dpu-reg-dma-trigger-off = <0x119c>;
 
 		qcom,dpu-sspp-vig-blocks {
 			qcom,dpu-vig-csc-off = <0x1a00>;
 			qcom,dpu-vig-qseed-off = <0xa00>;
 			qcom,dpu-vig-qseed-size = <0xa0>;
+		};
+
+		qcom,dpu-dspp-blocks {
+			qcom,dpu-dspp-igc = <0x0 0x00030001>;
+			qcom,dpu-dspp-hsic = <0x800 0x00010007>;
+			qcom,dpu-dspp-memcolor = <0x880 0x00010007>;
+			qcom,dpu-dspp-sixzone= <0x900 0x00010007>;
+			qcom,dpu-dspp-vlut = <0xa00 0x00010008>;
+			qcom,dpu-dspp-gamut = <0x1000 0x00040000>;
+			qcom,dpu-dspp-pcc = <0x1700 0x00040000>;
+			qcom,dpu-dspp-gc = <0x17c0 0x00010008>;
+			qcom,dpu-dspp-hist = <0x800 0x00010007>;
 		};
 
 		qcom,platform-supply-entries {
@@ -235,6 +255,16 @@
 			    <22 773 0 0>, <23 773 0 0>,
 			    <22 773 0 6400000>, <23 773 0 6400000>,
 			    <22 773 0 6400000>, <23 773 0 6400000>;
+		};
+
+		qcom,dpu-llcc-bus {
+			qcom,msm-bus,name = "mdss_dpu_llcc";
+			qcom,msm-bus,num-cases = <3>;
+			qcom,msm-bus,num-paths = <1>;
+			qcom,msm-bus,vectors-KBps =
+			    <132 770 0 0>,
+			    <132 770 0 6400000>,
+			    <132 770 0 6400000>;
 		};
 
 		qcom,dpu-ebi-bus {
@@ -425,7 +455,7 @@
 		interrupts = <12 0>;
 
 		clocks =  <&clock_dispcc DISP_CC_MDSS_DP_AUX_CLK>,
-			 <&clock_rpmh RPMH_CXO_CLK>,
+			 /*<&clock_rpmh RPMH_CXO_CLK>,*/
 			 <&gcc GCC_USB3_PRIM_CLKREF_CLK>,
 			 <&gcc GCC_USB_PHY_CFG_AHB2PHY_CLK>,
 			 <&gcc GCC_USB3_PRIM_PHY_PIPE_CLK>,
