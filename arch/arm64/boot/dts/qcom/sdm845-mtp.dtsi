@@ -78,3 +78,13 @@
 &dsi_nt35597_truly_dsc_cmd_display {
 	qcom,dsi-display-active;
 };
+
+&labibb {
+	status = "ok";
+	qcom,qpnp-labibb-mode = "lcd";
+};
+
+&pmi8998_wled {
+	status = "okay";
+	qcom,led-strings-list = [01 02];
+};
