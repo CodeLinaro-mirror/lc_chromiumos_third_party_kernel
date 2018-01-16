@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -196,7 +196,7 @@ int msm_dsi_modeset_init(struct msm_dsi *msm_dsi, struct drm_device *dev,
 	struct drm_bridge *ext_bridge;
 	int ret;
 
-	if (WARN_ON(!encoder))
+	if (WARN_ON(!encoder) || WARN_ON(!msm_dsi) || WARN_ON(!dev))
 		return -EINVAL;
 
 	msm_dsi->dev = dev;
@@ -245,19 +245,17 @@ int msm_dsi_modeset_init(struct msm_dsi *msm_dsi, struct drm_device *dev,
 
 	return 0;
 fail:
-	if (msm_dsi) {
-		/* bridge/connector are normally destroyed by drm: */
-		if (msm_dsi->bridge) {
-			msm_dsi_manager_bridge_destroy(msm_dsi->bridge);
-			msm_dsi->bridge = NULL;
-		}
-
-		/* don't destroy connector if we didn't make it */
-		if (msm_dsi->connector && !msm_dsi->external_bridge)
-			msm_dsi->connector->funcs->destroy(msm_dsi->connector);
-
-		msm_dsi->connector = NULL;
+	/* bridge/connector are normally destroyed by drm: */
+	if (msm_dsi->bridge) {
+		msm_dsi_manager_bridge_destroy(msm_dsi->bridge);
+		msm_dsi->bridge = NULL;
 	}
+
+	/* don't destroy connector if we didn't make it */
+	if (msm_dsi->connector && !msm_dsi->external_bridge)
+		msm_dsi->connector->funcs->destroy(msm_dsi->connector);
+
+	msm_dsi->connector = NULL;
 
 	return ret;
 }
