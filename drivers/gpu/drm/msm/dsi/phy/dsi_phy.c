@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -503,10 +503,10 @@ static int dsi_phy_driver_probe(struct platform_device *pdev)
 		goto fail;
 
 	phy->pll = msm_dsi_pll_init(pdev, phy->cfg->type, phy->id);
-	if (!phy->pll)
+	if (IS_ERR_OR_NULL(phy->pll))
 		dev_info(dev,
-			"%s: pll init failed, need separate pll clk driver\n",
-			__func__);
+			"%s: pll init failed: %ld, need separate pll clk driver\n",
+			__func__, PTR_ERR(phy->pll));
 
 	dsi_phy_disable_resource(phy);
 
