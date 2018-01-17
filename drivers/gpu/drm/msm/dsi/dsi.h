@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,6 +36,7 @@ enum msm_dsi_phy_type {
 	MSM_DSI_PHY_20NM,
 	MSM_DSI_PHY_28NM_8960,
 	MSM_DSI_PHY_14NM,
+	MSM_DSI_PHY_10NM,
 	MSM_DSI_PHY_MAX
 };
 
