@@ -17,7 +17,9 @@
 #include <linux/slab.h>
 #include "dsi_clk.h"
 
+#ifdef CONFIG_CHROME_BUS_SCALE
 #include <linux/msm-bus.h>
+#endif
 
 struct dsi_core_clks {
 	struct dsi_core_clk_info clks;
@@ -226,6 +228,7 @@ int dsi_core_clk_start(struct dsi_core_clks *c_clks)
 		}
 	}
 
+#ifdef CONFIG_CHROME_BUS_SCALE
 	if (c_clks->bus_handle) {
 		rc = msm_bus_scale_client_update_request(c_clks->bus_handle, 1);
 		if (rc) {
@@ -233,11 +236,14 @@ int dsi_core_clk_start(struct dsi_core_clks *c_clks)
 			goto error_disable_mmss_clk;
 		}
 	}
+#endif
 	return rc;
 
+#ifdef CONFIG_CHROME_BUS_SCALE
 error_disable_mmss_clk:
 	if (c_clks->clks.core_mmss_clk)
 		clk_disable_unprepare(c_clks->clks.core_mmss_clk);
+#endif
 
 error_disable_bus_clk:
 	if (c_clks->clks.bus_clk)
@@ -259,6 +265,7 @@ int dsi_core_clk_stop(struct dsi_core_clks *c_clks)
 {
 	int rc = 0;
 
+#ifdef CONFIG_CHROME_BUS_SCALE
 	if (c_clks->bus_handle) {
 		rc = msm_bus_scale_client_update_request(c_clks->bus_handle, 0);
 		if (rc) {
@@ -266,6 +273,7 @@ int dsi_core_clk_stop(struct dsi_core_clks *c_clks)
 			return rc;
 		}
 	}
+#endif
 
 	if (c_clks->clks.core_mmss_clk)
 		clk_disable_unprepare(c_clks->clks.core_mmss_clk);

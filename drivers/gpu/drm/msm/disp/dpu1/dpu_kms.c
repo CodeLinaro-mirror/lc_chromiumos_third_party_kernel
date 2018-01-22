@@ -1870,6 +1870,7 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 					rc);
 	}
 
+#ifdef CONFIG_CHROME_REGDMA
 	dpu_kms->reg_dma = msm_ioremap(platformdev, "regdma_phys",
 								"regdma_phys");
 	if (IS_ERR(dpu_kms->reg_dma)) {
@@ -1885,6 +1886,7 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 			DPU_ERROR("dbg base register reg_dma failed: %d\n",
 					rc);
 	}
+#endif
 
 	dpu_kms->core_client = dpu_power_client_create(&priv->phandle, "core");
 	if (IS_ERR_OR_NULL(dpu_kms->core_client)) {
@@ -1929,6 +1931,7 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		goto power_error;
 	}
 
+#ifdef CONFIG_CHROME_REGDMA
 	/* Initialize reg dma block which is a singleton */
 	rc = dpu_reg_dma_init(dpu_kms->reg_dma, dpu_kms->catalog,
 			dpu_kms->dev);
@@ -1936,6 +1939,7 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		DPU_ERROR("failed: reg dma init failed\n");
 		goto power_error;
 	}
+#endif
 
 	rc = dpu_rm_init(&dpu_kms->rm, dpu_kms->catalog, dpu_kms->mmio,
 			dpu_kms->dev);

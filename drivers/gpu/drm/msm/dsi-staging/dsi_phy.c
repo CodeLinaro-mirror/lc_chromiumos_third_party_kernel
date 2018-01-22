@@ -17,7 +17,9 @@
 #include <linux/err.h>
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
+#ifdef CONFIG_CHROME_BUS_SCALE
 #include <linux/msm-bus.h>
+#endif
 #include <linux/list.h>
 
 #include "msm_drv.h"

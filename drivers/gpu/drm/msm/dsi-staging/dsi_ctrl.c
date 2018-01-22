@@ -17,7 +17,9 @@
 #include <linux/err.h>
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
+#ifdef CONFIG_CHROME_BUS_SCALE
 #include <linux/msm-bus.h>
+#endif
 #include <linux/of_irq.h>
 #include <video/mipi_display.h>
 
@@ -716,6 +718,7 @@ static int dsi_ctrl_axi_bus_client_init(struct platform_device *pdev,
 					struct dsi_ctrl *ctrl)
 {
 	int rc = 0;
+#ifdef CONFIG_CHROME_BUS_SCALE
 	struct dsi_ctrl_bus_scale_info *bus = &ctrl->axi_bus_info;
 
 	bus->bus_scale_table = msm_bus_cl_get_pdata(pdev);
@@ -731,12 +734,13 @@ static int dsi_ctrl_axi_bus_client_init(struct platform_device *pdev,
 		rc = -EINVAL;
 		pr_err("failed to register axi bus client\n");
 	}
-
+#endif
 	return rc;
 }
 
 static int dsi_ctrl_axi_bus_client_deinit(struct dsi_ctrl *ctrl)
 {
+#ifdef CONFIG_CHROME_BUS_SCALE
 	struct dsi_ctrl_bus_scale_info *bus = &ctrl->axi_bus_info;
 
 	if (bus->bus_handle) {
@@ -744,6 +748,7 @@ static int dsi_ctrl_axi_bus_client_deinit(struct dsi_ctrl *ctrl)
 
 		bus->bus_handle = 0;
 	}
+#endif
 	return 0;
 }
 
