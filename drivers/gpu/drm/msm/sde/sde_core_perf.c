@@ -591,6 +591,8 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc,
 		clk_rate = _sde_core_perf_get_core_clk_rate(kms);
 
 		SDE_EVT32(kms->dev, stop_req, clk_rate);
+
+		#ifdef CONFIG_CHROME_SET_CLK
 		ret = sde_power_clk_set_rate(&priv->phandle,
 				kms->perf.clk_name, clk_rate);
 		if (ret) {
@@ -598,6 +600,7 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc,
 					kms->perf.clk_name, clk_rate);
 			return;
 		}
+		#endif
 
 		kms->perf.core_clk_rate = clk_rate;
 		SDE_DEBUG("update clk rate = %lld HZ\n", clk_rate);

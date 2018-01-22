@@ -236,7 +236,7 @@ error_put:
 		devm_regulator_put(panel->power_info.vregs[i].vreg);
 		panel->power_info.vregs[i].vreg = NULL;
 	}
-	return rc;
+	return -EPROBE_DEFER;
 }
 
 static int dsi_panel_vreg_put(struct dsi_panel *panel)
