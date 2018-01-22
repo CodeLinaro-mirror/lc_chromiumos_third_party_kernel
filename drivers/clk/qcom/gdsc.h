@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -28,6 +28,8 @@ struct reset_controller_dev;
  * @gds_hw_ctrl: gds_hw_ctrl register
  * @cxcs: offsets of branch registers to toggle mem/periph bits in
  * @cxc_count: number of @cxcs
+ * @cxcs: offsets of rcg cmd registers to force enable the ROOT_EN bit
+ * @cxc_count: number of @rcgs
  * @pwrsts: Possible powerdomain power states
  * @resets: ids of resets associated with this gdsc
  * @reset_count: number of @resets
@@ -42,6 +44,8 @@ struct gdsc {
 	unsigned int			clamp_io_ctrl;
 	unsigned int			*cxcs;
 	unsigned int			cxc_count;
+	unsigned int			*rcgs;
+	unsigned int			rcg_count;
 	const u8			pwrsts;
 /* Powerdomain allowable state bitfields */
 #define PWRSTS_OFF		BIT(0)
@@ -53,6 +57,9 @@ struct gdsc {
 #define VOTABLE		BIT(0)
 #define CLAMP_IO	BIT(1)
 #define HW_CTRL		BIT(2)
+#define SW_RESET	BIT(3)
+#define RESET_AON	BIT(4)
+#define FORCE_ROOT_ENABLE      BIT(5)
 	struct reset_controller_dev	*rcdev;
 	unsigned int			*resets;
 	unsigned int			reset_count;
