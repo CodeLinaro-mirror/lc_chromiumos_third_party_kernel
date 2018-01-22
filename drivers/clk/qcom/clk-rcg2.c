@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013, 2017-2018, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -757,10 +757,11 @@ const struct clk_ops clk_byte2_ops = {
 EXPORT_SYMBOL_GPL(clk_byte2_ops);
 
 static const struct frac_entry frac_table_pixel[] = {
+	{ 1, 1 },
+	{ 2, 3 },
+	{ 4, 9 },
 	{ 3, 8 },
 	{ 2, 9 },
-	{ 4, 9 },
-	{ 1, 1 },
 	{ }
 };
 
