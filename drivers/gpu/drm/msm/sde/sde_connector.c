@@ -434,6 +434,11 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		return -EINVAL;
 	}
 
+	if (c_conn->ops.set_backlight) {
+		SDE_DEBUG("conn%d: Set backlight to 255\n", connector->base.id);
+		c_conn->ops.set_backlight(c_conn->display, 255);
+	}
+
 	while ((idx = msm_property_pop_dirty(&c_conn->property_info,
 					&c_state->property_state)) >= 0) {
 		switch (idx) {
