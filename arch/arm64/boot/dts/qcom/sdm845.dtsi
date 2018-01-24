@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,6 +12,7 @@
 
 #include <dt-bindings/clock/qcom,gcc-sdm845.h>
 #include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/clock/qcom,dispcc-sdm845.h>
 #include <dt-bindings/clock/qcom,gpucc-sdm845.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
@@ -309,8 +310,10 @@
 
 	soc: soc { };
 };
-
+/*#include "msm-gdsc-sdm845.dtsi"*/
+#include "sdm845-sde-pll.dtsi"
 #include "sdm845-qupv3.dtsi"
+#include "sdm845-sde.dtsi"
 
 &soc {
 	#address-cells = <1>;
@@ -438,6 +441,7 @@
 		reg-names = "cc_base";
 		#clock-cells = <1>;
 		#reset-cells = <1>;
+		#power-domain-cells = <1>;
 	};
 
 	clock_gpucc: qcom,gpucc@5090000 {
