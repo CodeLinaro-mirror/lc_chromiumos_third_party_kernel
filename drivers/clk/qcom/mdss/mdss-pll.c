@@ -143,7 +143,7 @@ end:
 static int mdss_pll_clock_register(struct platform_device *pdev,
 				struct mdss_pll_resources *pll_res)
 {
-	int rc;
+	int rc = 0;
 
 	if (!pdev || !pll_res) {
 		pr_err("Invalid input parameters\n");
@@ -155,7 +155,9 @@ static int mdss_pll_clock_register(struct platform_device *pdev,
 		rc = dsi_pll_clock_register_10nm(pdev, pll_res);
 		break;
 	case MDSS_DP_PLL_10NM:
+	#ifdef CONFIG_CHROME_MSM_DP
 		rc = dp_pll_clock_register_10nm(pdev, pll_res);
+	#endif
 		break;
 	case MDSS_UNKNOWN_PLL:
 	default:
