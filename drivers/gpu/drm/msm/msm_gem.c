@@ -386,7 +386,7 @@ int msm_gem_get_iova(struct drm_gem_object *obj,
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vma *vma;
 	int ret = 0;
-	int needs_unlock = 0;
+	//int needs_unlock = 0;
 
 	mutex_lock(&msm_obj->lock);
 
@@ -413,14 +413,14 @@ int msm_gem_get_iova(struct drm_gem_object *obj,
 		}
 
 		ret = msm_gem_map_vma(aspace, vma, msm_obj->sgt,
-				obj->size >> PAGE_SHIFT,
-				msm_obj->flags);
+				obj->size >> PAGE_SHIFT);
 		if (ret)
 			goto fail;
 	}
 
 	*iova = vma->iova;
 
+	/**
 	if (aspace && aspace->domain_attached) {
 		if (!mutex_is_locked(&aspace->dev->struct_mutex)) {
 			mutex_lock(&aspace->dev->struct_mutex);
@@ -430,6 +430,7 @@ int msm_gem_get_iova(struct drm_gem_object *obj,
 		if (needs_unlock)
 			mutex_unlock(&aspace->dev->struct_mutex);
 	}
+	*/
 
 	mutex_unlock(&msm_obj->lock);
 	return 0;
@@ -639,7 +640,7 @@ void msm_gem_purge(struct drm_gem_object *obj, enum msm_gem_lock subclass)
 	mutex_lock_nested(&msm_obj->lock, subclass);
 
 	put_iova(obj);
-	msm_gem_remove_obj_from_aspace_active_list(msm_obj->aspace, obj);
+	//msm_gem_remove_obj_from_aspace_active_list(msm_obj->aspace, obj);
 
 	msm_gem_vunmap_locked(obj);
 
@@ -873,7 +874,7 @@ void msm_gem_free_object(struct drm_gem_object *obj)
 	mutex_lock(&msm_obj->lock);
 
 	put_iova(obj);
-	msm_gem_remove_obj_from_aspace_active_list(msm_obj->aspace, obj);
+	//msm_gem_remove_obj_from_aspace_active_list(msm_obj->aspace, obj);
 
 	if (obj->import_attach) {
 		if (msm_obj->vaddr)
@@ -913,7 +914,6 @@ int msm_gem_new_handle(struct drm_device *dev, struct drm_file *file,
 		return PTR_ERR(obj);
 
 	ret = drm_gem_handle_create(file, obj, handle);
-
 	/* drop reference from allocate - handle holds it now */
 	drm_gem_object_unreference_unlocked(obj);
 
@@ -965,9 +965,9 @@ static int msm_gem_new_impl(struct drm_device *dev,
 		WARN_ON(!mutex_is_locked(&dev->struct_mutex));
 		list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
 	} else {
-		mutex_lock(&dev->struct_mutex);
+		//mutex_lock(&dev->struct_mutex);
 		list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
-		mutex_unlock(&dev->struct_mutex);
+		//mutex_unlock(&dev->struct_mutex);
 	}
 
 	*obj = &msm_obj->base;
