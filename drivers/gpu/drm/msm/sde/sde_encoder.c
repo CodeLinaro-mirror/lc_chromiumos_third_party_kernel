@@ -176,6 +176,8 @@ enum sde_enc_rc_states {
  *				Bit0 = phys_encs[0] etc.
  * @crtc_frame_event_cb:	callback handler for frame event
  * @crtc_frame_event_cb_data:	callback handler private data
+ * @crtc_request_flip_cb:	callback handler for requesting page-flip event
+ * @crtc_request_flip_cb_data:	callback handler private data
  * @frame_done_timeout:		frame done timeout in Hz
  * @frame_done_timer:		watchdog timer for frame done event
  * @vsync_event_timer:		vsync timer
@@ -222,6 +224,8 @@ struct sde_encoder_virt {
 	DECLARE_BITMAP(frame_busy_mask, MAX_PHYS_ENCODERS_PER_VIRTUAL);
 	void (*crtc_frame_event_cb)(void *, u32 event);
 	void *crtc_frame_event_cb_data;
+	void (*crtc_request_flip_cb)(void *);
+	void *crtc_request_flip_cb_data;
 
 	atomic_t frame_done_timeout;
 	struct timer_list frame_done_timer;
@@ -2354,6 +2358,24 @@ void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 }
 
+void sde_encoder_register_request_flip_callback(struct drm_encoder *drm_enc,
+		void (*request_flip_cb)(void *),
+		void *request_flip_cb_data)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	unsigned long lock_flags;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+
+	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
+	sde_enc->crtc_request_flip_cb = request_flip_cb;
+	sde_enc->crtc_request_flip_cb_data = request_flip_cb_data;
+	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
+}
+
 static void sde_encoder_frame_done_callback(
 		struct drm_encoder *drm_enc,
 		struct sde_encoder_phys *ready_phys, u32 event)
@@ -2655,6 +2677,11 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc)
 				sde_enc->cur_master,
 				pending_flush);
 	}
+
+	/* HW flush has happened, request a flip complete event now */
+	if (sde_enc->crtc_request_flip_cb)
+		sde_enc->crtc_request_flip_cb(
+		sde_enc->crtc_request_flip_cb_data);
 
 	_sde_encoder_trigger_start(sde_enc->cur_master);
 

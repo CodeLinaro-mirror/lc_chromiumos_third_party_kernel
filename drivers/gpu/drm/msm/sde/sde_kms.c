@@ -610,6 +610,9 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		return;
 	}
 
+	ret = drm_crtc_vblank_get(crtc);
+	if (ret)
+		return;
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
 			continue;
@@ -625,6 +628,8 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			break;
 		}
 	}
+
+	drm_crtc_vblank_put(crtc);
 }
 
 static void sde_kms_prepare_fence(struct msm_kms *kms,

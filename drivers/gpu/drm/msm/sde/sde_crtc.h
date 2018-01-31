@@ -176,6 +176,7 @@ struct sde_crtc_event {
  * @property_info : Opaque structure for generic property support
  * @property_defaults : Array of default values for generic property support
  * @output_fence  : output release fence context
+ * @pending       : Whether any page-flip events are pending signal
  * @stage_cfg     : H/w mixer stage configuration
  * @debugfs_root  : Parent of debugfs node
  * @vblank_cb_count : count of vblank callback since last reset
@@ -235,7 +236,7 @@ struct sde_crtc {
 
 	/* output fence support */
 	struct sde_fence_context output_fence;
-
+	atomic_t pending;
 	struct sde_hw_stage_cfg stage_cfg;
 	struct dentry *debugfs_root;
 
