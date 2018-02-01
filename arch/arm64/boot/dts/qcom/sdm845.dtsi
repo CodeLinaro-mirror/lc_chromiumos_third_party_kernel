@@ -14,6 +14,7 @@
 #include <dt-bindings/clock/qcom,rpmh.h>
 #include <dt-bindings/clock/qcom,dispcc-sdm845.h>
 #include <dt-bindings/clock/qcom,gpucc-sdm845.h>
+#include <dt-bindings/clock/qcom,rpmh.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/spmi/spmi.h>
@@ -655,6 +656,108 @@
 		clock-names = "bus", "iface";
 
 		power-domains = <&clock_gpucc GPU_CX_GDSC>;
+	};
+
+	qfprom@74000 {
+		compatible = "qcom,qfprom";
+		reg = <0x780000 0x8ff>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		qusb2p_hstx_trim: hstx_trim@1eb {
+			reg = <0x1eb 0x1>;
+			bits = <1 4>;
+		};
+
+	};
+
+	phy@88e8000 {
+		compatible = "qcom,qmp-v3-usb3-phy";
+		reg = <0x88e9000 0x18c>,
+			<0x88e8000 0x10>; /*dp_com */
+		reg-names = "reg-base", "dp_com";
+		#clock-cells = <1>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		clocks = <&clock_gcc GCC_USB3_PRIM_PHY_AUX_CLK>,
+			<&clock_gcc GCC_USB_PHY_CFG_AHB2PHY_CLK>,
+			<&clock_gcc GCC_USB3_PRIM_CLKREF_CLK>,
+			<&clock_gcc GCC_USB3_PRIM_PHY_COM_AUX_CLK>;
+
+		clock-names = "aux", "cfg_ahb", "ref", "com_aux";
+
+		vdda-phy-supply = <&pm8998_l26>;
+		vdda-pll-supply = <&pm8998_l1>;
+
+		resets = <&clock_gcc GCC_USB3_DP_PHY_PRIM_BCR>,
+			<&clock_gcc GCC_USB3_PHY_PRIM_BCR>;
+		reset-names = "phy", "common";
+
+		ssusb_phy_0: lane@7410200 {
+			reg = <0x88e9200 0x128>,
+				<0x88e9400 0x200>,
+				<0x88e9c00 0x218>,
+				<0x88e9a00 0x100>;
+			reg-names = "tx", "rx", "pcs", "pcs_misc";
+			#phy-cells = <0>;
+			clocks = <&clock_gcc GCC_USB3_PRIM_PHY_PIPE_CLK>;
+			clock-names = "pipe0";
+			clock-output-names = "usb3_phy_pipe_clk_src";
+		};
+	};
+
+	hsusb_phy1: phy@88e2000 {
+		compatible = "qcom,qusb2-v2-phy";
+		reg = <0x88e2000 0x400>;
+		reg-names = "reg-base";
+		#phy-cells = <0>;
+
+		clocks = <&clock_gcc GCC_USB_PHY_CFG_AHB2PHY_CLK>,
+			<&clock_rpmh RPMH_CXO_CLK>;
+		clock-names = "cfg_ahb", "ref";
+
+		vdd-supply = <&pm8998_l1>;
+		vdda-pll-supply = <&pm8998_l12>;
+		vdda-phy-dpdm-supply = <&pm8998_l24>;
+
+		resets = <&clock_gcc GCC_QUSB2PHY_PRIM_BCR>;
+		nvmem-cells = <&qusb2p_hstx_trim>;
+	};
+
+	usb3: usb@a600000 {
+		compatible = "qcom,dwc3";
+		reg = <0xa600000 0xcd00>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		clocks = <&clock_gcc GCC_CFG_NOC_USB3_PRIM_AXI_CLK>,
+			<&clock_gcc GCC_USB30_PRIM_MASTER_CLK>,
+			<&clock_gcc GCC_AGGRE_USB3_PRIM_AXI_CLK>,
+			<&clock_gcc GCC_USB30_PRIM_MOCK_UTMI_CLK>,
+			<&clock_gcc GCC_USB30_PRIM_SLEEP_CLK>,
+			<&clock_gcc GCC_USB_PHY_CFG_AHB2PHY_CLK>,
+			<&clock_gcc GCC_USB3_PRIM_CLKREF_CLK>;
+		clock-names = "cfg_noc", "core", "aggr_noc", "utmi",
+				"sleep", "cfg_ahb", "ref";
+
+		assigned-clocks = <&clock_gcc GCC_USB30_PRIM_MOCK_UTMI_CLK>,
+				  <&clock_gcc GCC_USB30_PRIM_MASTER_CLK>;
+		assigned-clock-rates = <19200000>, <150000000>;
+
+		power-domains = <&clock_gcc USB30_PRIM_GDSC>;
+
+		dwc3@6a00000 {
+			compatible = "snps,dwc3";
+			reg = <0xa600000 0xcd00>;
+			interrupts = <0 133 0>;
+			snps,disable-clk-gating;
+			phys = <&hsusb_phy1>, <&ssusb_phy_0>;
+			phy-names = "usb2-phy", "usb3-phy";
+			dr_mode = "host";
+		};
 	};
 };
 
