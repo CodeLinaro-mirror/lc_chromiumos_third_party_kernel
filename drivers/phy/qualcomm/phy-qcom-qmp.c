@@ -146,6 +146,7 @@
 #define QPHY_LP_WAKEUP_DLY_TIME_AUXCLK			0xa4
 #define QPHY_PLL_LOCK_CHK_DLY_TIME_AUXCLK_LSB		0x1A8
 #define QPHY_OSC_DTCT_ACTIONS				0x1AC
+#define QPHY_RX_SIGDET_LVL				0x1D8
 #define QPHY_L1SS_WAKEUP_DLY_TIME_AUXCLK_LSB		0x1DC
 #define QPHY_L1SS_WAKEUP_DLY_TIME_AUXCLK_MSB		0x1E0
 
@@ -199,59 +200,6 @@ enum qphy_reg_layout {
 	QPHY_COM_POWER_DOWN_CONTROL,
 	QPHY_COM_START_CONTROL,
 	QPHY_COM_PCS_READY_STATUS,
-	QPHY_COM_CP_CTRL_MODE0,
-	QPHY_COM_CP_CTRL_MODE1,
-	QPHY_COM_PLL_RCTRL_MODE0,
-	QPHY_COM_PLL_RCTRL_MODE1,
-	QPHY_COM_PLL_CCTRL_MODE0,
-	QPHY_COM_PLL_CCTRL_MODE1,
-	QPHY_COM_SYSCLK_EN_SEL,
-	QPHY_COM_RESETSM_CNTRL,
-	QPHY_COM_LOCK_CMP_EN,
-	QPHY_COM_LOCK_CMP1_MODE0,
-	QPHY_COM_LOCK_CMP2_MODE0,
-	QPHY_COM_LOCK_CMP1_MODE1,
-	QPHY_COM_LOCK_CMP2_MODE1,
-	QPHY_COM_DEC_START_MODE0,
-	QPHY_COM_DEC_START_MODE1,
-	QPHY_COM_INTEGLOOP_GAIN0_MODE0,
-	QPHY_COM_INTEGLOOP_GAIN1_MODE0,
-	QPHY_COM_INTEGLOOP_GAIN0_MODE1,
-	QPHY_COM_INTEGLOOP_GAIN1_MODE1,
-	QPHY_COM_VCO_TUNE_CTRL,
-	QPHY_COM_VCO_TUNE_MAP,
-	QPHY_COM_VCO_TUNE1_MODE1,
-	QPHY_COM_VCO_TUNE1_MODE0,
-	QPHY_COM_VCO_TUNE2_MODE0,
-	QPHY_COM_VCO_TUNE2_MODE1,
-	QPHY_COM_VCO_TUNE_INITVAL1,
-	QPHY_COM_VCO_TUNE_INITVAL2,
-	QPHY_COM_CLK_SELECT,
-	QPHY_COM_HSCLK_SEL,
-	QPHY_COM_CORE_CLK_EN,
-	QPHY_COM_CMN_CONFIG,
-	QPHY_COM_SVS_MODE_CLK_SEL,
-	/* TX registers */
-	QPHY_TX_LANE_MODE_1,
-	/* RX registers */
-	QPHY_RX_UCDR_SVS_SO_GAIN_HALF,
-	QPHY_RX_UCDR_SVS_SO_GAIN_QUARTER,
-	QPHY_RX_UCDR_SVS_SO_GAIN,
-	QPHY_RX_UCDR_FASTLOCK_FO_GAIN,
-	QPHY_RX_UCDR_SO_SATURATION_AND_ENABLE,
-	QPHY_RX_UCDR_FASTLOCK_COUNT_LOW,
-	QPHY_RX_UCDR_PI_CONTROLS,
-	QPHY_RX_RX_TERM_BW,
-	QPHY_RX_RX_EQ_GAIN2_LSB,
-	QPHY_RX_RX_EQ_GAIN2_MSB,
-	QPHY_RX_RX_EQU_ADAPTOR_CNTRL1,
-	QPHY_RX_RX_EQU_ADAPTOR_CNTRL2,
-	QPHY_RX_RX_EQU_ADAPTOR_CNTRL3,
-	QPHY_RX_RX_EQU_ADAPTOR_CNTRL4,
-	QPHY_RX_SIGDET_CNTRL,
-	QPHY_RX_SIGDET_LVL,
-	QPHY_RX_SIGDET_DEGLITCH_CNTRL,
-	QPHY_RX_RX_INTERFACE_MODE,
 	/* PCS registers */
 	QPHY_PLL_LOCK_CHK_DLY_TIME,
 	QPHY_FLL_CNTRL1,
@@ -259,7 +207,6 @@ enum qphy_reg_layout {
 	QPHY_FLL_CNT_VAL_L,
 	QPHY_FLL_CNT_VAL_H_TOL,
 	QPHY_FLL_MAN_CODE,
-	QPHY_MULTI_LANE_CTRL1,
 	QPHY_SW_RESET,
 	QPHY_START_CTRL,
 	QPHY_PCS_READY_STATUS,
@@ -290,63 +237,6 @@ static const unsigned int usb3phy_regs_layout[] = {
 	[QPHY_SW_RESET]			= 0x00,
 	[QPHY_START_CTRL]		= 0x08,
 	[QPHY_PCS_READY_STATUS]		= 0x17c,
-};
-
-static const unsigned int ufsphy_regs_layout[] = {
-	[QPHY_COM_CP_CTRL_MODE0]	= 0x60,
-	[QPHY_COM_CP_CTRL_MODE1]	= 0x64,
-	[QPHY_COM_PLL_RCTRL_MODE0]	= 0x68,
-	[QPHY_COM_PLL_RCTRL_MODE1]	= 0x6c,
-	[QPHY_COM_PLL_CCTRL_MODE0]	= 0x70,
-	[QPHY_COM_PLL_CCTRL_MODE1]	= 0x74,
-	[QPHY_COM_SYSCLK_EN_SEL]	= 0x80,
-	[QPHY_COM_RESETSM_CNTRL]	= 0x88,
-	[QPHY_COM_LOCK_CMP_EN]		= 0x90,
-	[QPHY_COM_LOCK_CMP1_MODE0]	= 0x98,
-	[QPHY_COM_LOCK_CMP2_MODE0]	= 0x9c,
-	[QPHY_COM_LOCK_CMP1_MODE1]	= 0xa4,
-	[QPHY_COM_LOCK_CMP2_MODE1]	= 0xa8,
-	[QPHY_COM_DEC_START_MODE0]	= 0xb0,
-	[QPHY_COM_DEC_START_MODE1]	= 0xb4,
-	[QPHY_COM_INTEGLOOP_GAIN0_MODE0]	= 0xd8,
-	[QPHY_COM_INTEGLOOP_GAIN1_MODE0]	= 0xdc,
-	[QPHY_COM_INTEGLOOP_GAIN0_MODE1]	= 0xe0,
-	[QPHY_COM_INTEGLOOP_GAIN1_MODE1]	= 0xe4,
-	[QPHY_COM_VCO_TUNE_CTRL]		= 0xec,
-	[QPHY_COM_VCO_TUNE_MAP]		= 0xf0,
-	[QPHY_COM_VCO_TUNE1_MODE1]	= 0xfc,
-	[QPHY_COM_VCO_TUNE1_MODE0]	= 0xf4,
-	[QPHY_COM_VCO_TUNE2_MODE0]	= 0xf8,
-	[QPHY_COM_VCO_TUNE2_MODE1]	= 0x100,
-	[QPHY_COM_VCO_TUNE_INITVAL1]	= 0x104,
-	[QPHY_COM_VCO_TUNE_INITVAL2]	= 0x108,
-	[QPHY_COM_CLK_SELECT]		= 0x138,
-	[QPHY_COM_HSCLK_SEL]		= 0x13c,
-	[QPHY_COM_CORE_CLK_EN]		= 0x154,
-	[QPHY_COM_CMN_CONFIG]		= 0x15c,
-	[QPHY_COM_SVS_MODE_CLK_SEL]	= 0x164,
-	[QPHY_TX_LANE_MODE_1]		= 0x08c,
-	[QPHY_RX_UCDR_SVS_SO_GAIN_HALF]	= 0x24,
-	[QPHY_RX_UCDR_SVS_SO_GAIN_QUARTER]	= 0x28,
-	[QPHY_RX_UCDR_SVS_SO_GAIN]		= 0x2c,
-	[QPHY_RX_UCDR_FASTLOCK_FO_GAIN]	= 0x30,
-	[QPHY_RX_UCDR_SO_SATURATION_AND_ENABLE]	= 0x34,
-	[QPHY_RX_UCDR_FASTLOCK_COUNT_LOW]	= 0x3c,
-	[QPHY_RX_UCDR_PI_CONTROLS]	= 0x44,
-	[QPHY_RX_RX_TERM_BW]		= 0x7c,
-	[QPHY_RX_RX_EQ_GAIN2_LSB]	= 0xc8,
-	[QPHY_RX_RX_EQ_GAIN2_MSB]	= 0xcc,
-	[QPHY_RX_RX_EQU_ADAPTOR_CNTRL1]	= 0xd0,
-	[QPHY_RX_RX_EQU_ADAPTOR_CNTRL2]	= 0xd4,
-	[QPHY_RX_RX_EQU_ADAPTOR_CNTRL3]	= 0xd8,
-	[QPHY_RX_RX_EQU_ADAPTOR_CNTRL4]	= 0xdc,
-	[QPHY_RX_SIGDET_CNTRL]		= 0x104,
-	[QPHY_RX_SIGDET_LVL]		= 0x108,
-	[QPHY_RX_SIGDET_DEGLITCH_CNTRL]	= 0x10c,
-	[QPHY_RX_RX_INTERFACE_MODE]	= 0x11c,
-	[QPHY_MULTI_LANE_CTRL1]		= 0x1c4,
-	[QPHY_START_CTRL]		= 0x00,
-	[QPHY_PCS_READY_STATUS]		= 0x168,
 };
 
 static const struct qmp_phy_init_tbl msm8996_pcie_serdes_tbl[] = {
@@ -577,74 +467,6 @@ static const struct qmp_phy_init_tbl ipq8074_pcie_pcs_tbl[] = {
 	QMP_PHY_INIT_CFG_L(QPHY_START_CTRL, 0x3),
 };
 
-static const struct qmp_phy_init_tbl ufsphy_serdes_tbl[] = {
-	QMP_PHY_INIT_CFG_L(QPHY_COM_CMN_CONFIG, 0x06),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_SYSCLK_EN_SEL, 0xd5),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_RESETSM_CNTRL, 0x20),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_CLK_SELECT, 0x30),
-	QMP_PHY_INIT_CFG(QSERDES_COM_SYS_CLK_CTRL, 0x02),
-	QMP_PHY_INIT_CFG(QSERDES_COM_BG_TIMER, 0x0a),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_HSCLK_SEL, 0x00),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_LOCK_CMP_EN, 0x01),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE_CTRL, 0x00),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_CORE_CLK_EN, 0x00),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE_MAP, 0x04),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_SVS_MODE_CLK_SEL, 0x05),
-	QMP_PHY_INIT_CFG(QSERDES_COM_PLL_IVCO, 0x0f),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE_INITVAL1, 0xff),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE_INITVAL2, 0x00),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_DEC_START_MODE0, 0x82),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_CP_CTRL_MODE0, 0x06),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_PLL_RCTRL_MODE0, 0x16),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_PLL_CCTRL_MODE0, 0x36),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_INTEGLOOP_GAIN0_MODE0, 0x3f),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_INTEGLOOP_GAIN1_MODE0, 0x00),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE1_MODE0, 0xda),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE2_MODE0, 0x01),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_LOCK_CMP1_MODE0, 0xff),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_LOCK_CMP2_MODE0, 0x0c),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_DEC_START_MODE1, 0x98),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_CP_CTRL_MODE1, 0x06),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_PLL_RCTRL_MODE1, 0x16),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_PLL_CCTRL_MODE1, 0x36),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_INTEGLOOP_GAIN0_MODE1, 0x3f),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_INTEGLOOP_GAIN1_MODE1, 0x00),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE1_MODE1, 0xc1),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE2_MODE1, 0x00),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_LOCK_CMP1_MODE1, 0x32),
-	QMP_PHY_INIT_CFG_L(QPHY_COM_LOCK_CMP2_MODE1, 0x0f),
-
-	/*Rate B*/
-	QMP_PHY_INIT_CFG_L(QPHY_COM_VCO_TUNE_MAP, 0x44),
-};
-
-static const struct qmp_phy_init_tbl ufsphy_tx_tbl[] = {
-	QMP_PHY_INIT_CFG_L(QPHY_TX_LANE_MODE_1, 0x06),
-};
-
-static const struct qmp_phy_init_tbl ufsphy_rx_tbl[] = {
-	QMP_PHY_INIT_CFG_L(QPHY_RX_SIGDET_LVL, 0x24),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_SIGDET_CNTRL, 0x0f),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_SIGDET_DEGLITCH_CNTRL, 0x1e),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_RX_INTERFACE_MODE, 0x40),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_UCDR_FASTLOCK_FO_GAIN, 0x0b),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_RX_TERM_BW, 0x5b),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_RX_EQU_ADAPTOR_CNTRL2, 0x06),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_RX_EQU_ADAPTOR_CNTRL3, 0x04),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_RX_EQU_ADAPTOR_CNTRL4, 0x1d),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_UCDR_SVS_SO_GAIN_HALF, 0x04),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_UCDR_SVS_SO_GAIN_QUARTER, 0x04),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_UCDR_SVS_SO_GAIN, 0x04),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_UCDR_SO_SATURATION_AND_ENABLE, 0x4b),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_UCDR_PI_CONTROLS, 0x81),
-	QMP_PHY_INIT_CFG_L(QPHY_RX_UCDR_FASTLOCK_COUNT_LOW, 0x80),
-};
-
-static const struct qmp_phy_init_tbl ufsphy_pcs_tbl[] = {
-	QMP_PHY_INIT_CFG(QPHY_POWER_DOWN_CONTROL, 0x01),
-	QMP_PHY_INIT_CFG_L(QPHY_MULTI_LANE_CTRL1, 0x02),
-};
-
 /* struct qmp_phy_cfg - per-PHY initialization config */
 struct qmp_phy_cfg {
 	/* phy-type - PCIE/UFS/USB */
@@ -689,8 +511,6 @@ struct qmp_phy_cfg {
 	/* power_down delay in usec */
 	int pwrdn_delay_min;
 	int pwrdn_delay_max;
-	/* true, if PCS block has a separate SW_RESET register */
-	bool has_sw_rst;
 };
 
 /**
@@ -775,10 +595,6 @@ static const char * const msm8996_phy_clk_l[] = {
 	"aux", "cfg_ahb", "ref",
 };
 
-static const char * const sdm845_ufs_phy_clk_l[] = {
-	"ref_clk_src", "ref_clk", "ref_aux_clk",
-};
-
 /* list of resets */
 static const char * const msm8996_pciephy_reset_l[] = {
 	"phy", "common", "cfg",
@@ -822,7 +638,6 @@ static const struct qmp_phy_cfg msm8996_pciephy_cfg = {
 	.has_pwrdn_delay	= true,
 	.pwrdn_delay_min	= POWER_DOWN_DELAY_US_MIN,
 	.pwrdn_delay_max	= POWER_DOWN_DELAY_US_MAX,
-	.has_sw_rst		= true,
 };
 
 static const struct qmp_phy_cfg msm8996_usb3phy_cfg = {
@@ -848,30 +663,6 @@ static const struct qmp_phy_cfg msm8996_usb3phy_cfg = {
 	.start_ctrl		= SERDES_START | PCS_START,
 	.pwrdn_ctrl		= SW_PWRDN,
 	.mask_pcs_ready		= PHYSTATUS,
-	.has_sw_rst		= true,
-};
-
-static const struct qmp_phy_cfg sdm845_ufsphy_cfg = {
-	.type			= PHY_TYPE_UFS,
-	.nlanes			= 2,
-
-	.serdes_tbl		= ufsphy_serdes_tbl,
-	.serdes_tbl_num		= ARRAY_SIZE(ufsphy_serdes_tbl),
-	.tx_tbl			= ufsphy_tx_tbl,
-	.tx_tbl_num		= ARRAY_SIZE(ufsphy_tx_tbl),
-	.rx_tbl			= ufsphy_rx_tbl,
-	.rx_tbl_num		= ARRAY_SIZE(ufsphy_rx_tbl),
-	.pcs_tbl		= ufsphy_pcs_tbl,
-	.pcs_tbl_num		= ARRAY_SIZE(ufsphy_pcs_tbl),
-	.clk_list		= sdm845_ufs_phy_clk_l,
-	.num_clks		= ARRAY_SIZE(sdm845_ufs_phy_clk_l),
-	.vreg_list		= msm8996_phy_vreg_l,
-	.num_vregs		= ARRAY_SIZE(msm8996_phy_vreg_l),
-	.regs			= ufsphy_regs_layout,
-
-	.start_ctrl		= SERDES_START,
-	.pwrdn_ctrl		= SW_PWRDN,
-	.mask_pcs_ready		= PCS_READY,
 };
 
 /* list of resets */
@@ -1000,9 +791,7 @@ static int qcom_qmp_phy_com_init(struct qcom_qmp *qmp)
 		void __iomem *status;
 		unsigned int mask, val;
 
-		if (cfg->has_sw_rst)
-			qphy_clrbits(serdes, cfg->regs[QPHY_COM_SW_RESET],
-				     SW_RESET);
+		qphy_clrbits(serdes, cfg->regs[QPHY_COM_SW_RESET], SW_RESET);
 		qphy_setbits(serdes, cfg->regs[QPHY_COM_START_CONTROL],
 			     SERDES_START | PCS_START);
 
@@ -1045,8 +834,7 @@ static int qcom_qmp_phy_com_exit(struct qcom_qmp *qmp)
 	if (cfg->has_phy_com_ctrl) {
 		qphy_setbits(serdes, cfg->regs[QPHY_COM_START_CONTROL],
 			     SERDES_START | PCS_START);
-		if (cfg->has_sw_rst)
-			qphy_clrbits(serdes, cfg->regs[QPHY_COM_SW_RESET],
+		qphy_clrbits(serdes, cfg->regs[QPHY_COM_SW_RESET],
 			     SW_RESET);
 		qphy_setbits(serdes, cfg->regs[QPHY_COM_POWER_DOWN_CONTROL],
 			     SW_PWRDN);
@@ -1115,8 +903,7 @@ static int qcom_qmp_phy_init(struct phy *phy)
 	qphy_setbits(pcs, cfg->regs[QPHY_START_CTRL], cfg->start_ctrl);
 
 	/* Pull PHY out of reset state */
-	if (cfg->has_sw_rst)
-		qphy_clrbits(pcs, cfg->regs[QPHY_SW_RESET], SW_RESET);
+	qphy_clrbits(pcs, cfg->regs[QPHY_SW_RESET], SW_RESET);
 
 	status = pcs + cfg->regs[QPHY_PCS_READY_STATUS];
 	mask = cfg->mask_pcs_ready;
@@ -1150,8 +937,7 @@ static int qcom_qmp_phy_exit(struct phy *phy)
 	int i = cfg->num_clks;
 
 	/* PHY reset */
-	if (cfg->has_sw_rst)
-		qphy_setbits(qphy->pcs, cfg->regs[QPHY_SW_RESET], SW_RESET);
+	qphy_setbits(qphy->pcs, cfg->regs[QPHY_SW_RESET], SW_RESET);
 
 	/* stop SerDes and Phy-Coding-Sublayer */
 	qphy_clrbits(qphy->pcs, cfg->regs[QPHY_START_CTRL], cfg->start_ctrl);
@@ -1383,9 +1169,6 @@ static const struct of_device_id qcom_qmp_phy_of_match_table[] = {
 	}, {
 		.compatible = "qcom,ipq8074-qmp-pcie-phy",
 		.data = &ipq8074_pciephy_cfg,
-	}, {
-		.compatible = "qcom,sdm845-qmp-ufs-phy",
-		.data = &sdm845_ufsphy_cfg,
 	},
 	{ },
 };
