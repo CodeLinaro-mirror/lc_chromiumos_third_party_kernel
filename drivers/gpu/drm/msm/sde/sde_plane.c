@@ -4713,7 +4713,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	psde->pipe = pipe;
 	psde->is_virtual = (master_plane_id != 0);
 	INIT_LIST_HEAD(&psde->mplane_list);
-	master_plane = drm_plane_find(dev, master_plane_id);
+	master_plane = drm_plane_find(dev, NULL, master_plane_id);
 	if (master_plane) {
 		struct sde_plane *mpsde = to_sde_plane(master_plane);
 

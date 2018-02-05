@@ -489,7 +489,7 @@ int sde_wb_config(struct drm_device *drm_dev, void *data,
 
 	priv = drm_dev->dev_private;
 
-	connector = drm_connector_lookup(drm_dev, connector_id);
+	connector = drm_connector_lookup(drm_dev, NULL, connector_id);
 	if (!connector) {
 		SDE_ERROR("failed to find connector\n");
 		rc = -ENOENT;
