@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,19 +11,11 @@
  * GNU General Public License for more details.
  */
 
-#define pr_fmt(fmt) "clk: %s: " fmt, __func__
-
-#include <linux/kernel.h>
-#include <linux/bitops.h>
-#include <linux/err.h>
-#include <linux/platform_device.h>
-#include <linux/module.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
-#include <linux/clk-provider.h>
-#include <linux/regmap.h>
-#include <linux/reset-controller.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
+#include <linux/module.h>
+#include <linux/platform_device.h>
+#include <linux/regmap.h>
 #include <dt-bindings/clock/qcom,gpucc-sdm845.h>
 
 #include "common.h"
@@ -31,16 +23,25 @@
 #include "clk-pll.h"
 #include "clk-rcg.h"
 #include "clk-branch.h"
-#include "reset.h"
 #include "clk-alpha-pll.h"
 #include "gdsc.h"
+#include "reset.h"
 
 #define CX_GMU_CBCR_SLEEP_MASK		0xF
 #define CX_GMU_CBCR_SLEEP_SHIFT		4
 #define CX_GMU_CBCR_WAKE_MASK		0xF
 #define CX_GMU_CBCR_WAKE_SHIFT		8
+#define CXO_FREQUENCY			19200000
 
 #define F(f, s, h, m, n) { (f), (s), (2 * (h) - 1), (m), (n) }
+
+static struct freq_tbl cxo_safe_src_f = {
+	.freq = CXO_FREQUENCY,
+	.src = 0,
+	.pre_div = 1,
+	.m = 0,
+	.n = 0,
+};
 
 enum {
 	P_BI_TCXO,
@@ -114,32 +115,25 @@ static const char * const gpu_cc_parent_names_2[] = {
 	"core_bi_pll_test_se",
 };
 
-static struct pll_vco fabia_vco[] = {
-	{ 249600000, 2000000000, 0 },
-	{ 125000000, 1000000000, 1 },
-};
-
 static const struct alpha_pll_config gpu_cc_pll0_config = {
 	.l = 0x1d,
-	.frac = 0x2aaa,
+	.alpha = 0x2aaa,
 };
 
 static const struct alpha_pll_config gpu_cc_pll1_config = {
 	.l = 0x1a,
-	.frac = 0xaaaa,
+	.alpha = 0xaaaa,
 };
 
 static struct clk_alpha_pll gpu_cc_pll0 = {
 	.offset = 0x0,
-	.vco_table = fabia_vco,
-	.num_vco = ARRAY_SIZE(fabia_vco),
-	.pll_type = CLK_ALPHA_PLL_TYPE_FABIA,
+	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
 	.clkr = {
 		.hw.init = &(struct clk_init_data){
 			.name = "gpu_cc_pll0",
 			.parent_names = (const char *[]){ "bi_tcxo" },
 			.num_parents = 1,
-			.ops = &clk_fabia_fixed_pll_ops,
+			.ops = &clk_alpha_pll_fabia_ops,
 		},
 	},
 };
@@ -147,8 +141,6 @@ static struct clk_alpha_pll gpu_cc_pll0 = {
 static const struct clk_div_table post_div_table_fabia_even[] = {
 	{ 0x0, 1 },
 	{ 0x1, 2 },
-	{ 0x3, 4 },
-	{ 0x7, 8 },
 	{},
 };
 
@@ -158,26 +150,25 @@ static struct clk_alpha_pll_postdiv gpu_cc_pll0_out_even = {
 	.post_div_table = post_div_table_fabia_even,
 	.num_post_div = ARRAY_SIZE(post_div_table_fabia_even),
 	.width = 4,
+	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "gpu_cc_pll0_out_even",
 		.parent_names = (const char *[]){ "gpu_cc_pll0" },
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
-		.ops = &clk_fabia_pll_postdiv_ops,
+		.ops = &clk_alpha_pll_postdiv_fabia_ops,
 	},
 };
 
 static struct clk_alpha_pll gpu_cc_pll1 = {
 	.offset = 0x100,
-	.vco_table = fabia_vco,
-	.num_vco = ARRAY_SIZE(fabia_vco),
-	.pll_type = CLK_ALPHA_PLL_TYPE_FABIA,
+	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
 	.clkr = {
 		.hw.init = &(struct clk_init_data){
 			.name = "gpu_cc_pll1",
 			.parent_names = (const char *[]){ "bi_tcxo" },
 			.num_parents = 1,
-			.ops = &clk_fabia_fixed_pll_ops,
+			.ops = &clk_alpha_pll_fabia_ops,
 		},
 	},
 };
@@ -185,36 +176,22 @@ static struct clk_alpha_pll gpu_cc_pll1 = {
 static const struct freq_tbl ftbl_gpu_cc_gmu_clk_src[] = {
 	F(19200000, P_BI_TCXO, 1, 0, 0),
 	F(200000000, P_GPLL0_OUT_MAIN_DIV, 1.5, 0, 0),
-	F(400000000, P_GPLL0_OUT_MAIN, 1.5, 0, 0),
-	{ }
-};
-
-static const struct freq_tbl ftbl_gpu_cc_gmu_clk_src_sdm845_v2[] = {
-	F(19200000, P_BI_TCXO, 1, 0, 0),
-	F(200000000, P_GPLL0_OUT_MAIN_DIV, 1.5, 0, 0),
 	F(500000000, P_GPU_CC_PLL1_OUT_MAIN, 1, 0, 0),
 	{ }
 };
-
-static const struct freq_tbl ftbl_gpu_cc_gmu_clk_src_sdm670[] = {
-	F(19200000, P_BI_TCXO, 1, 0, 0),
-	F(200000000, P_GPLL0_OUT_MAIN_DIV, 1.5, 0, 0),
-	{ }
-};
-
 static struct clk_rcg2 gpu_cc_gmu_clk_src = {
 	.cmd_rcgr = 0x1120,
 	.mnd_width = 0,
 	.hid_width = 5,
-	//.enable_safe_config = true,
 	.parent_map = gpu_cc_parent_map_0,
 	.freq_tbl = ftbl_gpu_cc_gmu_clk_src,
+	.safe_src_freq_tbl = &cxo_safe_src_f,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "gpu_cc_gmu_clk_src",
 		.parent_names = gpu_cc_parent_names_0,
 		.num_parents = 6,
 		.flags = CLK_SET_RATE_PARENT,
-		.ops = &clk_rcg2_ops,
+		.ops = &clk_rcg2_shared_ops,
 	},
 };
 
@@ -231,18 +208,6 @@ static struct clk_fixed_factor crc_div = {
 };
 
 static const struct freq_tbl ftbl_gpu_cc_gx_gfx3d_clk_src[] = {
-	F(147000000, P_CRC_DIV,  1, 0, 0),
-	F(210000000, P_CRC_DIV,  1, 0, 0),
-	F(280000000, P_CRC_DIV,  1, 0, 0),
-	F(338000000, P_CRC_DIV,  1, 0, 0),
-	F(425000000, P_CRC_DIV,  1, 0, 0),
-	F(487000000, P_CRC_DIV,  1, 0, 0),
-	F(548000000, P_CRC_DIV,  1, 0, 0),
-	F(600000000, P_CRC_DIV,  1, 0, 0),
-	{ }
-};
-
-static const struct freq_tbl  ftbl_gpu_cc_gx_gfx3d_clk_src_sdm845_v2[] = {
 	F(180000000, P_CRC_DIV,  1, 0, 0),
 	F(257000000, P_CRC_DIV,  1, 0, 0),
 	F(342000000, P_CRC_DIV,  1, 0, 0),
@@ -254,25 +219,13 @@ static const struct freq_tbl  ftbl_gpu_cc_gx_gfx3d_clk_src_sdm845_v2[] = {
 	{ }
 };
 
-static const struct freq_tbl ftbl_gpu_cc_gx_gfx3d_clk_src_sdm670[] = {
-	F(180000000, P_CRC_DIV,  1, 0, 0),
-	F(267000000, P_CRC_DIV,  1, 0, 0),
-	F(355000000, P_CRC_DIV,  1, 0, 0),
-	F(430000000, P_CRC_DIV,  1, 0, 0),
-	F(565000000, P_CRC_DIV,  1, 0, 0),
-	F(650000000, P_CRC_DIV,  1, 0, 0),
-	F(700000000, P_CRC_DIV,  1, 0, 0),
-	F(750000000, P_CRC_DIV,  1, 0, 0),
-	F(780000000, P_CRC_DIV,  1, 0, 0),
-	{ }
-};
-
 static struct clk_rcg2 gpu_cc_gx_gfx3d_clk_src = {
 	.cmd_rcgr = 0x101c,
 	.mnd_width = 0,
 	.hid_width = 5,
 	.parent_map = gpu_cc_parent_map_2,
 	.freq_tbl = ftbl_gpu_cc_gx_gfx3d_clk_src,
+	.safe_src_freq_tbl = &cxo_safe_src_f,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "gpu_cc_gx_gfx3d_clk_src",
 		.parent_names = gpu_cc_parent_names_2,
@@ -493,7 +446,7 @@ static struct gdsc gpu_cx_gdsc = {
 	.gdscr = 0x106c,
 	.gds_hw_ctrl = 0x1540,
 	.pd = {
-		.name = "gpu_cx",
+		.name = "gpu_cx_gdsc",
 	},
 	.pwrsts = PWRSTS_OFF_ON,
 	.flags = VOTABLE,
@@ -501,10 +454,16 @@ static struct gdsc gpu_cx_gdsc = {
 
 static struct gdsc gpu_gx_gdsc = {
 	.gdscr = 0x100c,
+	.rcgs = (unsigned int []){ 0x101c },
+	.rcg_count = 1,
+	.clamp_io_ctrl = 0x1508,
 	.pd = {
-		.name = "gpu_gx",
+		.name = "gpu_gx_gdsc",
 	},
+	.resets = (unsigned int []){ GPUCC_GPU_CC_GX_BCR },
+	.reset_count = 1,
 	.pwrsts = PWRSTS_OFF_ON,
+	.flags = CLAMP_IO | RESET_AON | SW_RESET | FORCE_ROOT_ENABLE,
 };
 
 static struct clk_regmap *gpu_cc_sdm845_clocks[] = {
@@ -523,7 +482,7 @@ static struct clk_regmap *gpu_cc_sdm845_clocks[] = {
 	[GPU_CC_GX_VSENSE_CLK] = &gpu_cc_gx_vsense_clk.clkr,
 	[GPU_CC_PLL_TEST_CLK] = &gpu_cc_pll_test_clk.clkr,
 	[GPU_CC_PLL0] = &gpu_cc_pll0.clkr,
-	[GPU_CC_PLL1] = NULL,
+	[GPU_CC_PLL1] = &gpu_cc_pll1.clkr,
 };
 
 static struct clk_regmap *gpu_cc_gfx_sdm845_clocks[] = {
@@ -532,19 +491,13 @@ static struct clk_regmap *gpu_cc_gfx_sdm845_clocks[] = {
 	[GPU_CC_GX_GFX3D_CLK] = &gpu_cc_gx_gfx3d_clk.clkr,
 };
 
-static struct gdsc *gpucc_sdm845_gdscs[] = {
-	[GPU_CX_GDSC] = &gpu_cx_gdsc,
-	[GPU_GX_GDSC] = &gpu_gx_gdsc,
+static const struct qcom_reset_map gpu_cc_sdm845_resets[] = {
+	[GPUCC_GPU_CC_GX_BCR] = { 0x1008 },
 };
 
-static const struct qcom_reset_map gpu_cc_sdm845_resets[] = {
-	[GPUCC_GPU_CC_ACD_BCR] = { 0x1160 },
-	[GPUCC_GPU_CC_CX_BCR] = { 0x1068 },
-	[GPUCC_GPU_CC_GFX3D_AON_BCR] = { 0x10a0 },
-	[GPUCC_GPU_CC_GMU_BCR] = { 0x111c },
-	[GPUCC_GPU_CC_GX_BCR] = { 0x1008 },
-	[GPUCC_GPU_CC_SPDM_BCR] = { 0x1110 },
-	[GPUCC_GPU_CC_XO_BCR] = { 0x1000 },
+static struct gdsc *gpu_cc_sdm845_gdscs[] = {
+	[GPU_CX_GDSC] = &gpu_cx_gdsc,
+	[GPU_GX_GDSC] = &gpu_gx_gdsc,
 };
 
 static const struct regmap_config gpu_cc_sdm845_regmap_config = {
@@ -561,8 +514,8 @@ static const struct qcom_cc_desc gpu_cc_sdm845_desc = {
 	.num_clks = ARRAY_SIZE(gpu_cc_sdm845_clocks),
 	.resets = gpu_cc_sdm845_resets,
 	.num_resets = ARRAY_SIZE(gpu_cc_sdm845_resets),
-	.gdscs = gpucc_sdm845_gdscs,
-	.num_gdscs = ARRAY_SIZE(gpucc_sdm845_gdscs),
+	.gdscs = gpu_cc_sdm845_gdscs,
+	.num_gdscs = ARRAY_SIZE(gpu_cc_sdm845_gdscs),
 };
 
 static const struct qcom_cc_desc gpu_cc_gfx_sdm845_desc = {
@@ -573,82 +526,15 @@ static const struct qcom_cc_desc gpu_cc_gfx_sdm845_desc = {
 
 static const struct of_device_id gpu_cc_sdm845_match_table[] = {
 	{ .compatible = "qcom,gpucc-sdm845" },
-	{ .compatible = "qcom,gpucc-sdm845-v2" },
-	{ .compatible = "qcom,gpucc-sdm670" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, gpu_cc_sdm845_match_table);
 
 static const struct of_device_id gpu_cc_gfx_sdm845_match_table[] = {
 	{ .compatible = "qcom,gfxcc-sdm845" },
-	{ .compatible = "qcom,gfxcc-sdm845-v2" },
-	{ .compatible = "qcom,gfxcc-sdm670" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, gpu_cc_gfx_sdm845_match_table);
-
-static void gpu_cc_sdm845_fixup_sdm845v2(struct regmap *regmap)
-{
-	gpu_cc_sdm845_clocks[GPU_CC_PLL1] = &gpu_cc_pll1.clkr;
-	clk_fabia_pll_configure(&gpu_cc_pll1, regmap, &gpu_cc_pll1_config);
-
-	gpu_cc_gmu_clk_src.freq_tbl = ftbl_gpu_cc_gmu_clk_src_sdm845_v2;
-}
-
-static void gpu_cc_sdm845_fixup_sdm670(struct regmap *regmap)
-{
-	gpu_cc_sdm845_clocks[GPU_CC_PLL1] = &gpu_cc_pll1.clkr;
-	clk_fabia_pll_configure(&gpu_cc_pll1, regmap, &gpu_cc_pll1_config);
-
-	gpu_cc_gmu_clk_src.freq_tbl = ftbl_gpu_cc_gmu_clk_src_sdm670;
-}
-
-static void gpu_cc_gfx_sdm845_fixup_sdm845v2(void)
-{
-	gpu_cc_gx_gfx3d_clk_src.freq_tbl =
-				ftbl_gpu_cc_gx_gfx3d_clk_src_sdm845_v2;
-}
-
-static void gpu_cc_gfx_sdm845_fixup_sdm670(void)
-{
-	gpu_cc_gx_gfx3d_clk_src.freq_tbl =
-				ftbl_gpu_cc_gx_gfx3d_clk_src_sdm670;
-}
-
-static int gpu_cc_gfx_sdm845_fixup(struct platform_device *pdev)
-{
-	const char *compat = NULL;
-	int compatlen = 0;
-
-	compat = of_get_property(pdev->dev.of_node, "compatible", &compatlen);
-	if (!compat || (compatlen <= 0))
-		return -EINVAL;
-
-	if (!strcmp(compat, "qcom,gfxcc-sdm845-v2"))
-		gpu_cc_gfx_sdm845_fixup_sdm845v2();
-	else if (!strcmp(compat, "qcom,gfxcc-sdm670"))
-		gpu_cc_gfx_sdm845_fixup_sdm670();
-
-	return 0;
-}
-
-static int gpu_cc_sdm845_fixup(struct platform_device *pdev,
-					struct regmap *regmap)
-{
-	const char *compat = NULL;
-	int compatlen = 0;
-
-	compat = of_get_property(pdev->dev.of_node, "compatible", &compatlen);
-	if (!compat || (compatlen <= 0))
-		return -EINVAL;
-
-	if (!strcmp(compat, "qcom,gpucc-sdm845-v2"))
-		gpu_cc_sdm845_fixup_sdm845v2(regmap);
-	else if (!strcmp(compat, "qcom,gpucc-sdm670"))
-		gpu_cc_sdm845_fixup_sdm670(regmap);
-
-	return 0;
-}
 
 static int gpu_cc_gfx_sdm845_probe(struct platform_device *pdev)
 {
@@ -659,13 +545,13 @@ static int gpu_cc_gfx_sdm845_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res == NULL) {
-		dev_err(&pdev->dev, "Failed to get resources for clock_gfxcc\n");
+		dev_err(&pdev->dev, "Failed to get resources for clock_gfxcc.\n");
 		return -EINVAL;
 	}
 
 	base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 	if (IS_ERR(base)) {
-		dev_err(&pdev->dev, "Failed to ioremap the GFX CC base\n");
+		dev_err(&pdev->dev, "Failed to ioremap the GFX CC base.\n");
 		return PTR_ERR(base);
 	}
 
@@ -683,21 +569,13 @@ static int gpu_cc_gfx_sdm845_probe(struct platform_device *pdev)
 		return PTR_ERR(regmap);
 	}
 
-	ret = gpu_cc_gfx_sdm845_fixup(pdev);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to do GFX clock fixup\n");
-		return ret;
-	}
-
-	clk_fabia_pll_configure(&gpu_cc_pll0, regmap, &gpu_cc_pll0_config);
-
 	ret = qcom_cc_really_probe(pdev, &gpu_cc_gfx_sdm845_desc, regmap);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register GFX CC clocks\n");
 		return ret;
 	}
 
-	dev_info(&pdev->dev, "Registered GFX CC clocks\n");
+	dev_info(&pdev->dev, "Registered GFX CC clocks.\n");
 
 	return ret;
 }
@@ -714,7 +592,7 @@ static int __init gpu_cc_gfx_sdm845_init(void)
 {
 	return platform_driver_register(&gpu_cc_gfx_sdm845_driver);
 }
-subsys_initcall(gpu_cc_gfx_sdm845_init);
+fs_initcall(gpu_cc_gfx_sdm845_init);
 
 static void __exit gpu_cc_gfx_sdm845_exit(void)
 {
@@ -732,11 +610,9 @@ static int gpu_cc_sdm845_probe(struct platform_device *pdev)
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
 
-	ret = gpu_cc_sdm845_fixup(pdev, regmap);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to do GPU CC clock fixup\n");
-		return ret;
-	}
+	clk_fabia_pll_configure(&gpu_cc_pll0, regmap, &gpu_cc_pll0_config);
+	clk_fabia_pll_configure(&gpu_cc_pll1, regmap, &gpu_cc_pll1_config);
+
 
 	ret = qcom_cc_really_probe(pdev, &gpu_cc_sdm845_desc, regmap);
 	if (ret) {
@@ -758,7 +634,7 @@ static int gpu_cc_sdm845_probe(struct platform_device *pdev)
 static struct platform_driver gpu_cc_sdm845_driver = {
 	.probe = gpu_cc_sdm845_probe,
 	.driver = {
-		.name = "gpu_cc-sdm845",
+		.name = "gpucc-sdm845",
 		.of_match_table = gpu_cc_sdm845_match_table,
 	},
 };
@@ -775,6 +651,5 @@ static void __exit gpu_cc_sdm845_exit(void)
 }
 module_exit(gpu_cc_sdm845_exit);
 
-MODULE_DESCRIPTION("QTI GPU_CC SDM845 Driver");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:gpu_cc-sdm845");
+MODULE_ALIAS("platform:gpucc-sdm845");

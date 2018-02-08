@@ -38,10 +38,17 @@
 #include "gdsc.h"
 
 #define DISP_CC_MISC_CMD	0x8000
+#define CXO_FREQUENCY		19200000
 
 #define F(f, s, h, m, n) { (f), (s), (2 * (h) - 1), (m), (n) }
-#define F_SLEW(f, s, h, m, n, src_freq) { (f), (s), (2 * (h) - 1), (m), (n), \
-					(src_freq) }
+
+static struct freq_tbl cxo_safe_src_f = {
+	.freq = CXO_FREQUENCY,
+	.src = 0,
+	.pre_div = 1,
+	.m = 0,
+	.n = 0,
+};
 
 enum {
 	P_BI_TCXO,
@@ -131,26 +138,21 @@ static struct pll_vco fabia_vco[] = {
 };
 
 static const struct alpha_pll_config disp_cc_pll0_config = {
-	.l = 0x15,
-	.frac = 0x7c00,
-};
-
-static const struct alpha_pll_config disp_cc_pll0_config_v2 = {
 	.l = 0x2c,
-	.frac = 0xcaaa,
+	.alpha = 0xcaaa,
 };
 
 static struct clk_alpha_pll disp_cc_pll0 = {
 	.offset = 0x0,
 	.vco_table = fabia_vco,
 	.num_vco = ARRAY_SIZE(fabia_vco),
-	.pll_type = CLK_ALPHA_PLL_TYPE_FABIA,
+	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_FABIA],
 	.clkr = {
 		.hw.init = &(struct clk_init_data){
 			.name = "disp_cc_pll0",
 			.parent_names = (const char *[]){ "bi_tcxo" },
 			.num_parents = 1,
-			.ops = &clk_fabia_fixed_pll_ops,
+			.ops = &clk_alpha_pll_fabia_ops,
 		},
 	},
 };
@@ -317,19 +319,6 @@ static const struct freq_tbl ftbl_disp_cc_mdss_mdp_clk_src[] = {
 	F(85714286, P_GPLL0_OUT_MAIN, 7, 0, 0),
 	F(100000000, P_GPLL0_OUT_MAIN, 6, 0, 0),
 	F(150000000, P_GPLL0_OUT_MAIN, 4, 0, 0),
-	F(165000000, P_DISP_CC_PLL0_OUT_MAIN, 2.5, 0, 0),
-	F(200000000, P_GPLL0_OUT_MAIN, 3, 0, 0),
-	F(275000000, P_DISP_CC_PLL0_OUT_MAIN, 1.5, 0, 0),
-	F(300000000, P_GPLL0_OUT_MAIN, 2, 0, 0),
-	F(412500000, P_DISP_CC_PLL0_OUT_MAIN, 1, 0, 0),
-	{ }
-};
-
-static const struct freq_tbl ftbl_disp_cc_mdss_mdp_clk_src_sdm845_v2[] = {
-	F(19200000, P_BI_TCXO, 1, 0, 0),
-	F(85714286, P_GPLL0_OUT_MAIN, 7, 0, 0),
-	F(100000000, P_GPLL0_OUT_MAIN, 6, 0, 0),
-	F(150000000, P_GPLL0_OUT_MAIN, 4, 0, 0),
 	F(171428571, P_GPLL0_OUT_MAIN, 3.5, 0, 0),
 	F(200000000, P_GPLL0_OUT_MAIN, 3, 0, 0),
 	F(300000000, P_GPLL0_OUT_MAIN, 2, 0, 0),
@@ -344,12 +333,13 @@ static struct clk_rcg2 disp_cc_mdss_mdp_clk_src = {
 	.hid_width = 5,
 	.parent_map = disp_cc_parent_map_3,
 	.freq_tbl = ftbl_disp_cc_mdss_mdp_clk_src,
+	.safe_src_freq_tbl = &cxo_safe_src_f,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "disp_cc_mdss_mdp_clk_src",
 		.parent_names = disp_cc_parent_names_3,
 		.num_parents = 5,
 		.flags = CLK_SET_RATE_PARENT,
-		.ops = &clk_rcg2_ops,
+		.ops = &clk_rcg2_shared_ops,
 	},
 };
 
@@ -383,14 +373,6 @@ static struct clk_rcg2 disp_cc_mdss_pclk1_clk_src = {
 
 static const struct freq_tbl ftbl_disp_cc_mdss_rot_clk_src[] = {
 	F(19200000, P_BI_TCXO, 1, 0, 0),
-	F(165000000, P_DISP_CC_PLL0_OUT_MAIN, 2.5, 0, 0),
-	F(300000000, P_GPLL0_OUT_MAIN, 2, 0, 0),
-	F(412500000, P_DISP_CC_PLL0_OUT_MAIN, 1, 0, 0),
-	{ }
-};
-
-static const struct freq_tbl ftbl_disp_cc_mdss_rot_clk_src_sdm845_v2[] = {
-	F(19200000, P_BI_TCXO, 1, 0, 0),
 	F(171428571, P_GPLL0_OUT_MAIN, 3.5, 0, 0),
 	F(300000000, P_GPLL0_OUT_MAIN, 2, 0, 0),
 	F(344000000, P_DISP_CC_PLL0_OUT_MAIN, 2.5, 0, 0),
@@ -404,12 +386,13 @@ static struct clk_rcg2 disp_cc_mdss_rot_clk_src = {
 	.hid_width = 5,
 	.parent_map = disp_cc_parent_map_3,
 	.freq_tbl = ftbl_disp_cc_mdss_rot_clk_src,
+	.safe_src_freq_tbl = &cxo_safe_src_f,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "disp_cc_mdss_rot_clk_src",
 		.parent_names = disp_cc_parent_names_3,
 		.num_parents = 5,
 		.flags = CLK_SET_RATE_PARENT,
-		.ops = &clk_rcg2_ops,
+		.ops = &clk_rcg2_shared_ops,
 	},
 };
 
@@ -869,12 +852,13 @@ static struct clk_branch disp_cc_mdss_vsync_clk = {
 	},
 };
 
-static struct gdsc mdss_core_gdsc = {
+static struct gdsc mdss_gdsc = {
 	.gdscr = 0x3000,
 	.pd = {
-		.name = "mdss_core_gdsc",
+		.name = "mdss_gdsc",
 	},
 	.pwrsts = PWRSTS_OFF_ON,
+	.flags = VOTABLE | HW_CTRL,
 };
 
 static struct clk_regmap *disp_cc_sdm845_clocks[] = {
@@ -926,12 +910,12 @@ static struct clk_regmap *disp_cc_sdm845_clocks[] = {
 	[DISP_CC_PLL0] = &disp_cc_pll0.clkr,
 };
 
-static struct gdsc *dispcc_sdm845_gdscs[] = {
-	[0] = &mdss_core_gdsc,
-};
-
 static const struct qcom_reset_map disp_cc_sdm845_resets[] = {
 	[DISP_CC_MDSS_RSCC_BCR] = { 0x5000 },
+};
+
+static struct gdsc *disp_cc_sdm845_gdscs[] = {
+	[MDSS_GDSC] = &mdss_gdsc,
 };
 
 static const struct regmap_config disp_cc_sdm845_regmap_config = {
@@ -948,42 +932,15 @@ static const struct qcom_cc_desc disp_cc_sdm845_desc = {
 	.num_clks = ARRAY_SIZE(disp_cc_sdm845_clocks),
 	.resets = disp_cc_sdm845_resets,
 	.num_resets = ARRAY_SIZE(disp_cc_sdm845_resets),
-	.gdscs = dispcc_sdm845_gdscs,
-	.num_gdscs = ARRAY_SIZE(dispcc_sdm845_gdscs),
+	.gdscs = disp_cc_sdm845_gdscs,
+	.num_gdscs = ARRAY_SIZE(disp_cc_sdm845_gdscs),
 };
 
 static const struct of_device_id disp_cc_sdm845_match_table[] = {
 	{ .compatible = "qcom,dispcc-sdm845" },
-	{ .compatible = "qcom,dispcc-sdm845-v2" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, disp_cc_sdm845_match_table);
-
-static void disp_cc_sdm845_fixup_sdm845v2(struct regmap *regmap)
-{
-	clk_fabia_pll_configure(&disp_cc_pll0, regmap,
-					&disp_cc_pll0_config_v2);
-	disp_cc_mdss_mdp_clk_src.freq_tbl =
-		ftbl_disp_cc_mdss_mdp_clk_src_sdm845_v2;
-	disp_cc_mdss_rot_clk_src.freq_tbl =
-		ftbl_disp_cc_mdss_rot_clk_src_sdm845_v2;
-}
-
-static int disp_cc_sdm845_fixup(struct platform_device *pdev,
-						struct regmap *regmap)
-{
-	const char *compat = NULL;
-	int compatlen = 0;
-
-	compat = of_get_property(pdev->dev.of_node, "compatible", &compatlen);
-	if (!compat || (compatlen <= 0))
-		return -EINVAL;
-
-	if (!strcmp(compat, "qcom,dispcc-sdm845-v2"))
-		disp_cc_sdm845_fixup_sdm845v2(regmap);
-
-	return 0;
-}
 
 static int disp_cc_sdm845_probe(struct platform_device *pdev)
 {
@@ -1000,10 +957,6 @@ static int disp_cc_sdm845_probe(struct platform_device *pdev)
 
 	/* Enable clock gating for DSI and MDP clocks */
 	regmap_update_bits(regmap, DISP_CC_MISC_CMD, 0x7f0, 0x7f0);
-
-	ret = disp_cc_sdm845_fixup(pdev, regmap);
-	if (ret)
-		return ret;
 
 	ret = qcom_cc_really_probe(pdev, &disp_cc_sdm845_desc, regmap);
 	if (ret) {
