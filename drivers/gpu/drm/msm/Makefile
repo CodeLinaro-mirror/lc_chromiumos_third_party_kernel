@@ -78,6 +78,13 @@ msm_drm-$(CONFIG_DRM_MSM_MDP5) += mdp/mdp_format.o \
 msm_drm-$(CONFIG_DRM_SDE_RSC) += sde_rsc.o \
 	sde_rsc_hw.o \
 
+msm_drm-$(CONFIG_DEBUG_FS) += adreno/a5xx_debugfs.o
+
+msm-$(CONFIG_DRM_FBDEV_EMULATION) += msm_fbdev.o
+msm-$(CONFIG_COMMON_CLK) += mdp/mdp4/mdp4_lvds_pll.o
+msm-$(CONFIG_COMMON_CLK) += hdmi/hdmi_pll_8960.o
+msm-$(CONFIG_COMMON_CLK) += hdmi/hdmi_phy_8996.o
+
 # use drm gpu driver only if qcom_kgsl driver not available
 ifneq ($(CONFIG_QCOM_KGSL),y)
 msm_drm-y += adreno/adreno_device.o \
