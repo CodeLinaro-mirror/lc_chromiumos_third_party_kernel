@@ -904,7 +904,12 @@ static int qcom_qmp_phy_poweron(struct phy *phy)
 {
 	struct qmp_phy *qphy = phy_get_drvdata(phy);
 	struct qcom_qmp *qmp = qphy->qmp;
+	const struct qmp_phy_cfg *cfg = qmp->cfg;
 	int ret;
+
+	/* Not needed for USB3 PHY as pipe_clk is enabled from phy_init */
+	if (cfg->type == PHY_TYPE_USB3)
+		return 0;
 
 	ret = clk_prepare_enable(qphy->pipe_clk);
 	if (ret)
@@ -1118,6 +1123,19 @@ static int qcom_qmp_phy_init(struct phy *phy)
 
 	status = pcs + cfg->regs[QPHY_PCS_READY_STATUS];
 	mask = cfg->mask_pcs_ready;
+
+	/* USB3 PHY requires pipe_clk for PLL lock and calibration */
+	if (cfg->type == PHY_TYPE_USB3) {
+		ret = clk_prepare_enable(qphy->pipe_clk);
+		if (ret)
+			dev_err(qmp->dev, "pipe_clk enable err=%d\n", ret);
+		/*
+		 * Ignore this error as pipe_clk might take some time to get
+		 * enabled. In any case following check for PHY PLL lock would
+		 * timeout below if there is a fatal error and clock is not fed
+		 * to PHY
+		 */
+	}
 
 	ret = readl_poll_timeout(status, val, !(val & mask), 1,
 				 PHY_INIT_COMPLETE_TIMEOUT);
