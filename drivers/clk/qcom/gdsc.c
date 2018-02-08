@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -31,6 +31,8 @@
 #define HW_CONTROL_MASK		BIT(1)
 #define SW_COLLAPSE_MASK	BIT(0)
 #define GMEM_CLAMP_IO_MASK	BIT(0)
+#define GMEM_RESET_MASK		BIT(4)
+#define ROOT_EN_MASK		BIT(1)
 
 /* Wait 2^n CXO cycles between all states. Here, n=2 (4 cycles). */
 #define EN_REST_WAIT_VAL	(0x2 << 20)
@@ -40,7 +42,7 @@
 #define RETAIN_MEM		BIT(14)
 #define RETAIN_PERIPH		BIT(13)
 
-#define TIMEOUT_US		100
+#define TIMEOUT_US		500
 
 #define domain_to_gdsc(domain) container_of(domain, struct gdsc, pd)
 
@@ -166,16 +168,46 @@ static inline void gdsc_assert_clamp_io(struct gdsc *sc)
 			   GMEM_CLAMP_IO_MASK, 1);
 }
 
+static inline void gdsc_assert_reset_aon(struct gdsc *sc)
+{
+	regmap_update_bits(sc->regmap, sc->clamp_io_ctrl,
+			   GMEM_RESET_MASK, 1);
+	udelay(1);
+	regmap_update_bits(sc->regmap, sc->clamp_io_ctrl,
+			   GMEM_RESET_MASK, 0);
+}
+
+static inline void gdsc_rcg_root_enable_set_clear(struct gdsc *sc, bool en)
+{
+	int i;
+	u32 val = en ? ROOT_EN_MASK : 0;
+
+	for (i = 0; i < sc->rcg_count; i++)
+		regmap_update_bits(sc->regmap, sc->rcgs[i], ROOT_EN_MASK, val);
+}
+
 static int gdsc_enable(struct generic_pm_domain *domain)
 {
 	struct gdsc *sc = domain_to_gdsc(domain);
 	int ret;
 
+	if (sc->flags & FORCE_ROOT_ENABLE)
+		gdsc_rcg_root_enable_set_clear(sc, true);
+
 	if (sc->pwrsts == PWRSTS_ON)
 		return gdsc_deassert_reset(sc);
 
-	if (sc->flags & CLAMP_IO)
+	if (sc->flags & SW_RESET) {
+		gdsc_assert_reset(sc);
+		udelay(1);
+		gdsc_deassert_reset(sc);
+	}
+
+	if (sc->flags & CLAMP_IO) {
+		if (sc->flags & RESET_AON)
+			gdsc_assert_reset_aon(sc);
 		gdsc_deassert_clamp_io(sc);
+	}
 
 	ret = gdsc_toggle_logic(sc, true);
 	if (ret)
@@ -209,6 +241,9 @@ static int gdsc_enable(struct generic_pm_domain *domain)
 		udelay(1);
 	}
 
+	if (sc->flags & FORCE_ROOT_ENABLE)
+		gdsc_rcg_root_enable_set_clear(sc, false);
+
 	return 0;
 }
 
@@ -216,6 +251,9 @@ static int gdsc_disable(struct generic_pm_domain *domain)
 {
 	struct gdsc *sc = domain_to_gdsc(domain);
 	int ret;
+
+	if (sc->flags & FORCE_ROOT_ENABLE)
+		gdsc_rcg_root_enable_set_clear(sc, true);
 
 	if (sc->pwrsts == PWRSTS_ON)
 		return gdsc_assert_reset(sc);
@@ -250,6 +288,9 @@ static int gdsc_disable(struct generic_pm_domain *domain)
 
 	if (sc->flags & CLAMP_IO)
 		gdsc_assert_clamp_io(sc);
+
+	if (sc->flags & FORCE_ROOT_ENABLE)
+		gdsc_rcg_root_enable_set_clear(sc, false);
 
 	return 0;
 }
