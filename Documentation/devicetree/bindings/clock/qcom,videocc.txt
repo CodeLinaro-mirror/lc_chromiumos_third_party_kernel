@@ -1,0 +1,21 @@
+Qualcomm Video Clock & Reset Controller Binding
+-----------------------------------------------
+
+Required properties :
+- compatible : shall contain "qcom,videocc-sdm845"
+- reg : shall contain base register location and length
+- reg-names: names of registers listed in the same order as in
+	     the reg property.
+- #clock-cells : shall contain 1
+- #reset-cells : shall contain 1
+- #power-domain-cells : shall contain 1
+
+Example:
+	clock_videocc: qcom,videocc@ab00000 {
+		compatible = "qcom,videocc-sdm845";
+		reg = <0xab00000 0x10000>;
+		reg-names = "cc_base";
+		#clock-cells = <1>;
+		#reset-cells = <1>;
+		#power-domain-cells = <1>;
+	};
