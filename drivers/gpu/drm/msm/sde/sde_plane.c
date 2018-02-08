@@ -4400,6 +4400,7 @@ static void sde_plane_reset(struct drm_plane *plane)
 			&pstate->property_state,
 			pstate->property_values);
 
+	pstate->base.rotation = DRM_MODE_ROTATE_0;
 	pstate->base.plane = plane;
 
 	plane->state = &pstate->base;
