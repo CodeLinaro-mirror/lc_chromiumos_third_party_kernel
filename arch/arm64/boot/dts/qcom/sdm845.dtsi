@@ -14,6 +14,7 @@
 #include <dt-bindings/clock/qcom,rpmh.h>
 #include <dt-bindings/clock/qcom,dispcc-sdm845.h>
 #include <dt-bindings/clock/qcom,gpucc-sdm845.h>
+#include <dt-bindings/clock/qcom,videocc-sdm845.h>
 #include <dt-bindings/clock/qcom,rpmh.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
@@ -437,7 +438,7 @@
 	};
 
 	clock_dispcc: qcom,dispcc@af00000 {
-		compatible = "qcom,dispcc-sdm845-v2", "syscon";
+		compatible = "qcom,dispcc-sdm845", "syscon";
 		reg = <0xaf00000 0x10000>;
 		reg-names = "cc_base";
 		#clock-cells = <1>;
@@ -460,6 +461,15 @@
 		reg-names = "cc_base";
 		#clock-cells = <1>;
 		#reset-cells = <1>;
+	};
+
+	clock_videocc: qcom,videocc@ab00000 {
+		compatible = "qcom,videocc-sdm845", "syscon";
+		reg = <0xab00000 0x10000>;
+		reg-names = "cc_base";
+		#clock-cells = <1>;
+		#reset-cells = <1>;
+		#power-domain-cells = <1>;
 	};
 
 	ufsphy_mem: ufsphy_mem@1d87000 {
