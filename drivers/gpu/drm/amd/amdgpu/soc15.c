@@ -101,7 +101,7 @@ static u32 soc15_pcie_rreg(struct amdgpu_device *adev, u32 reg)
 {
 	unsigned long flags, address, data;
 	u32 r;
-	struct nbio_pcie_index_data *nbio_pcie_id;
+	const struct nbio_pcie_index_data *nbio_pcie_id;
 
 	if (adev->flags & AMD_IS_APU)
 		nbio_pcie_id = &nbio_v7_0_pcie_index_data;
@@ -122,7 +122,7 @@ static u32 soc15_pcie_rreg(struct amdgpu_device *adev, u32 reg)
 static void soc15_pcie_wreg(struct amdgpu_device *adev, u32 reg, u32 v)
 {
 	unsigned long flags, address, data;
-	struct nbio_pcie_index_data *nbio_pcie_id;
+	const struct nbio_pcie_index_data *nbio_pcie_id;
 
 	if (adev->flags & AMD_IS_APU)
 		nbio_pcie_id = &nbio_v7_0_pcie_index_data;
@@ -532,6 +532,12 @@ int soc15_set_ip_blocks(struct amdgpu_device *adev)
 			amdgpu_ip_block_add(adev, &amdgpu_pp_ip_block);
 		if (adev->enable_virtual_display || amdgpu_sriov_vf(adev))
 			amdgpu_ip_block_add(adev, &dce_virtual_ip_block);
+#if defined(CONFIG_DRM_AMD_DC)
+		else if (amdgpu_device_has_dc_support(adev))
+			amdgpu_ip_block_add(adev, &dm_ip_block);
+#else
+#	warning "Enable CONFIG_DRM_AMD_DC for display support on SOC15."
+#endif
 		amdgpu_ip_block_add(adev, &gfx_v9_0_ip_block);
 		amdgpu_ip_block_add(adev, &sdma_v4_0_ip_block);
 		amdgpu_ip_block_add(adev, &uvd_v7_0_ip_block);
@@ -545,6 +551,12 @@ int soc15_set_ip_blocks(struct amdgpu_device *adev)
 		amdgpu_ip_block_add(adev, &amdgpu_pp_ip_block);
 		if (adev->enable_virtual_display || amdgpu_sriov_vf(adev))
 			amdgpu_ip_block_add(adev, &dce_virtual_ip_block);
+#if defined(CONFIG_DRM_AMD_DC)
+		else if (amdgpu_device_has_dc_support(adev))
+			amdgpu_ip_block_add(adev, &dm_ip_block);
+#else
+#	warning "Enable CONFIG_DRM_AMD_DC for display support on SOC15."
+#endif
 		amdgpu_ip_block_add(adev, &gfx_v9_0_ip_block);
 		amdgpu_ip_block_add(adev, &sdma_v4_0_ip_block);
 		amdgpu_ip_block_add(adev, &vcn_v1_0_ip_block);
@@ -600,21 +612,6 @@ static int soc15_common_early_init(void *handle)
 	if (amdgpu_get_ip_block(adev, AMD_IP_BLOCK_TYPE_PSP) &&
 		(amdgpu_ip_block_mask & (1 << AMD_IP_BLOCK_TYPE_PSP)))
 		psp_enabled = true;
-
-	/*
-	 * nbio need be used for both sdma and gfx9, but only
-	 * initializes once
-	 */
-	switch(adev->asic_type) {
-	case CHIP_VEGA10:
-		nbio_v6_1_init(adev);
-		break;
-	case CHIP_RAVEN:
-		nbio_v7_0_init(adev);
-		break;
-	default:
-		return -EINVAL;
-	}
 
 	adev->rev_id = soc15_get_rev_id(adev);
 	adev->external_rev_id = 0xFF;

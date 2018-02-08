@@ -356,6 +356,10 @@ enum amdgpu_pcie_gen {
 		((adev)->powerplay.pp_funcs->switch_power_profile(\
 			(adev)->powerplay.pp_handle, type))
 
+#define amdgpu_dpm_set_clockgating_by_smu(adev, msg_id) \
+		((adev)->powerplay.pp_funcs->set_clockgating_by_smu(\
+			(adev)->powerplay.pp_handle, msg_id))
+
 struct amdgpu_dpm {
 	struct amdgpu_ps        *ps;
 	/* number of valid power states */
@@ -429,7 +433,7 @@ struct amdgpu_pm {
 	uint32_t                fw_version;
 	uint32_t                pcie_gen_mask;
 	uint32_t                pcie_mlw_mask;
-	struct amd_pp_display_configuration pm_display_cfg;/* set by DAL */
+	struct amd_pp_display_configuration pm_display_cfg;/* set by dc */
 };
 
 #define R600_SSTU_DFLT                               0

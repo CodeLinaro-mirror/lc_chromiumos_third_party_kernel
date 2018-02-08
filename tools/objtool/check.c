@@ -456,6 +456,13 @@ static int add_jump_destinations(struct objtool_file *file)
 		} else if (rela->sym->sec->idx) {
 			dest_sec = rela->sym->sec;
 			dest_off = rela->sym->sym.st_value + rela->addend + 4;
+		} else if (strstr(rela->sym->name, "_indirect_thunk_")) {
+			/*
+			 * Retpoline jumps are really dynamic jumps in
+			 * disguise, so convert them accordingly.
+			 */
+			insn->type = INSN_JUMP_DYNAMIC;
+			continue;
 		} else {
 			/* sibling call */
 			insn->jump_dest = 0;
@@ -1757,11 +1764,14 @@ static int validate_branch(struct objtool_file *file, struct instruction *first,
 		if (insn->dead_end)
 			return 0;
 
-		insn = next_insn;
-		if (!insn) {
+		if (!next_insn) {
+			if (state.cfa.base == CFI_UNDEFINED)
+				return 0;
 			WARN("%s: unexpected end of section", sec->name);
 			return 1;
 		}
+
+		insn = next_insn;
 	}
 
 	return 0;

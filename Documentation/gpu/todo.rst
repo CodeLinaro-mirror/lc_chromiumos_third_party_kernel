@@ -304,6 +304,18 @@ There's a bunch of issues with it:
 
 Contact: Daniel Vetter
 
+KMS cleanups
+------------
+
+Some of these date from the very introduction of KMS in 2008 ...
+
+- drm_mode_config.crtc_idr is misnamed, since it contains all KMS object. Should
+  be renamed to drm_mode_config.object_idr.
+
+- drm_display_mode doesn't need to be derived from drm_mode_object. That's
+  leftovers from older (never merged into upstream) KMS designs where modes
+  where set using their ID, including support to add/remove modes.
+
 Better Testing
 ==============
 
@@ -387,6 +399,16 @@ those drivers as simple as possible, so lots of room for refactoring:
 - also rework the drm_framebuffer_funcs->dirty hook wire-up, see above.
 
 Contact: Noralf Trønnes, Daniel Vetter
+
+AMD DC Display Driver
+---------------------
+
+AMD DC is the display driver for AMD devices starting with Vega. There has been
+a bunch of progress cleaning it up but there's still plenty of work to be done.
+
+See drivers/gpu/drm/amd/display/TODO for tasks.
+
+Contact: Harry Wentland, Alex Deucher
 
 Outside DRM
 ===========

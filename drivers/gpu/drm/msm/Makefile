@@ -85,7 +85,8 @@ msm_drm-y += adreno/adreno_device.o \
 	adreno/a3xx_gpu.o \
 	adreno/a4xx_gpu.o \
 	adreno/a5xx_gpu.o \
-	adreno/a5xx_power.o
+	adreno/a5xx_power.o \
+	adreno/a5xx_preempt.o
 endif
 
 msm_drm-$(CONFIG_DRM_MSM_MDP4) += mdp/mdp4/mdp4_crtc.o \
@@ -192,6 +193,7 @@ msm_drm-$(CONFIG_DRM_MSM) += \
 	msm_perf.o \
 	msm_rd.o \
 	msm_ringbuffer.o \
+	msm_submitqueue.o \
 	msm_prop.o \
 	msm_fence.o \
 	msm_debugfs.o

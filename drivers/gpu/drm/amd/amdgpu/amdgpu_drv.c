@@ -70,9 +70,12 @@
  * - 3.18.0 - Export gpu always on cu bitmap
  * - 3.19.0 - Add support for UVD MJPEG decode
  * - 3.20.0 - Add support for local BOs
+ * - 3.21.0 - Add DRM_AMDGPU_FENCE_TO_HANDLE ioctl
+ * - 3.22.0 - Add DRM_AMDGPU_SCHED ioctl
+ * - 3.23.0 - Add query for VRAM lost counter
  */
 #define KMS_DRIVER_MAJOR	3
-#define KMS_DRIVER_MINOR	20
+#define KMS_DRIVER_MINOR	23
 #define KMS_DRIVER_PATCHLEVEL	0
 
 int amdgpu_vram_limit = 0;
@@ -103,6 +106,8 @@ int amdgpu_vm_debug = 0;
 int amdgpu_vram_page_split = 512;
 int amdgpu_vm_update_mode = -1;
 int amdgpu_exp_hw_support = 0;
+int amdgpu_dc = -1;
+int amdgpu_dc_log = 0;
 int amdgpu_sched_jobs = 32;
 int amdgpu_sched_hw_submission = 2;
 int amdgpu_no_evict = 0;
@@ -207,6 +212,12 @@ module_param_named(vram_page_split, amdgpu_vram_page_split, int, 0444);
 
 MODULE_PARM_DESC(exp_hw_support, "experimental hw support (1 = enable, 0 = disable (default))");
 module_param_named(exp_hw_support, amdgpu_exp_hw_support, int, 0444);
+
+MODULE_PARM_DESC(dc, "Display Core driver (1 = enable, 0 = disable, -1 = auto (default))");
+module_param_named(dc, amdgpu_dc, int, 0444);
+
+MODULE_PARM_DESC(dc, "Display Core Log Level (0 = minimal (default), 1 = chatty");
+module_param_named(dc_log, amdgpu_dc_log, int, 0444);
 
 MODULE_PARM_DESC(sched_jobs, "the max number of jobs supported in the sw queue (default 32)");
 module_param_named(sched_jobs, amdgpu_sched_jobs, int, 0444);
@@ -515,15 +526,15 @@ static const struct pci_device_id pciidlist[] = {
 	{0x1002, 0x6997, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_POLARIS12},
 	{0x1002, 0x699F, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_POLARIS12},
 	/* Vega 10 */
-	{0x1002, 0x6860, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
-	{0x1002, 0x6861, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
-	{0x1002, 0x6862, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
-	{0x1002, 0x6863, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
-	{0x1002, 0x6864, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
-	{0x1002, 0x6867, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
-	{0x1002, 0x6868, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
-	{0x1002, 0x686c, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
-	{0x1002, 0x687f, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10|AMD_EXP_HW_SUPPORT},
+	{0x1002, 0x6860, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
+	{0x1002, 0x6861, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
+	{0x1002, 0x6862, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
+	{0x1002, 0x6863, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
+	{0x1002, 0x6864, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
+	{0x1002, 0x6867, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
+	{0x1002, 0x6868, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
+	{0x1002, 0x686c, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
+	{0x1002, 0x687f, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_VEGA10},
 	/* Raven */
 	{0x1002, 0x15dd, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_RAVEN|AMD_IS_APU|AMD_EXP_HW_SUPPORT},
 
