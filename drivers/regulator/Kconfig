@@ -688,7 +688,7 @@ config REGULATOR_QCOM_SPMI
 config REGULATOR_RPMH
 	tristate "Qualcomm Technologies, Inc. RPMh regulator driver"
 	depends on OF
-	depends on QCOM_RPMH_API
+	depends on QCOM_RPMH
 	help
 	  This driver supports control of PMIC regulators via the RPMh hardware
 	  block found on Qualcomm Technologies Inc. SoCs.  RPMh regulator

@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1028,7 +1028,7 @@ rpmh_regulator_load_arc_level_mapping(struct rpmh_aggr_vreg *aggr_vreg)
 	int i, j, len, rc;
 	u8 *buf;
 
-	len = cmd_db_get_aux_data_len(aggr_vreg->resource_name);
+	len = cmd_db_read_aux_data_len(aggr_vreg->resource_name);
 	if (len < 0) {
 		aggr_vreg_err(aggr_vreg, "could not get ARC aux data len, rc=%d\n",
 			len);
@@ -1050,7 +1050,7 @@ rpmh_regulator_load_arc_level_mapping(struct rpmh_aggr_vreg *aggr_vreg)
 	if (!buf)
 		return -ENOMEM;
 
-	rc = cmd_db_get_aux_data(aggr_vreg->resource_name, buf, len);
+	rc = cmd_db_read_aux_data(aggr_vreg->resource_name, buf, len);
 	if (rc < 0) {
 		aggr_vreg_err(aggr_vreg, "could not retrieve ARC aux data, rc=%d\n",
 			rc);
@@ -1551,13 +1551,13 @@ static int rpmh_regulator_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	aggr_vreg->addr = cmd_db_get_addr(aggr_vreg->resource_name);
+	aggr_vreg->addr = cmd_db_read_addr(aggr_vreg->resource_name);
 	if (!aggr_vreg->addr) {
 		aggr_vreg_err(aggr_vreg, "could not find RPMh address for resource\n");
 		return -ENODEV;
 	}
 
-	sid = cmd_db_get_slave_id(aggr_vreg->resource_name);
+	sid = cmd_db_read_slave_id(aggr_vreg->resource_name);
 	if (sid < 0) {
 		aggr_vreg_err(aggr_vreg, "could not find RPMh slave id for resource, rc=%d\n",
 			sid);
@@ -1577,7 +1577,7 @@ static int rpmh_regulator_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	aggr_vreg->rpmh_client = rpmh_get_byindex(pdev, 0);
+	aggr_vreg->rpmh_client = rpmh_get_client(pdev);
 	if (IS_ERR(aggr_vreg->rpmh_client)) {
 		rc = PTR_ERR(aggr_vreg->rpmh_client);
 		if (rc != -EPROBE_DEFER)
