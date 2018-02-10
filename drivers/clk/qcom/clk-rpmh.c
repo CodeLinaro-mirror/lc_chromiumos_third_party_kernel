@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,16 +49,10 @@ struct clk_rpmh {
 	u32 aggr_state;
 	u32 last_sent_aggr_state;
 	u32 valid_state_mask;
-	struct rsc_type *rsc;
+	struct rpmh_client *rpmh_client;
 	unsigned long rate;
 	struct clk_rpmh *peer;
 	struct clk_hw hw;
-};
-
-struct rsc_type {
-	struct rpmh_client *rpmh_client;
-	const char *mbox_name;
-	const bool use_awake_state;
 };
 
 struct rpmh_cc {
@@ -74,7 +68,7 @@ struct clk_rpmh_desc {
 static DEFINE_MUTEX(rpmh_clk_lock);
 
 #define __DEFINE_CLK_RPMH(_platform, _name, _name_active, _res_name, \
-			  _res_en_offset, _res_on, _res_off, _rsc_id, _rate, \
+			  _res_en_offset, _res_on, _res_off, _rate, \
 			  _state_mask, _state_on_mask)			      \
 	static struct clk_rpmh _platform##_##_name_active;		      \
 	static struct clk_rpmh _platform##_##_name = {			      \
@@ -82,7 +76,6 @@ static DEFINE_MUTEX(rpmh_clk_lock);
 		.res_en_offset = _res_en_offset,			      \
 		.res_on_val = _res_on,					      \
 		.res_off_val = _res_off,				      \
-		.rsc = _rsc_id,						      \
 		.rate = _rate,						      \
 		.peer = &_platform##_##_name_active,			      \
 		.valid_state_mask = _state_mask,			      \
@@ -96,7 +89,6 @@ static DEFINE_MUTEX(rpmh_clk_lock);
 		.res_en_offset = _res_en_offset,			      \
 		.res_on_val = _res_on,					      \
 		.res_off_val = _res_off,				      \
-		.rsc = _rsc_id,						      \
 		.rate = _rate,						      \
 		.peer = &_platform##_##_name,				      \
 		.valid_state_mask = _state_on_mask,			      \
@@ -107,25 +99,18 @@ static DEFINE_MUTEX(rpmh_clk_lock);
 	}
 
 #define DEFINE_CLK_RPMH_ARC(_platform, _name, _name_active, _res_name, \
-			    _res_on, _res_off, _rsc_id, _rate, _state_mask, \
+			    _res_on, _res_off, _rate, _state_mask, \
 			    _state_on_mask)				\
 	__DEFINE_CLK_RPMH(_platform, _name, _name_active, _res_name,	\
-			  CLK_RPMH_ARC_EN_OFFSET, _res_on, _res_off, _rsc_id, \
+			  CLK_RPMH_ARC_EN_OFFSET, _res_on, _res_off, \
 			  _rate, _state_mask, _state_on_mask)
 
 #define DEFINE_CLK_RPMH_VRM(_platform, _name, _name_active, _res_name,	\
-			    _rsc_id, _rate, _state_mask, _state_on_mask) \
+			    _rate, _state_mask, _state_on_mask) \
 	__DEFINE_CLK_RPMH(_platform, _name, _name_active, _res_name,	\
 			  CLK_RPMH_VRM_EN_OFFSET, CLK_RPMH_VRM_ON_VAL,	\
-			  CLK_RPMH_VRM_OFF_VAL, _rsc_id, _rate, _state_mask, \
+			  CLK_RPMH_VRM_OFF_VAL, _rate, _state_mask, \
 			  _state_on_mask)
-
-#define DEFINE_RSC_TYPE(name, mbox_id, awake_state)	\
-	static struct rsc_type name = {			\
-		.rpmh_client = NULL,			\
-		.mbox_name = mbox_id,			\
-		.use_awake_state = awake_state,		\
-	}
 
 static inline struct clk_rpmh *to_clk_rpmh(struct clk_hw *_hw)
 {
@@ -148,7 +133,7 @@ static int clk_rpmh_send_aggregate_command(struct clk_rpmh *c)
 	if (has_state_changed(c, RPMH_SLEEP_STATE)) {
 		cmd.data = (c->aggr_state >> RPMH_SLEEP_STATE) & 1
 			? c->res_on_val : c->res_off_val;
-		ret = rpmh_write_async(c->rsc->rpmh_client, RPMH_SLEEP_STATE,
+		ret = rpmh_write_async(c->rpmh_client, RPMH_SLEEP_STATE,
 				       &cmd, 1);
 		if (ret) {
 			pr_err("rpmh_write_async(%s, state=%d) failed (%d)\n",
@@ -160,7 +145,7 @@ static int clk_rpmh_send_aggregate_command(struct clk_rpmh *c)
 	if (has_state_changed(c, RPMH_WAKE_ONLY_STATE)) {
 		cmd.data = (c->aggr_state >> RPMH_WAKE_ONLY_STATE) & 1
 			? c->res_on_val : c->res_off_val;
-		ret = rpmh_write_async(c->rsc->rpmh_client,
+		ret = rpmh_write_async(c->rpmh_client,
 				       RPMH_WAKE_ONLY_STATE, &cmd, 1);
 		if (ret) {
 			pr_err("rpmh_write_async(%s, state=%d) failed (%d)\n",
@@ -172,7 +157,7 @@ static int clk_rpmh_send_aggregate_command(struct clk_rpmh *c)
 	if (has_state_changed(c, RPMH_ACTIVE_ONLY_STATE)) {
 		cmd.data = (c->aggr_state >> RPMH_ACTIVE_ONLY_STATE) & 1
 			? c->res_on_val : c->res_off_val;
-		ret = rpmh_write(c->rsc->rpmh_client, RPMH_ACTIVE_ONLY_STATE,
+		ret = rpmh_write(c->rpmh_client, RPMH_ACTIVE_ONLY_STATE,
 				 &cmd, 1);
 		if (ret) {
 			pr_err("rpmh_write(%s, state=%d) failed (%d)\n",
@@ -259,27 +244,23 @@ static const struct clk_ops clk_rpmh_ops = {
 	.recalc_rate	= clk_rpmh_recalc_rate,
 };
 
-/* Use awake state instead of active-only on RSCs that do not have an AMC. */
-DEFINE_RSC_TYPE(apps_rsc, "apps", false);
-DEFINE_RSC_TYPE(disp_rsc, "display", true);
-
 /* Resource name must match resource id present in cmd-db. */
 DEFINE_CLK_RPMH_ARC(sdm845, bi_tcxo, bi_tcxo_ao, "xo.lvl", 0x3, 0x0,
-		    &apps_rsc, 19200000, CLK_RPMH_APPS_RSC_STATE_MASK,
-		    CLK_RPMH_APPS_RSC_AO_STATE_MASK);
-DEFINE_CLK_RPMH_VRM(sdm845, ln_bb_clk2, ln_bb_clk2_ao, "lnbclka2", &apps_rsc,
 		    19200000, CLK_RPMH_APPS_RSC_STATE_MASK,
 		    CLK_RPMH_APPS_RSC_AO_STATE_MASK);
-DEFINE_CLK_RPMH_VRM(sdm845, ln_bb_clk3, ln_bb_clk3_ao, "lnbclka3", &apps_rsc,
+DEFINE_CLK_RPMH_VRM(sdm845, ln_bb_clk2, ln_bb_clk2_ao, "lnbclka2",
 		    19200000, CLK_RPMH_APPS_RSC_STATE_MASK,
 		    CLK_RPMH_APPS_RSC_AO_STATE_MASK);
-DEFINE_CLK_RPMH_VRM(sdm845, rf_clk1, rf_clk1_ao, "rfclka1", &apps_rsc,
+DEFINE_CLK_RPMH_VRM(sdm845, ln_bb_clk3, ln_bb_clk3_ao, "lnbclka3",
+		    19200000, CLK_RPMH_APPS_RSC_STATE_MASK,
+		    CLK_RPMH_APPS_RSC_AO_STATE_MASK);
+DEFINE_CLK_RPMH_VRM(sdm845, rf_clk1, rf_clk1_ao, "rfclka1",
 		    38400000, CLK_RPMH_APPS_RSC_STATE_MASK,
 		    CLK_RPMH_APPS_RSC_AO_STATE_MASK);
-DEFINE_CLK_RPMH_VRM(sdm845, rf_clk2, rf_clk2_ao, "rfclka2", &apps_rsc,
+DEFINE_CLK_RPMH_VRM(sdm845, rf_clk2, rf_clk2_ao, "rfclka2",
 		    38400000, CLK_RPMH_APPS_RSC_STATE_MASK,
 		    CLK_RPMH_APPS_RSC_AO_STATE_MASK);
-DEFINE_CLK_RPMH_VRM(sdm845, rf_clk3, rf_clk3_ao, "rfclka3", &apps_rsc,
+DEFINE_CLK_RPMH_VRM(sdm845, rf_clk3, rf_clk3_ao, "rfclka3",
 		    38400000, CLK_RPMH_APPS_RSC_STATE_MASK,
 		    CLK_RPMH_APPS_RSC_AO_STATE_MASK);
 
@@ -320,8 +301,7 @@ static int clk_rpmh_probe(struct platform_device *pdev)
 	struct clk_hw **hw_clks;
 	struct clk_rpmh *rpmh_clk;
 	const struct clk_rpmh_desc *desc;
-	struct property *prop;
-	const char *mbox_name;
+	struct rpmh_client *rpmh_client = NULL;
 
 	desc = of_device_get_match_data(&pdev->dev);
 	if (!desc) {
@@ -339,41 +319,13 @@ static int clk_rpmh_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	of_property_for_each_string(pdev->dev.of_node, "mbox-names", prop,
-				    mbox_name) {
-		if (!strcmp(apps_rsc.mbox_name, mbox_name)) {
-			apps_rsc.rpmh_client = rpmh_get_byname(pdev, mbox_name);
-			if (IS_ERR(apps_rsc.rpmh_client)) {
-				ret = PTR_ERR(apps_rsc.rpmh_client);
-				if (ret != -EPROBE_DEFER) {
-					dev_err(&pdev->dev,
-						"failed to request RPMh client for %s (%d)\n",
-						mbox_name, ret);
-					goto err;
-				}
-				return ret;
-			}
-		}
-
-		if (!strcmp(disp_rsc.mbox_name, mbox_name)) {
-			disp_rsc.rpmh_client = rpmh_get_byname(pdev, mbox_name);
-			if (IS_ERR(disp_rsc.rpmh_client)) {
-				ret = PTR_ERR(disp_rsc.rpmh_client);
-				if (ret != -EPROBE_DEFER) {
-					dev_err(&pdev->dev,
-						"failed to request RPMh client for %s (%d)\n",
-						mbox_name, ret);
-					goto err2;
-				}
-				return ret;
-			}
-		}
-	}
-
-	if (!apps_rsc.rpmh_client) {
-		dev_err(&pdev->dev, "%s mbox is missing\n", apps_rsc.mbox_name);
-		ret = -EINVAL;
-		goto err2;
+	rpmh_client = rpmh_get_client(pdev);
+	if (IS_ERR(rpmh_client)) {
+		ret = PTR_ERR(rpmh_client);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "failed to request RPMh client, ret=%d\n",
+				ret);
+		return ret;
 	}
 
 	hw_clks = desc->clks;
@@ -383,7 +335,7 @@ static int clk_rpmh_probe(struct platform_device *pdev)
 			   GFP_KERNEL);
 	if (!rcc) {
 		ret = -ENOMEM;
-		goto err2;
+		goto err;
 	}
 
 	clks = rcc->clks;
@@ -393,18 +345,20 @@ static int clk_rpmh_probe(struct platform_device *pdev)
 
 	for (i = 0; i < num_clks; i++) {
 		rpmh_clk = to_clk_rpmh(hw_clks[i]);
-		rpmh_clk->res_addr = cmd_db_get_addr(rpmh_clk->res_name);
+		rpmh_clk->res_addr = cmd_db_read_addr(rpmh_clk->res_name);
 		if (!rpmh_clk->res_addr) {
 			dev_err(&pdev->dev, "missing RPMh resource address for %s\n",
 				rpmh_clk->res_name);
 			ret = -ENODEV;
-			goto err2;
+			goto err;
 		}
+
+		rpmh_clk->rpmh_client = rpmh_client;
 
 		clk = devm_clk_register(&pdev->dev, hw_clks[i]);
 		if (IS_ERR(clk)) {
 			ret = PTR_ERR(clk);
-			goto err2;
+			goto err;
 		}
 
 		clks[i] = clk;
@@ -413,16 +367,15 @@ static int clk_rpmh_probe(struct platform_device *pdev)
 	ret = of_clk_add_provider(pdev->dev.of_node, of_clk_src_onecell_get,
 				  data);
 	if (ret)
-		goto err2;
+		goto err;
 
 	dev_info(&pdev->dev, "Registered RPMh clocks\n");
 	return ret;
 
-err2:
-	rpmh_release(apps_rsc.rpmh_client);
-	if (disp_rsc.rpmh_client)
-		rpmh_release(disp_rsc.rpmh_client);
 err:
+	if (rpmh_client)
+		rpmh_release(rpmh_client);
+
 	dev_err(&pdev->dev, "Error registering RPMh Clock driver (%d)\n", ret);
 	return ret;
 }
