@@ -114,19 +114,4 @@ config QCOM_WCNSS_CTRL
 	  Client driver for the WCNSS_CTRL SMD channel, used to download nv
 	  firmware to a newly booted WCNSS chip.
 
-config QCOM_COMMAND_DB
-	bool "Qualcomm Command DB"
-	depends on ARCH_QCOM
-	help
-	  Command DB queries shared memory by key string for shared system
-	  resources
-
-config QCOM_RPMH_API
-	bool "Qualcomm RPMH Communication API"
-	select MAILBOX
-	select QCOM_RPMH_MBOX
-	help
-	  This option enables RPMH hardware communication for making shared
-	  resource state requests on Qualcomm Technologies Inc SoCs.
-
 endmenu
