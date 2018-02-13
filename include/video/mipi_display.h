@@ -4,6 +4,7 @@
  *
  * Copyright (C) 2010 Guennadi Liakhovetski <g.liakhovetski@gmx.de>
  * Copyright (C) 2006 Nokia Corporation
+ * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
  * Author: Imre Deak <imre.deak@nokia.com>
  *
  * This program is free software; you can redistribute it and/or modify
