@@ -111,6 +111,20 @@ msm-y := \
 
 msm-$(CONFIG_DEBUG_FS) += adreno/a5xx_debugfs.o
 
+msm-$(CONFIG_DRM_MSM_DP)+= dp/dp_usbpd.o \
+	dp/dp_parser.o \
+	dp/dp_power.o \
+	dp/dp_catalog.o \
+	dp/dp_aux.o \
+	dp/dp_panel.o \
+	dp/dp_link.o \
+	dp/dp_ctrl.o \
+	dp/dp_audio.o \
+	dp/dp_debug.o \
+	dp/dp_display.o \
+	dp/dp_drm.o \
+	dp/dp_hdcp2p2.o
+
 msm_wb-$(CONFIG_DRM_MSM_WRITEBACK) += disp/dpu1/dpu_wb.o \
 				      disp/dpu1/dpu_encoder_phys_wb.o
 
