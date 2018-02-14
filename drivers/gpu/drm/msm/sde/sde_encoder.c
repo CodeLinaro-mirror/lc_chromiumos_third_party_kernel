@@ -1557,7 +1557,6 @@ static void _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 	}
 
 	if (enable) {
-		pm_runtime_get_sync(sde_kms->dev->dev);
 		/* enable SDE core clks */
 		sde_power_resource_enable(&priv->phandle,
 				sde_kms->core_client, true);
@@ -1578,7 +1577,6 @@ static void _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 		/* disable SDE core clks */
 		sde_power_resource_enable(&priv->phandle,
 				sde_kms->core_client, false);
-		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 
 }

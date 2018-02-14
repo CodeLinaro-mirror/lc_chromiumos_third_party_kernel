@@ -863,6 +863,7 @@ static int _sde_plane_get_aspace(
 
 	mode = sde_plane_get_property(pstate,
 			PLANE_PROP_FB_TRANSLATION_MODE);
+
 	switch (mode) {
 	case SDE_DRM_FB_NON_SEC:
 		*aspace = kms->aspace[MSM_SMMU_DOMAIN_UNSECURE];
@@ -2831,13 +2832,11 @@ static int sde_plane_prepare_fb(struct drm_plane *plane,
 	pstate->defer_prepare_fb = (aspace && !aspace->domain_attached) ?
 							true : false;
 
-#ifdef CONFIG_CHROME_ROT
 	ret = sde_plane_rot_prepare_fb(plane, new_state);
 	if (ret) {
 		SDE_ERROR("failed to prepare rot framebuffer\n");
 		return ret;
 	}
-#endif
 
 	if (pstate->defer_prepare_fb) {
 		SDE_DEBUG_PLANE(psde,
