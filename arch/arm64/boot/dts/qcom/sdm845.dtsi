@@ -16,6 +16,7 @@
 #include <dt-bindings/spmi/spmi.h>
 #include <dt-bindings/reset/qcom,sdm845-aoss.h>
 #include <dt-bindings/soc/qcom,rpmh-rsc.h>
+#include <dt-bindings/msm/msm-bus-ids.h>
 
 / {
 	interrupt-parent = <&intc>;
@@ -373,6 +374,11 @@
 				  <SLEEP_TCS   3>,
 				  <WAKE_TCS    3>,
 				  <CONTROL_TCS 1>;
+
+		msm_bus_apps_rsc {
+			compatible = "qcom,msm-bus-rsc";
+			qcom,msm-bus-id = <MSM_BUS_RSC_APPS>;
+		};
 	};
 
 		timer@17c90000 {
