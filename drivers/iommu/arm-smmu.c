@@ -1014,7 +1014,7 @@ static void arm_smmu_destroy_domain_context(struct iommu_domain *domain)
 		return;
 
 	ret = pm_runtime_get_sync(smmu->dev);
-	if (ret)
+	if (ret < 0)
 		return;
 
 	/*
@@ -1520,7 +1520,7 @@ static int arm_smmu_add_device(struct device *dev)
 		cfg->smendx[i] = INVALID_SMENDX;
 
 	ret = pm_runtime_get_sync(smmu->dev);
-	if (ret)
+	if (ret < 0)
 		goto out_cfg_free;
 
 	ret = arm_smmu_master_alloc_smes(dev);
@@ -1572,7 +1572,7 @@ static void arm_smmu_remove_device(struct device *dev)
 	 */
 
 	ret = pm_runtime_get_sync(smmu->dev);
-	if (ret)
+	if (ret < 0)
 		return;
 
 	iommu_device_unlink(&smmu->iommu, dev);
@@ -2298,7 +2298,7 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	pm_runtime_enable(dev);
 
 	err = pm_runtime_get_sync(dev);
-	if (err)
+	if (err < 0)
 		return err;
 
 	err = arm_smmu_device_cfg_probe(smmu);
