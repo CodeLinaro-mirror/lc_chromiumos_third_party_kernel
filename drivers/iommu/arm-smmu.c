@@ -1539,12 +1539,18 @@ static int arm_smmu_add_device(struct device *dev)
 	 * needs.
 	 */
 	link = device_link_add(dev, smmu->dev, DL_FLAG_PM_RUNTIME);
-	if (!link)
+	if (!link) {
 		dev_warn(smmu->dev, "Unable to create device link between %s and %s\n",
 			 dev_name(smmu->dev), dev_name(dev));
+		ret = -ENODEV;
+		goto out_unlink;
+	}
 
 	return 0;
 
+out_unlink:
+	iommu_device_unlink(&smmu->iommu, dev);
+	arm_smmu_master_free_smes(fwspec);
 out_cfg_free:
 	kfree(cfg);
 out_free:
