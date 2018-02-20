@@ -16,9 +16,22 @@
 #ifndef _QMI_H_
 #define _QMI_H_
 
+enum ath10k_qmi_driver_event_type {
+	ATH10K_QMI_EVENT_SERVER_ARRIVE,
+	ATH10K_QMI_EVENT_SERVER_EXIT,
+	ATH10K_QMI_EVENT_FW_READY_IND,
+	ATH10K_QMI_EVENT_MAX,
+};
+
 struct ath10k_qmi {
 	struct platform_device *pdev;
 	struct qmi_handle qmi_hdl;
 	struct sockaddr_qrtr sq;
+	bool fw_ready;
+	bool msa_ready;
+	struct work_struct work_svc_arrive;
+	struct work_struct work_svc_exit;
+	struct workqueue_struct *event_wq;
+	spinlock_t event_lock; /* spinlock for fw ready status*/
 };
 #endif /* _QMI_H_ */
