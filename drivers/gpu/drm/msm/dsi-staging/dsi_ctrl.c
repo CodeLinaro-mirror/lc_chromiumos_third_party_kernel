@@ -261,14 +261,10 @@ static inline struct msm_gem_address_space*
 dsi_ctrl_get_aspace(struct dsi_ctrl *dsi_ctrl,
 		int domain)
 {
-	struct msm_drm_private *priv;
-
 	if (!dsi_ctrl || !dsi_ctrl->drm_dev)
 		return NULL;
 
-	priv = dsi_ctrl->drm_dev;
-
-	return priv->kms->aspace;
+	return msm_gem_smmu_address_space_get(dsi_ctrl->drm_dev, domain);
 }
 
 static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,

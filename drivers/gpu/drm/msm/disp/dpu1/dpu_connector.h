@@ -266,6 +266,8 @@ struct dpu_connector {
 	struct drm_panel *panel;
 	void *display;
 
+	struct msm_gem_address_space *aspace[DPU_IOMMU_DOMAIN_MAX];
+
 	char name[DPU_CONNECTOR_NAME_SIZE];
 
 	struct mutex lock;

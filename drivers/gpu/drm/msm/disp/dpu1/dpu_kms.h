@@ -147,7 +147,11 @@ struct dpu_kms_fbo {
 	int nplane;
 	const struct dpu_format *fmt;
 	struct dpu_hw_fmt_layout layout;
+#ifdef CONFIG_ION
 	struct ion_handle *ihandle;
+#else
+	void *ihandle;
+#endif
 	struct dma_buf *dma_buf;
 	struct drm_gem_object *bo[4];
 	struct list_head fb_list;
@@ -159,8 +163,13 @@ struct dpu_kms {
 	int core_rev;
 	struct dpu_mdss_cfg *catalog;
 
+	struct msm_gem_address_space *aspace[MSM_SMMU_DOMAIN_MAX];
 	struct dpu_power_client *core_client;
+#ifdef CONFIG_ION
 	struct ion_client *iclient;
+#else
+	void *iclient;
+#endif
 	struct dpu_power_event *power_event;
 
 	/* directory entry for debugfs */
@@ -520,6 +529,15 @@ int dpu_kms_fbo_reference(struct dpu_kms_fbo *fbo);
  * return: 0 on success; error code otherwise
  */
 void dpu_kms_fbo_unreference(struct dpu_kms_fbo *fbo);
+
+/**
+ * smmu attach/detach functions
+ * @dpu_kms: poiner to dpu_kms structure
+ * @secure_only: if true only secure contexts are attached/detached, else
+ * all contexts are attached/detached/
+ */
+int dpu_kms_mmu_attach(struct dpu_kms *dpu_kms, bool secure_only);
+int dpu_kms_mmu_detach(struct dpu_kms *dpu_kms, bool secure_only);
 
 void dpu_kms_encoder_enable(struct drm_encoder *encoder);
 

@@ -1817,6 +1817,30 @@ static int add_display_components(struct device *dev,
 	return ret;
 }
 
+struct msm_gem_address_space *
+msm_gem_smmu_address_space_get(struct drm_device *dev,
+		unsigned int domain)
+{
+	struct msm_drm_private *priv = NULL;
+	struct msm_kms *kms;
+	const struct msm_kms_funcs *funcs;
+
+	if ((!dev) || (!dev->dev_private))
+		return NULL;
+
+	priv = dev->dev_private;
+	kms = priv->kms;
+	if (!kms)
+		return NULL;
+
+	funcs = kms->funcs;
+
+	if ((!funcs) || (!funcs->get_address_space))
+		return NULL;
+
+	return funcs->get_address_space(priv->kms, domain);
+}
+
 /*
  * We don't know what's the best binding to link the gpu with the drm device.
  * Fow now, we just hunt for all the possible gpus that we support, and add them

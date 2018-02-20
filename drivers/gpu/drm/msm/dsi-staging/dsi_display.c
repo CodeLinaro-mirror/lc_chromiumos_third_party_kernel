@@ -1602,7 +1602,6 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host,
 				 const struct mipi_dsi_msg *msg)
 {
 	struct dsi_display *display = to_dsi_display(host);
-	struct msm_drm_private *priv = display->drm_dev->dev_private;
 	struct dsi_display_ctrl *display_ctrl;
 	struct msm_gem_address_space *aspace = NULL;
 	int rc = 0, cnt = 0;
@@ -1646,7 +1645,8 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host,
 			goto error_disable_cmd_engine;
 		}
 
-		aspace = priv->kms->aspace;
+		aspace = msm_gem_smmu_address_space_get(display->drm_dev,
+				MSM_SMMU_DOMAIN_UNSECURE);
 		if (!aspace) {
 			pr_err("failed to get aspace\n");
 			rc = -EINVAL;

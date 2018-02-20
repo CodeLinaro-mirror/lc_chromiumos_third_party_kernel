@@ -359,6 +359,7 @@ static int dpu_kms_enable_vblank(struct msm_kms *kms, struct drm_crtc *crtc)
 
 static void dpu_kms_disable_vblank(struct msm_kms *kms, struct drm_crtc *crtc)
 {
+	pm_runtime_get_sync(crtc->dev->dev);
 	dpu_crtc_vblank(crtc, false);
 	pm_runtime_put_sync(crtc->dev->dev);
 }
@@ -532,6 +533,9 @@ static void dpu_kms_wait_for_commit_done(struct msm_kms *kms,
 		return;
 	}
 
+	ret = drm_crtc_vblank_get(crtc);
+	if (ret)
+		return;
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
 			continue;
@@ -547,6 +551,8 @@ static void dpu_kms_wait_for_commit_done(struct msm_kms *kms,
 			break;
 		}
 	}
+
+	drm_crtc_vblank_put(crtc);
 }
 
 /**
@@ -964,7 +970,7 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 	 * bridges and encoders for them.
 	 */
 	if (!_dpu_kms_get_displays(dpu_kms))
-		_dpu_kms_setup_displays(dev, priv, dpu_kms);
+		(void)_dpu_kms_setup_displays(dev, priv, dpu_kms);
 
 	max_crtc_count = min(catalog->mixer_count, priv->num_encoders);
 
@@ -1161,12 +1167,13 @@ static void dpu_kms_fbo_destroy(struct dpu_kms_fbo *fbo)
 		fbo->dma_buf = NULL;
 	}
 
-#ifdef CONFIG_ION
+
 	if (dpu_kms->iclient && fbo->ihandle) {
+#ifdef CONFIG_ION
 		ion_free(dpu_kms->iclient, fbo->ihandle);
+#endif
 		fbo->ihandle = NULL;
 	}
-#endif
 }
 
 #ifdef CONFIG_ION
@@ -1268,7 +1275,7 @@ struct dpu_kms_fbo *dpu_kms_fbo_alloc(struct drm_device *dev, u32 width,
 #endif
 	} else {
 		fbo->bo[0] = msm_gem_new(dev, fbo->layout.total_size,
-				MSM_BO_SCANOUT | MSM_BO_WC);
+				MSM_BO_SCANOUT | MSM_BO_WC | MSM_BO_KEEPATTRS);
 		if (IS_ERR(fbo->bo[0])) {
 			DPU_ERROR("failed to new gem buffer\n");
 			ret = PTR_ERR(fbo->bo[0]);
@@ -1387,12 +1394,14 @@ static void _dpu_kms_hw_destroy(struct dpu_kms *dpu_kms,
 	_dpu_debugfs_destroy(dpu_kms);
 	_dpu_kms_mmu_destroy(dpu_kms);
 
-#ifdef CONFIG_ION
+
 	if (dpu_kms->iclient) {
+#ifdef CONFIG_ION
 		ion_client_destroy(dpu_kms->iclient);
+#endif
 		dpu_kms->iclient = NULL;
 	}
-#endif
+
 
 	if (dpu_kms->catalog) {
 		for (i = 0; i < dpu_kms->catalog->vbif_count; i++) {
@@ -1428,6 +1437,70 @@ static void _dpu_kms_hw_destroy(struct dpu_kms *dpu_kms,
 	dpu_kms->mmio = NULL;
 
 	dpu_reg_dma_deinit();
+}
+
+int dpu_kms_mmu_detach(struct dpu_kms *dpu_kms, bool secure_only)
+{
+	int i;
+
+	if (!dpu_kms)
+		return -EINVAL;
+
+	for (i = 0; i < MSM_SMMU_DOMAIN_MAX; i++) {
+		struct msm_mmu *mmu;
+		struct msm_gem_address_space *aspace = dpu_kms->aspace[i];
+
+		if (!aspace)
+			continue;
+
+		mmu = dpu_kms->aspace[i]->mmu;
+
+		if (secure_only &&
+			!aspace->mmu->funcs->is_domain_secure(mmu))
+			continue;
+
+		/* cleanup aspace before detaching */
+		msm_gem_aspace_domain_attach_detach_update(aspace, true);
+
+		DPU_DEBUG("Detaching domain:%d\n", i);
+		aspace->mmu->funcs->detach(mmu, (const char **)iommu_ports,
+			ARRAY_SIZE(iommu_ports));
+
+		aspace->domain_attached = false;
+	}
+
+	return 0;
+}
+
+int dpu_kms_mmu_attach(struct dpu_kms *dpu_kms, bool secure_only)
+{
+	int i;
+
+	if (!dpu_kms)
+		return -EINVAL;
+
+	for (i = 0; i < MSM_SMMU_DOMAIN_MAX; i++) {
+		struct msm_mmu *mmu;
+		struct msm_gem_address_space *aspace = dpu_kms->aspace[i];
+
+		if (!aspace)
+			continue;
+
+		mmu = dpu_kms->aspace[i]->mmu;
+
+		if (secure_only &&
+			!aspace->mmu->funcs->is_domain_secure(mmu))
+			continue;
+
+		DPU_DEBUG("Attaching domain:%d\n", i);
+		aspace->mmu->funcs->attach(mmu, (const char **)iommu_ports,
+			ARRAY_SIZE(iommu_ports));
+
+		msm_gem_aspace_domain_attach_detach_update(aspace, false);
+		aspace->domain_attached = true;
+	}
+
+	return 0;
 }
 
 static void dpu_kms_destroy(struct msm_kms *kms)
@@ -1498,7 +1571,25 @@ static struct msm_gem_address_space*
 _dpu_kms_get_address_space(struct msm_kms *kms,
 		unsigned int domain)
 {
-	return kms->aspace;
+	struct dpu_kms *dpu_kms;
+
+	if (!kms) {
+		DPU_ERROR("invalid kms\n");
+		return  NULL;
+	}
+
+	dpu_kms = to_dpu_kms(kms);
+	if (!dpu_kms) {
+		DPU_ERROR("invalid dpu_kms\n");
+		return NULL;
+	}
+
+	if (domain >= MSM_SMMU_DOMAIN_MAX)
+		return NULL;
+
+	return (dpu_kms->aspace[domain] &&
+			dpu_kms->aspace[domain]->domain_attached) ?
+		dpu_kms->aspace[domain] : NULL;
 }
 
 static void _dpu_kms_post_open(struct msm_kms *kms, struct drm_file *file)
@@ -1737,43 +1828,94 @@ static inline void _dpu_kms_core_hw_rev_init(struct dpu_kms *dpu_kms)
 static int _dpu_kms_mmu_destroy(struct dpu_kms *dpu_kms)
 {
 	struct msm_mmu *mmu;
+	int i;
 
-	mmu = dpu_kms->base.aspace->mmu;
+	for (i = ARRAY_SIZE(dpu_kms->aspace) - 1; i >= 0; i--) {
+		if (!dpu_kms->aspace[i])
+			continue;
 
-	mmu->funcs->detach(mmu, (const char **)iommu_ports,
-			ARRAY_SIZE(iommu_ports));
-	msm_gem_address_space_put(dpu_kms->base.aspace);
+		mmu = dpu_kms->aspace[i]->mmu;
+
+		mmu->funcs->detach(mmu, (const char **)iommu_ports,
+				ARRAY_SIZE(iommu_ports));
+		msm_gem_address_space_put(dpu_kms->aspace[i]);
+
+		dpu_kms->aspace[i] = NULL;
+	}
 
 	return 0;
 }
 
 static int _dpu_kms_mmu_init(struct dpu_kms *dpu_kms)
 {
-	struct iommu_domain *domain;
-	struct msm_gem_address_space *aspace;
 	int ret;
 
-	domain = iommu_domain_alloc(&platform_bus_type);
-	if (!domain)
-		return 0;
+#ifdef CONFIG_QCOM_SMMU
+	struct msm_mmu *mmu;
+	int i;
+
+	for (i = 0; i < MSM_SMMU_DOMAIN_MAX; i++) {
+		struct msm_gem_address_space *aspace;
+
+		mmu = msm_smmu_new(dpu_kms->dev->dev, i);
+		if (IS_ERR(mmu)) {
+			ret = PTR_ERR(mmu);
+			DPU_DEBUG("failed to init iommu id %d: rc:%d\n",
+								i, ret);
+			continue;
+		}
+
+		aspace = msm_gem_smmu_address_space_create(dpu_kms->dev,
+			mmu, "dpu");
+		if (IS_ERR(aspace)) {
+			ret = PTR_ERR(aspace);
+			mmu->funcs->destroy(mmu);
+			goto fail;
+		}
+
+		dpu_kms->aspace[i] = aspace;
+
+		ret = mmu->funcs->attach(mmu, (const char **)iommu_ports,
+				ARRAY_SIZE(iommu_ports));
+		if (ret) {
+			DPU_ERROR("failed to attach iommu %d: %d\n", i, ret);
+			msm_gem_address_space_put(aspace);
+			goto fail;
+		}
+		aspace->domain_attached = true;
+	}
+#else
+	struct iommu_domain *domain;
+	struct msm_gem_address_space *aspace;
+
+	domain = iommu_get_domain_for_dev(dpu_kms->dev->dev);
+	if (!domain) {
+		DPU_ERROR("failed to get iommu domain for DPU\n");
+		return PTR_ERR(domain);
+	}
+
+	domain->geometry.aperture_start = 0x1000;
+	domain->geometry.aperture_end = 0xffffffff;
 
 	aspace = msm_gem_address_space_create(dpu_kms->dev->dev,
-			domain, "dpu1");
+		domain, "dpu");
 	if (IS_ERR(aspace)) {
 		ret = PTR_ERR(aspace);
 		goto fail;
 	}
 
-	dpu_kms->base.aspace = aspace;
+	dpu_kms->aspace[0] = aspace;
 
-	ret = aspace->mmu->funcs->attach(aspace->mmu, iommu_ports,
-			ARRAY_SIZE(iommu_ports));
+	ret = aspace->mmu->funcs->attach(aspace->mmu,
+				(const char **)iommu_ports,
+				ARRAY_SIZE(iommu_ports));
 	if (ret) {
 		DPU_ERROR("failed to attach iommu %d\n", ret);
 		msm_gem_address_space_put(aspace);
 		goto fail;
 	}
-
+	aspace->domain_attached = true;
+#endif
 	return 0;
 fail:
 	_dpu_kms_mmu_destroy(dpu_kms);
@@ -1982,6 +2124,8 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		DPU_DEBUG("msm_ion_client not available: %d\n", rc);
 		dpu_kms->iclient = NULL;
 	}
+#else
+	dpu_kms->iclient = NULL;
 #endif
 
 	rc = dpu_core_perf_init(&dpu_kms->perf, dev, dpu_kms->catalog,
