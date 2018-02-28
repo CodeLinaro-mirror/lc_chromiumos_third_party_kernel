@@ -655,7 +655,7 @@
 		};
 
 		apps_smmu: apps-smmu@0x15000000 {
-			compatible = "qcom,smmu-500";
+			compatible = "arm,mmu-500";
 			reg = <0x15000000 0x80000>;
 			#iommu-cells = <2>;
 			#global-interrupts = <1>;
@@ -728,7 +728,7 @@
 		};
 
 		kgsl_smmu: arm,smmu-kgsl@5040000 {
-			compatible = "qcom,msm8996-smmu-v2";
+			compatible = "qcom,sdm845-smmu-v2", "qcom,smmu-v2";
 			reg = <0x5040000 0x10000>;
 			#iommu-cells = <1>;
 			#global-interrupts = <2>;
@@ -758,7 +758,6 @@
 				reg = <0x1eb 0x1>;
 				bits = <1 4>;
 			};
-
 		};
 
 		phy@88e8000 {
