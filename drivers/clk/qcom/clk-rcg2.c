@@ -968,8 +968,14 @@ clk_rcg2_shared_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
 
 	if (!__clk_is_enabled(hw->clk)) {
-		if (!rcg->current_freq)
-			rcg->current_freq = rcg->safe_src_freq_tbl->freq;
+		if (!rcg->current_freq) {
+			if (!clk_rcg2_get_parent(hw))
+				rcg->current_freq =
+					rcg->safe_src_freq_tbl->freq;
+			else
+				rcg->current_freq =
+					clk_rcg2_recalc_rate(hw, parent_rate);
+		}
 
 		return rcg->current_freq;
 	}
