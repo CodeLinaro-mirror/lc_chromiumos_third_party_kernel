@@ -318,6 +318,11 @@ enum vbt_gmbus_ddi {
 	DDC_BUS_DDI_F,
 };
 
+#define VBT_DP_MAX_LINK_RATE_HBR3	0
+#define VBT_DP_MAX_LINK_RATE_HBR2	1
+#define VBT_DP_MAX_LINK_RATE_HBR	2
+#define VBT_DP_MAX_LINK_RATE_LBR	3
+
 /*
  * The child device config, aka the display device data structure, provides a
  * description of a port and its configuration on the platform.
@@ -412,6 +417,8 @@ struct child_device_config {
 	u16 dp_gpio_pin_num;					/* 195 */
 	u8 dp_iboost_level:4;					/* 196 */
 	u8 hdmi_iboost_level:4;					/* 196 */
+	u8 dp_max_link_rate:2;					/* 216 CNL+ */
+	u8 dp_max_link_rate_reserved:6;				/* 216 */
 } __packed;
 
 struct bdb_general_definitions {

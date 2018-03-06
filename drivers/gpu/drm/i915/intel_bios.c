@@ -1225,6 +1225,27 @@ static void parse_ddi_port(struct drm_i915_private *dev_priv, enum port port,
 		DRM_DEBUG_KMS("VBT HDMI boost level for port %c: %d\n",
 			      port_name(port), info->hdmi_boost_level);
 	}
+
+	/* DP max link rate for CNL+ */
+	if (bdb_version >= 216) {
+		switch (child->dp_max_link_rate) {
+		default:
+		case VBT_DP_MAX_LINK_RATE_HBR3:
+			info->dp_max_link_rate = 810000;
+			break;
+		case VBT_DP_MAX_LINK_RATE_HBR2:
+			info->dp_max_link_rate = 540000;
+			break;
+		case VBT_DP_MAX_LINK_RATE_HBR:
+			info->dp_max_link_rate = 270000;
+			break;
+		case VBT_DP_MAX_LINK_RATE_LBR:
+			info->dp_max_link_rate = 162000;
+			break;
+		}
+		DRM_DEBUG_KMS("VBT DP max link rate for port %c: %d\n",
+			      port_name(port), info->dp_max_link_rate);
+	}
 }
 
 static void parse_ddi_ports(struct drm_i915_private *dev_priv, u8 bdb_version)
@@ -1282,11 +1303,13 @@ parse_general_definitions(struct drm_i915_private *dev_priv,
 		expected_size = LEGACY_CHILD_DEVICE_CONFIG_SIZE;
 	} else if (bdb->version == 195) {
 		expected_size = 37;
-	} else if (bdb->version <= 197) {
+	} else if (bdb->version <= 215) {
 		expected_size = 38;
+	} else if (bdb->version <= 216) {
+		expected_size = 39;
 	} else {
-		expected_size = 38;
-		BUILD_BUG_ON(sizeof(*child) < 38);
+		expected_size = sizeof(*child);
+		BUILD_BUG_ON(sizeof(*child) < 39);
 		DRM_DEBUG_DRIVER("Expected child device config size for VBT version %u not known; assuming %u\n",
 				 bdb->version, expected_size);
 	}

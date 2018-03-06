@@ -13,14 +13,6 @@
 #include <dt-bindings/gpio/gpio.h>
 #include "sdm845.dtsi"
 #include "sdm845-sde-display.dtsi"
-/ {
-
-	soc {
-		qcom,qup_uart@0xa84000 {
-			status = "ok";
-		};
-	};
-};
 
 &ufsphy_mem {
 	vdda-phy-supply = <&pm8998_l1>; /* 0.88v */

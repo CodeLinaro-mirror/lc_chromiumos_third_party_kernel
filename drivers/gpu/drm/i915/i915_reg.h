@@ -7783,8 +7783,9 @@ enum {
 #define  FORCEWAKE_ACK_MEDIA_GEN9		_MMIO(0x0D88)
 #define  FORCEWAKE_ACK_RENDER_GEN9		_MMIO(0x0D84)
 #define  FORCEWAKE_ACK_BLITTER_GEN9		_MMIO(0x130044)
-#define   FORCEWAKE_KERNEL			0x1
-#define   FORCEWAKE_USER			0x2
+#define   FORCEWAKE_KERNEL			BIT(0)
+#define   FORCEWAKE_USER			BIT(1)
+#define   FORCEWAKE_KERNEL_FALLBACK		BIT(15)
 #define  FORCEWAKE_MT_ACK			_MMIO(0x130040)
 #define  ECOBUS					_MMIO(0xa180)
 #define    FORCEWAKE_MT_ENABLE			(1<<5)
@@ -8302,6 +8303,17 @@ enum skl_power_gate {
 /* PG0 (HW control->no power well ID), PG1..PG2 (SKL_DISP_PW1..SKL_DISP_PW2) */
 #define  SKL_PW_TO_PG(pw)			((pw) - SKL_DISP_PW_1 + SKL_PG1)
 #define  SKL_FUSE_PG_DIST_STATUS(pg)		(1 << (27 - (pg)))
+
+#define _CNL_AUX_REG_IDX(pw)		((pw) - 9)
+#define _CNL_AUX_ANAOVRD1_B		0x162250
+#define _CNL_AUX_ANAOVRD1_C		0x162210
+#define _CNL_AUX_ANAOVRD1_D		0x1622D0
+#define CNL_AUX_ANAOVRD1(pw)		_MMIO(_PICK(_CNL_AUX_REG_IDX(pw), \
+						    _CNL_AUX_ANAOVRD1_B, \
+						    _CNL_AUX_ANAOVRD1_C, \
+						    _CNL_AUX_ANAOVRD1_D))
+#define   CNL_AUX_ANAOVRD1_ENABLE	(1<<16)
+#define   CNL_AUX_ANAOVRD1_LDO_BYPASS	(1<<23)
 
 /* Per-pipe DDI Function Control */
 #define _TRANS_DDI_FUNC_CTL_A		0x60400

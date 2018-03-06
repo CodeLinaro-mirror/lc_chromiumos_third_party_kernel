@@ -1051,10 +1051,6 @@ static int qcom_qmp_phy_com_exit(struct qcom_qmp *qmp)
 	while (--i >= 0)
 		reset_control_assert(qmp->resets[i]);
 
-	clk_bulk_disable_unprepare(cfg->num_clks, qmp->clks);
-
-	regulator_bulk_disable(cfg->num_vregs, qmp->vregs);
-
 	mutex_unlock(&qmp->phy_mutex);
 
 	return 0;

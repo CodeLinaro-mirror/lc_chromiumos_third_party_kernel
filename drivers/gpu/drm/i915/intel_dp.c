@@ -165,6 +165,28 @@ static void intel_dp_set_sink_rates(struct intel_dp *intel_dp)
 	intel_dp->num_sink_rates = num_rates;
 }
 
+/* Get length of rates array potentially limited by max_rate. */
+static int intel_dp_rate_limit_len(const int *rates, int len, int max_rate)
+{
+	int i;
+
+	/* Limit results by potentially reduced max rate */
+	for (i = 0; i < len; i++) {
+		if (rates[len - i - 1] <= max_rate)
+			return len - i;
+	}
+
+	return 0;
+}
+
+/* Get length of common rates array potentially limited by max_rate. */
+static int intel_dp_common_len_rate_limit(const struct intel_dp *intel_dp,
+					  int max_rate)
+{
+	return intel_dp_rate_limit_len(intel_dp->common_rates,
+				       intel_dp->num_common_rates, max_rate);
+}
+
 /* Theoretical max between source and sink */
 static int intel_dp_max_common_rate(struct intel_dp *intel_dp)
 {
@@ -228,15 +250,38 @@ intel_dp_downstream_max_dotclock(struct intel_dp *intel_dp)
 	return max_dotclk;
 }
 
+static int cnl_max_source_rate(struct intel_dp *intel_dp)
+{
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
+	enum port port = dig_port->base.port;
+
+	u32 voltage = I915_READ(CNL_PORT_COMP_DW3) & VOLTAGE_INFO_MASK;
+
+	/* Low voltage SKUs are limited to max of 5.4G */
+	if (voltage == VOLTAGE_INFO_0_85V)
+		return 540000;
+
+	/* For this SKU 8.1G is supported in all ports */
+	if (IS_CNL_WITH_PORT_F(dev_priv))
+		return 810000;
+
+	/* For other SKUs, max rate on ports A and B is 5.4G */
+	if (port == PORT_A || port == PORT_D)
+		return 540000;
+
+	return 810000;
+}
+
 static void
 intel_dp_set_source_rates(struct intel_dp *intel_dp)
 {
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
 	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
-	enum port port = dig_port->port;
+	const struct ddi_vbt_port_info *info =
+		&dev_priv->vbt.ddi_port_info[dig_port->base.port];
 	const int *source_rates;
-	int size;
-	u32 voltage;
+	int size, max_rate = 0, vbt_max_rate = info->dp_max_link_rate;
 
 	/* This should only be done once */
 	WARN_ON(intel_dp->source_rates || intel_dp->num_source_rates);
@@ -247,21 +292,26 @@ intel_dp_set_source_rates(struct intel_dp *intel_dp)
 	} else if (IS_CANNONLAKE(dev_priv)) {
 		source_rates = cnl_rates;
 		size = ARRAY_SIZE(cnl_rates);
-		voltage = I915_READ(CNL_PORT_COMP_DW3) & VOLTAGE_INFO_MASK;
-		if (port == PORT_A || port == PORT_D ||
-		    voltage == VOLTAGE_INFO_0_85V)
-			size -= 2;
+		max_rate = cnl_max_source_rate(intel_dp);
 	} else if (IS_GEN9_BC(dev_priv)) {
 		source_rates = skl_rates;
 		size = ARRAY_SIZE(skl_rates);
-	} else {
+	} else if ((IS_HASWELL(dev_priv) && !IS_HSW_ULX(dev_priv)) ||
+		   IS_BROADWELL(dev_priv)) {
 		source_rates = default_rates;
 		size = ARRAY_SIZE(default_rates);
+	} else {
+		source_rates = default_rates;
+		size = ARRAY_SIZE(default_rates) - 1;
 	}
 
-	/* This depends on the fact that 5.4 is last value in the array */
-	if (!intel_dp_source_supports_hbr2(intel_dp))
-		size--;
+	if (max_rate && vbt_max_rate)
+		max_rate = min(max_rate, vbt_max_rate);
+	else if (vbt_max_rate)
+		max_rate = vbt_max_rate;
+
+	if (max_rate)
+		size = intel_dp_rate_limit_len(source_rates, size, max_rate);
 
 	intel_dp->source_rates = source_rates;
 	intel_dp->num_source_rates = size;
@@ -317,22 +367,6 @@ static void intel_dp_set_common_rates(struct intel_dp *intel_dp)
 		intel_dp->common_rates[0] = default_rates[0];
 		intel_dp->num_common_rates = 1;
 	}
-}
-
-/* get length of common rates potentially limited by max_rate */
-static int intel_dp_common_len_rate_limit(struct intel_dp *intel_dp,
-					  int max_rate)
-{
-	const int *common_rates = intel_dp->common_rates;
-	int i, common_len = intel_dp->num_common_rates;
-
-	/* Limit results by potentially reduced max rate */
-	for (i = 0; i < common_len; i++) {
-		if (common_rates[common_len - i - 1] <= max_rate)
-			return common_len - i;
-	}
-
-	return 0;
 }
 
 static bool intel_dp_link_params_valid(struct intel_dp *intel_dp, int link_rate,
@@ -1482,14 +1516,9 @@ intel_dp_aux_init(struct intel_dp *intel_dp)
 
 bool intel_dp_source_supports_hbr2(struct intel_dp *intel_dp)
 {
-	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
-	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
+	int max_rate = intel_dp->source_rates[intel_dp->num_source_rates - 1];
 
-	if ((IS_HASWELL(dev_priv) && !IS_HSW_ULX(dev_priv)) ||
-	    IS_BROADWELL(dev_priv) || (INTEL_GEN(dev_priv) >= 9))
-		return true;
-	else
-		return false;
+	return max_rate >= 540000;
 }
 
 static void

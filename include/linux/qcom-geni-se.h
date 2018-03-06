@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -20,15 +20,14 @@
 #include <linux/list.h>
 
 /* Transfer mode supported by GENI Serial Engines */
-enum se_xfer_mode {
+enum geni_se_xfer_mode {
 	INVALID,
 	FIFO_MODE,
-	GSI_DMA,
 	SE_DMA,
 };
 
 /* Protocols supported by GENI Serial Engines */
-enum se_protocol_types {
+enum geni_se_protocol_types {
 	NONE,
 	SPI,
 	UART,
@@ -38,27 +37,15 @@ enum se_protocol_types {
 
 /**
  * struct geni_se_rsc - GENI Serial Engine Resource
- * @wrapper_dev:	Pointer to the parent QUPv3 core.
+ * @wrapper_dev:	Pointer to the parent QUP Wrapper core.
  * @se_clk:		Handle to the core serial engine clock.
- * @m_ahb_clk:		Handle to the primary AHB clock.
- * @s_ahb_clk:		Handle to the secondary AHB clock.
- * @ab_list:		List Head of Average bus banwidth list.
- * @ab:			Average bus bandwidth request value.
- * @ib_list:		List Head of Instantaneous bus banwidth list.
- * @ib:			Instantaneous bus bandwidth request value.
  * @geni_pinctrl:	Handle to the pinctrl configuration.
  * @geni_gpio_active:	Handle to the default/active pinctrl state.
  * @geni_gpi_sleep:	Handle to the sleep pinctrl state.
  */
-struct se_geni_rsc {
+struct geni_se_rsc {
 	struct device *wrapper_dev;
 	struct clk *se_clk;
-	struct clk *m_ahb_clk;
-	struct clk *s_ahb_clk;
-	struct list_head ab_list;
-	unsigned long ab;
-	struct list_head ib_list;
-	unsigned long ib;
 	struct pinctrl *geni_pinctrl;
 	struct pinctrl_state *geni_gpio_active;
 	struct pinctrl_state *geni_gpio_sleep;
@@ -322,33 +309,7 @@ struct se_geni_rsc {
 #define RX_GENI_CANCEL_IRQ	(BIT(11))
 #define RX_GENI_GP_IRQ_EXT	(GENMASK(13, 12))
 
-#define DEFAULT_BUS_WIDTH	(4)
-#define DEFAULT_SE_CLK		(19200000)
-
-#define GENI_SE_ERR(log_ctx, print, dev, x...) do { \
-if (log_ctx) \
-	ipc_log_string(log_ctx, x); \
-if (print) { \
-	if (dev) \
-		dev_err((dev), x); \
-	else \
-		pr_err(x); \
-} \
-} while (0)
-
-#define GENI_SE_DBG(log_ctx, print, dev, x...) do { \
-if (log_ctx) \
-	ipc_log_string(log_ctx, x); \
-if (print) { \
-	if (dev) \
-		dev_dbg((dev), x); \
-	else \
-		pr_debug(x); \
-} \
-} while (0)
-
-
-#ifdef CONFIG_QCOM_GENI_SE
+#if IS_ENABLED(CONFIG_QCOM_GENI_SE)
 /**
  * geni_read_reg_nolog() - Helper function to read from a GENI register
  * @base:	Base address of the serial engine's register block.
@@ -384,12 +345,24 @@ unsigned int geni_read_reg(void __iomem *base, int offset);
 void geni_write_reg(unsigned int value, void __iomem *base, int offset);
 
 /**
- * get_se_proto() - Read the protocol configured for a serial engine
+ * geni_get_qup_hw_version() - Read the QUP Wrapper Hardware version
+ * @wrapper_dev:	Pointer to the corresponding QUP wrapper core.
+ * @major:		Buffer for Major Version field.
+ * @minor:		Buffer for Minor Version field.
+ * @step:		Buffer for Step Version field.
+ *
+ * Return:	0 on success, standard Linux error codes on failure/error.
+ */
+int geni_get_qup_hw_version(struct device *wrapper_dev, unsigned int *major,
+			    unsigned int *minor, unsigned int *step);
+
+/**
+ * geni_se_get_proto() - Read the protocol configured for a serial engine
  * @base:	Base address of the serial engine's register block.
  *
  * Return:	Protocol value as configured in the serial engine.
  */
-int get_se_proto(void __iomem *base);
+int geni_se_get_proto(void __iomem *base);
 
 /**
  * geni_se_init() - Initialize the GENI Serial Engine
@@ -414,7 +387,7 @@ int geni_se_init(void __iomem *base, unsigned int rx_wm, unsigned int rx_rfr);
 int geni_se_select_mode(void __iomem *base, int mode);
 
 /**
- * geni_setup_m_cmd() - Setup the primary sequencer
+ * geni_se_setup_m_cmd() - Setup the primary sequencer
  * @base:	Base address of the serial engine's register block.
  * @cmd:	Command/Operation to setup in the primary sequencer.
  * @params:	Parameter for the sequencer command.
@@ -422,10 +395,10 @@ int geni_se_select_mode(void __iomem *base, int mode);
  * This function is used to configure the primary sequencer with the
  * command and its assoicated parameters.
  */
-void geni_setup_m_cmd(void __iomem *base, u32 cmd, u32 params);
+void geni_se_setup_m_cmd(void __iomem *base, u32 cmd, u32 params);
 
 /**
- * geni_setup_s_cmd() - Setup the secondary sequencer
+ * geni_se_setup_s_cmd() - Setup the secondary sequencer
  * @base:	Base address of the serial engine's register block.
  * @cmd:	Command/Operation to setup in the secondary sequencer.
  * @params:	Parameter for the sequencer command.
@@ -433,48 +406,49 @@ void geni_setup_m_cmd(void __iomem *base, u32 cmd, u32 params);
  * This function is used to configure the secondary sequencer with the
  * command and its assoicated parameters.
  */
-void geni_setup_s_cmd(void __iomem *base, u32 cmd, u32 params);
+void geni_se_setup_s_cmd(void __iomem *base, u32 cmd, u32 params);
 
 /**
- * geni_cancel_m_cmd() - Cancel the command configured in the primary sequencer
+ * geni_se_cancel_m_cmd() - Cancel the command configured in the primary
+ *                          sequencer
  * @base:	Base address of the serial engine's register block.
  *
  * This function is used to cancel the currently configured command in the
  * primary sequencer.
  */
-void geni_cancel_m_cmd(void __iomem *base);
+void geni_se_cancel_m_cmd(void __iomem *base);
 
 /**
- * geni_cancel_s_cmd() - Cancel the command configured in the secondary
- *			 sequencer
+ * geni_se_cancel_s_cmd() - Cancel the command configured in the secondary
+ *			    sequencer
  * @base:	Base address of the serial engine's register block.
  *
  * This function is used to cancel the currently configured command in the
  * secondary sequencer.
  */
-void geni_cancel_s_cmd(void __iomem *base);
+void geni_se_cancel_s_cmd(void __iomem *base);
 
 /**
- * geni_abort_m_cmd() - Abort the command configured in the primary sequencer
+ * geni_se_abort_m_cmd() - Abort the command configured in the primary sequencer
  * @base:	Base address of the serial engine's register block.
  *
  * This function is used to force abort the currently configured command in the
  * primary sequencer.
  */
-void geni_abort_m_cmd(void __iomem *base);
+void geni_se_abort_m_cmd(void __iomem *base);
 
 /**
- * geni_abort_s_cmd() - Abort the command configured in the secondary
- *			 sequencer
+ * geni_se_abort_s_cmd() - Abort the command configured in the secondary
+ *			   sequencer
  * @base:	Base address of the serial engine's register block.
  *
  * This function is used to force abort the currently configured command in the
  * secondary sequencer.
  */
-void geni_abort_s_cmd(void __iomem *base);
+void geni_se_abort_s_cmd(void __iomem *base);
 
 /**
- * get_tx_fifo_depth() - Get the TX fifo depth of the serial engine
+ * geni_se_get_tx_fifo_depth() - Get the TX fifo depth of the serial engine
  * @base:	Base address of the serial engine's register block.
  *
  * This function is used to get the depth i.e. number of elements in the
@@ -482,10 +456,10 @@ void geni_abort_s_cmd(void __iomem *base);
  *
  * Return:	TX fifo depth in units of FIFO words.
  */
-int get_tx_fifo_depth(void __iomem *base);
+int geni_se_get_tx_fifo_depth(void __iomem *base);
 
 /**
- * get_tx_fifo_width() - Get the TX fifo width of the serial engine
+ * geni_se_get_tx_fifo_width() - Get the TX fifo width of the serial engine
  * @base:	Base address of the serial engine's register block.
  *
  * This function is used to get the width i.e. word size per element in the
@@ -493,10 +467,10 @@ int get_tx_fifo_depth(void __iomem *base);
  *
  * Return:	TX fifo width in bits.
  */
-int get_tx_fifo_width(void __iomem *base);
+int geni_se_get_tx_fifo_width(void __iomem *base);
 
 /**
- * get_rx_fifo_depth() - Get the RX fifo depth of the serial engine
+ * geni_se_get_rx_fifo_depth() - Get the RX fifo depth of the serial engine
  * @base:	Base address of the serial engine's register block.
  *
  * This function is used to get the depth i.e. number of elements in the
@@ -504,10 +478,10 @@ int get_tx_fifo_width(void __iomem *base);
  *
  * Return:	RX fifo depth in units of FIFO words.
  */
-int get_rx_fifo_depth(void __iomem *base);
+int geni_se_get_rx_fifo_depth(void __iomem *base);
 
 /**
- * se_get_packing_config() - Get the packing configuration based on input
+ * geni_se_get_packing_config() - Get the packing configuration based on input
  * @bpw:	Bits of data per transfer word.
  * @pack_words:	Number of words per fifo element.
  * @msb_to_lsb:	Transfer from MSB to LSB or vice-versa.
@@ -517,11 +491,11 @@ int get_rx_fifo_depth(void __iomem *base);
  * This function is used to calculate the packing configuration based on
  * the input packing requirement and the configuration logic.
  */
-void se_get_packing_config(int bpw, int pack_words, bool msb_to_lsb,
-			   unsigned long *cfg0, unsigned long *cfg1);
+void geni_se_get_packing_config(int bpw, int pack_words, bool msb_to_lsb,
+				unsigned long *cfg0, unsigned long *cfg1);
 
 /**
- * se_config_packing() - Packing configuration of the serial engine
+ * geni_se_config_packing() - Packing configuration of the serial engine
  * @base:	Base address of the serial engine's register block.
  * @bpw:	Bits of data per transfer word.
  * @pack_words:	Number of words per fifo element.
@@ -530,37 +504,26 @@ void se_get_packing_config(int bpw, int pack_words, bool msb_to_lsb,
  * This function is used to configure the packing rules for the current
  * transfer.
  */
-void se_config_packing(void __iomem *base, int bpw, int pack_words,
-		       bool msb_to_lsb);
+void geni_se_config_packing(void __iomem *base, int bpw, int pack_words,
+			    bool msb_to_lsb);
 
 /**
- * se_geni_resources_off() - Turn off resources associated with the serial
+ * geni_se_resources_off() - Turn off resources associated with the serial
  *                           engine
  * @rsc:	Handle to resources associated with the serial engine.
  *
  * Return:	0 on success, standard Linux error codes on failure/error.
  */
-int se_geni_resources_off(struct se_geni_rsc *rsc);
+int geni_se_resources_off(struct geni_se_rsc *rsc);
 
 /**
- * se_geni_resources_on() - Turn on resources associated with the serial
+ * geni_se_resources_on() - Turn on resources associated with the serial
  *                           engine
  * @rsc:	Handle to resources associated with the serial engine.
  *
  * Return:	0 on success, standard Linux error codes on failure/error.
  */
-int se_geni_resources_on(struct se_geni_rsc *rsc);
-
-/**
- * geni_se_resources_init() - Init the SE resource structure
- * @rsc:	SE resource structure to be initialized.
- * @ab:		Initial Average bus bandwidth request value.
- * @ib:		Initial Instantaneous bus bandwidth request value.
- *
- * Return:	0 on success, standard Linux error codes on failure.
- */
-int geni_se_resources_init(struct se_geni_rsc *rsc,
-			   unsigned long ab, unsigned long ib);
+int geni_se_resources_on(struct geni_se_rsc *rsc);
 
 /**
  * geni_se_clk_tbl_get() - Get the clock table to program DFS
@@ -575,7 +538,7 @@ int geni_se_resources_init(struct se_geni_rsc *rsc,
  * Return:	number of valid performance levels in the table on success,
  *		standard Linux error codes on failure.
  */
-int geni_se_clk_tbl_get(struct se_geni_rsc *rsc, unsigned long **tbl);
+int geni_se_clk_tbl_get(struct geni_se_rsc *rsc, unsigned long **tbl);
 
 /**
  * geni_se_clk_freq_match() - Get the matching or closest SE clock frequency
@@ -593,13 +556,13 @@ int geni_se_clk_tbl_get(struct se_geni_rsc *rsc, unsigned long **tbl);
  *
  * Return:	0 on success, standard Linux error codes on failure.
  */
-int geni_se_clk_freq_match(struct se_geni_rsc *rsc, unsigned long req_freq,
+int geni_se_clk_freq_match(struct geni_se_rsc *rsc, unsigned long req_freq,
 			   unsigned int *index, unsigned long *res_freq,
 			   bool exact);
 
 /**
  * geni_se_tx_dma_prep() - Prepare the Serial Engine for TX DMA transfer
- * @wrapper_dev:	QUPv3 Wrapper Device to which the TX buffer is mapped.
+ * @wrapper_dev:	QUP Wrapper Device to which the TX buffer is mapped.
  * @base:		Base address of the SE register block.
  * @tx_buf:		Pointer to the TX buffer.
  * @tx_len:		Length of the TX buffer.
@@ -614,7 +577,7 @@ int geni_se_tx_dma_prep(struct device *wrapper_dev, void __iomem *base,
 
 /**
  * geni_se_rx_dma_prep() - Prepare the Serial Engine for RX DMA transfer
- * @wrapper_dev:	QUPv3 Wrapper Device to which the TX buffer is mapped.
+ * @wrapper_dev:	QUP Wrapper Device to which the TX buffer is mapped.
  * @base:		Base address of the SE register block.
  * @rx_buf:		Pointer to the RX buffer.
  * @rx_len:		Length of the RX buffer.
@@ -629,7 +592,7 @@ int geni_se_rx_dma_prep(struct device *wrapper_dev, void __iomem *base,
 
 /**
  * geni_se_tx_dma_unprep() - Unprepare the Serial Engine after TX DMA transfer
- * @wrapper_dev:	QUPv3 Wrapper Device to which the TX buffer is mapped.
+ * @wrapper_dev:	QUP Wrapper Device to which the TX buffer is mapped.
  * @tx_dma:		DMA address of the TX buffer.
  * @tx_len:		Length of the TX buffer.
  *
@@ -640,7 +603,7 @@ void geni_se_tx_dma_unprep(struct device *wrapper_dev,
 
 /**
  * geni_se_rx_dma_unprep() - Unprepare the Serial Engine after RX DMA transfer
- * @wrapper_dev:	QUPv3 Wrapper Device to which the TX buffer is mapped.
+ * @wrapper_dev:	QUP Wrapper Device to which the TX buffer is mapped.
  * @rx_dma:		DMA address of the RX buffer.
  * @rx_len:		Length of the RX buffer.
  *
@@ -650,80 +613,35 @@ void geni_se_rx_dma_unprep(struct device *wrapper_dev,
 			   dma_addr_t rx_dma, int rx_len);
 
 /**
- * geni_se_qupv3_hw_version() - Read the QUPv3 Hardware version
- * @wrapper_dev:	Pointer to the corresponding QUPv3 wrapper core.
- * @major:		Buffer for Major Version field.
- * @minor:		Buffer for Minor Version field.
- * @step:		Buffer for Step Version field.
- *
- * Return:	0 on success, standard Linux error codes on failure/error.
- */
-int geni_se_qupv3_hw_version(struct device *wrapper_dev, unsigned int *major,
-			     unsigned int *minor, unsigned int *step);
-
-/**
- * geni_se_iommu_map_buf() - Map a single buffer into QUPv3 context bank
- * @wrapper_dev:	Pointer to the corresponding QUPv3 wrapper core.
+ * geni_se_map_buf() - Map a single buffer into QUP wrapper device
+ * @wrapper_dev:	Pointer to the corresponding QUP wrapper core.
  * @iova:		Pointer in which the mapped virtual address is stored.
  * @buf:		Address of the buffer that needs to be mapped.
  * @size:		Size of the buffer.
  * @dir:		Direction of the DMA transfer.
  *
  * This function is used to map an already allocated buffer into the
- * QUPv3 context bank device space.
+ * QUP device space.
  *
  * Return:	0 on success, standard Linux error codes on failure/error.
  */
-int geni_se_iommu_map_buf(struct device *wrapper_dev, dma_addr_t *iova,
-			  void *buf, size_t size, enum dma_data_direction dir);
+int geni_se_map_buf(struct device *wrapper_dev, dma_addr_t *iova,
+		    void *buf, size_t size, enum dma_data_direction dir);
 
 /**
- * geni_se_iommu_alloc_buf() - Allocate & map a single buffer into QUPv3
- *			       context bank
- * @wrapper_dev:	Pointer to the corresponding QUPv3 wrapper core.
- * @iova:		Pointer in which the mapped virtual address is stored.
- * @size:		Size of the buffer.
- *
- * This function is used to allocate a buffer and map it into the
- * QUPv3 context bank device space.
- *
- * Return:	address of the buffer on success, NULL or ERR_PTR on
- *		failure/error.
- */
-void *geni_se_iommu_alloc_buf(struct device *wrapper_dev, dma_addr_t *iova,
-			      size_t size);
-
-/**
- * geni_se_iommu_unmap_buf() - Unmap a single buffer from QUPv3 context bank
- * @wrapper_dev:	Pointer to the corresponding QUPv3 wrapper core.
+ * geni_se_unmap_buf() - Unmap a single buffer from QUP wrapper device
+ * @wrapper_dev:	Pointer to the corresponding QUP wrapper core.
  * @iova:		Pointer in which the mapped virtual address is stored.
  * @size:		Size of the buffer.
  * @dir:		Direction of the DMA transfer.
  *
  * This function is used to unmap an already mapped buffer from the
- * QUPv3 context bank device space.
+ * QUP device space.
  *
  * Return:	0 on success, standard Linux error codes on failure/error.
  */
-int geni_se_iommu_unmap_buf(struct device *wrapper_dev, dma_addr_t *iova,
-			    size_t size, enum dma_data_direction dir);
-
-/**
- * geni_se_iommu_free_buf() - Unmap & free a single buffer from QUPv3
- *			      context bank
- * @wrapper_dev:	Pointer to the corresponding QUPv3 wrapper core.
- * @iova:	Pointer in which the mapped virtual address is stored.
- * @buf:	Address of the buffer.
- * @size:	Size of the buffer.
- *
- * This function is used to unmap and free a buffer from the
- * QUPv3 context bank device space.
- *
- * Return:	0 on success, standard Linux error codes on failure/error.
- */
-int geni_se_iommu_free_buf(struct device *wrapper_dev, dma_addr_t *iova,
-			   void *buf, size_t size);
-
+int geni_se_unmap_buf(struct device *wrapper_dev, dma_addr_t *iova,
+		      size_t size, enum dma_data_direction dir);
 #else
 static inline unsigned int geni_read_reg_nolog(void __iomem *base, int offset)
 {
@@ -741,17 +659,25 @@ static inline unsigned int geni_read_reg(void __iomem *base, int offset)
 }
 
 static inline void geni_write_reg(unsigned int value, void __iomem *base,
-				int offset)
+				  int offset)
 {
 }
 
-static inline int get_se_proto(void __iomem *base)
+static inline int geni_get_qup_hw_version(struct device *wrapper_dev,
+					  unsigned int *major,
+					  unsigned int *minor,
+					  unsigned int *step)
+{
+	return -ENXIO;
+}
+
+static inline int geni_se_get_proto(void __iomem *base)
 {
 	return -ENXIO;
 }
 
 static inline int geni_se_init(void __iomem *base,
-		unsigned int rx_wm, unsigned int rx_rfr)
+			       unsigned int rx_wm, unsigned int rx_rfr)
 {
 	return -ENXIO;
 }
@@ -761,138 +687,120 @@ static inline int geni_se_select_mode(void __iomem *base, int mode)
 	return -ENXIO;
 }
 
-static inline void geni_setup_m_cmd(void __iomem *base, u32 cmd,
-								u32 params)
+static inline void geni_se_setup_m_cmd(void __iomem *base, u32 cmd,
+				       u32 params)
 {
 }
 
-static inline void geni_setup_s_cmd(void __iomem *base, u32 cmd,
-								u32 params)
+static inline void geni_se_setup_s_cmd(void __iomem *base, u32 cmd,
+				       u32 params)
 {
 }
 
-static inline void geni_cancel_m_cmd(void __iomem *base)
+static inline void geni_se_cancel_m_cmd(void __iomem *base)
 {
 }
 
-static inline void geni_cancel_s_cmd(void __iomem *base)
+static inline void geni_se_cancel_s_cmd(void __iomem *base)
 {
 }
 
-static inline void geni_abort_m_cmd(void __iomem *base)
+static inline void geni_se_abort_m_cmd(void __iomem *base)
 {
 }
 
-static inline void geni_abort_s_cmd(void __iomem *base)
+static inline void geni_se_abort_s_cmd(void __iomem *base)
 {
 }
 
-static inline int get_tx_fifo_depth(void __iomem *base)
-{
-	return -ENXIO;
-}
-
-static inline int get_tx_fifo_width(void __iomem *base)
+static inline int geni_se_get_tx_fifo_depth(void __iomem *base)
 {
 	return -ENXIO;
 }
 
-static inline int get_rx_fifo_depth(void __iomem *base)
+static inline int geni_se_get_tx_fifo_width(void __iomem *base)
 {
 	return -ENXIO;
 }
 
-static inline void se_get_packing_config(int bpw, int pack_words,
-					bool msb_to_lsb, unsigned long *cfg0,
-					unsigned long *cfg1)
-{
-}
-
-static inline void se_config_packing(void __iomem *base, int bpw,
-				int pack_words, bool msb_to_lsb)
-{
-}
-
-static inline int se_geni_resources_on(struct se_geni_rsc *rsc)
+static inline int geni_se_get_rx_fifo_depth(void __iomem *base)
 {
 	return -ENXIO;
 }
 
-static inline int se_geni_resources_off(struct se_geni_rsc *rsc)
+static inline void geni_se_get_packing_config(int bpw, int pack_words,
+					      bool msb_to_lsb,
+					      unsigned long *cfg0,
+					      unsigned long *cfg1)
+{
+}
+
+static inline void geni_se_config_packing(void __iomem *base, int bpw,
+					  int pack_words, bool msb_to_lsb)
+{
+}
+
+static inline int geni_se_resources_on(struct geni_se_rsc *rsc)
 {
 	return -ENXIO;
 }
 
-static inline int geni_se_resources_init(struct se_geni_rsc *rsc,
-					 unsigned long ab, unsigned long ib)
+static inline int geni_se_resources_off(struct geni_se_rsc *rsc)
 {
 	return -ENXIO;
 }
 
-static inline int geni_se_clk_tbl_get(struct se_geni_rsc *rsc,
-					unsigned long **tbl)
+static inline int geni_se_clk_tbl_get(struct geni_se_rsc *rsc,
+				      unsigned long **tbl)
 {
 	return -ENXIO;
 }
 
-static inline int geni_se_clk_freq_match(struct se_geni_rsc *rsc,
-			unsigned long req_freq, unsigned int *index,
-			unsigned long *res_freq, bool exact)
+static inline int geni_se_clk_freq_match(struct geni_se_rsc *rsc,
+					 unsigned long req_freq,
+					 unsigned int *index,
+					 unsigned long *res_freq, bool exact)
 {
 	return -ENXIO;
 }
 
 static inline int geni_se_tx_dma_prep(struct device *wrapper_dev,
-	void __iomem *base, void *tx_buf, int tx_len, dma_addr_t *tx_dma)
+				      void __iomem *base, void *tx_buf,
+				      int tx_len, dma_addr_t *tx_dma)
 {
 	return -ENXIO;
 }
 
 static inline int geni_se_rx_dma_prep(struct device *wrapper_dev,
-	void __iomem *base, void *rx_buf, int rx_len, dma_addr_t *rx_dma)
+ 				      void __iomem *base, void *rx_buf,
+				      int rx_len, dma_addr_t *rx_dma)
 {
 	return -ENXIO;
 }
 
 static inline void geni_se_tx_dma_unprep(struct device *wrapper_dev,
-					dma_addr_t tx_dma, int tx_len)
+					 dma_addr_t tx_dma, int tx_len)
 {
 }
 
 static inline void geni_se_rx_dma_unprep(struct device *wrapper_dev,
-					dma_addr_t rx_dma, int rx_len)
+					 dma_addr_t rx_dma, int rx_len)
 {
 }
 
-static inline int geni_se_qupv3_hw_version(struct device *wrapper_dev,
-		unsigned int *major, unsigned int *minor, unsigned int *step)
+static inline int geni_se_map_buf(struct device *wrapper_dev,
+				  dma_addr_t *iova, void *buf, size_t size,
+				  enum dma_data_direction dir)
 {
 	return -ENXIO;
 }
 
-static inline int geni_se_iommu_map_buf(struct device *wrapper_dev,
-	dma_addr_t *iova, void *buf, size_t size, enum dma_data_direction dir)
-{
-	return -ENXIO;
-}
-
-static inline void *geni_se_iommu_alloc_buf(struct device *wrapper_dev,
-					dma_addr_t *iova, size_t size)
-{
-	return NULL;
-}
-
-static inline int geni_se_iommu_unmap_buf(struct device *wrapper_dev,
-		dma_addr_t *iova, size_t size, enum dma_data_direction dir)
+static inline int geni_se_unmap_buf(struct device *wrapper_dev,
+				    dma_addr_t *iova, size_t size,
+				    enum dma_data_direction dir)
 {
 	return -ENXIO;
 
-}
-
-static inline int geni_se_iommu_free_buf(struct device *wrapper_dev,
-				dma_addr_t *iova, void *buf, size_t size)
-{
-	return -ENXIO;
 }
 
 #endif

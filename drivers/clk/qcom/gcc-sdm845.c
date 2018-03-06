@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/kernel.h>
@@ -34,19 +26,10 @@
 #include "gdsc.h"
 #include "reset.h"
 
-#define GCC_MMSS_MISC				0x09FFC
-#define GCC_GPU_MISC				0x71028
-
-#define CXO_FREQUENCY				19200000
-
 #define F(f, s, h, m, n) { (f), (s), (2 * (h) - 1), (m), (n) }
 
 static struct freq_tbl cxo_safe_src_f = {
-	.freq = CXO_FREQUENCY,
-	.src = 0,
 	.pre_div = 1,
-	.m = 0,
-	.n = 0,
 };
 
 enum {
@@ -3573,24 +3556,16 @@ MODULE_DEVICE_TABLE(of, gcc_sdm845_match_table);
 static int gcc_sdm845_probe(struct platform_device *pdev)
 {
 	struct regmap *regmap;
-	int ret = 0;
 
 	regmap = qcom_cc_map(pdev, &gcc_sdm845_desc);
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
 
-	ret = qcom_cc_really_probe(pdev, &gcc_sdm845_desc, regmap);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to register GCC clocks\n");
-		return ret;
-	}
-
 	/* Disable the GPLL0 active input to MMSS and GPU via MISC registers */
-	regmap_update_bits(regmap, GCC_MMSS_MISC, 0x3, 0x3);
-	regmap_update_bits(regmap, GCC_GPU_MISC, 0x3, 0x3);
+	regmap_update_bits(regmap, 0x09FFC, 0x3, 0x3);
+	regmap_update_bits(regmap, 0x71028, 0x3, 0x3);
 
-	dev_info(&pdev->dev, "Registered GCC clocks\n");
-	return ret;
+	return qcom_cc_really_probe(pdev, &gcc_sdm845_desc, regmap);
 }
 
 static struct platform_driver gcc_sdm845_driver = {
