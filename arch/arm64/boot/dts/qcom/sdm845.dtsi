@@ -15,6 +15,7 @@
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/spmi/spmi.h>
 #include <dt-bindings/reset/qcom,sdm845-aoss.h>
+#include <dt-bindings/soc/qcom,rpmh-rsc.h>
 
 / {
 	interrupt-parent = <&intc>;
@@ -361,6 +362,19 @@
 			};
 		};
 
+	apps_rsc: rsc@179e000 {
+		compatible = "qcom,rpmh-rsc";
+		label = "apps_rsc";
+		reg = <0x179e0000 0x100>, <0x179e0d00 0x3000>;
+		reg-names = "drv", "tcs";
+		interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
+		qcom,drv-id = <2>;
+		qcom,tcs-config = <ACTIVE_TCS  2>,
+				  <SLEEP_TCS   3>,
+				  <WAKE_TCS    3>,
+				  <CONTROL_TCS 1>;
+	};
+
 		timer@17c90000 {
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -501,6 +515,7 @@
 			#clock-cells = <1>;
 			mboxes = <&apps_rsc 0>;
 			mbox-names = "apps";
+			status = "disabled";
 		};
 
 		clock_dispcc: qcom,dispcc@af00000 {
@@ -618,19 +633,6 @@
 			reset-names = "core_reset";
 
 			status = "disabled";
-		};
-
-		apps_rsc: mailbox@179e0000 {
-			compatible = "qcom,rpmh_rsc";
-			label = "apps_rsc";
-			reg = <0x179e0000 0x100>, <0x179e0d00 0x3000>;
-			interrupts = <0 5 0>;
-			#mbox-cells = <1>;
-			qcom,drv-id = <2>;
-			qcom,tcs-config = <2 2>,
-					<0 3>,
-					<1 3>,
-					<3 1>;
 		};
 
 		apps_smmu: apps-smmu@0x15000000 {
