@@ -1492,6 +1492,8 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 	return 0;
 }
 
+
+#ifdef CONFIG_CHROME_ROT
 /**
  * _sde_plane_fb_get/put - framebuffer callback for crtc res ops
  */
@@ -1525,6 +1527,7 @@ static struct sde_crtc_res_ops fbo_res_ops = {
 	.put = _sde_plane_fbo_put,
 	.get = _sde_plane_fbo_get,
 };
+#endif
 
 /**
  * sde_plane_rot_calc_prefill - calculate rotator start prefill
@@ -2042,6 +2045,7 @@ static void _sde_plane_rot_get_fb(struct drm_plane *plane,
  * @new_state: Pointer to new drm plane state
  * return: 0 if success; error code otherwise
  */
+#ifdef CONFIG_CHROME_ROT
 static int sde_plane_rot_prepare_fb(struct drm_plane *plane,
 		struct drm_plane_state *new_state)
 {
@@ -2167,6 +2171,7 @@ error_create_fbo_res:
 error_create_fbo:
 	return ret;
 }
+#endif
 
 /**
  * sde_plane_rot_cleanup_fb - cleanup framebuffer of previous state for the
@@ -4225,15 +4230,6 @@ static int sde_plane_atomic_set_property(struct drm_plane *plane,
 			property->name, property->base.id, val, ret);
 
 	return ret;
-}
-
-static int sde_plane_set_property(struct drm_plane *plane,
-		struct drm_property *property, uint64_t val)
-{
-	SDE_DEBUG("\n");
-
-	return sde_plane_atomic_set_property(plane,
-			plane->state, property, val);
 }
 
 static int sde_plane_atomic_get_property(struct drm_plane *plane,

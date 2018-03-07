@@ -1239,12 +1239,14 @@ static void sde_kms_fbo_destroy(struct sde_kms_fbo *fbo)
 	}
 }
 
+#ifdef CONFIG_CHROME_MSM_ION
 static void sde_kms_set_gem_flags(struct msm_gem_object *msm_obj,
 		uint32_t flags)
 {
 	if (msm_obj)
 		msm_obj->flags |= flags;
 }
+#endif
 
 struct sde_kms_fbo *sde_kms_fbo_alloc(struct drm_device *dev, u32 width,
 		u32 height, u32 pixel_format, u64 modifier[4], u32 flags)

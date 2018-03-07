@@ -373,7 +373,7 @@ static int validate_dma_cfg(struct sde_reg_dma_setup_ops_cfg *cfg)
 	}
 
 	if (cfg->dma_buf->iova & GUARD_BYTES || !cfg->dma_buf->vaddr) {
-		DRM_ERROR("iova not aligned to %zx iova %x kva %pK",
+		DRM_ERROR("iova not aligned to %zx iova %llx kva %pK",
 				ADDR_ALIGN, cfg->dma_buf->iova,
 				cfg->dma_buf->vaddr);
 		return -EINVAL;
@@ -432,7 +432,7 @@ static int validate_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg)
 				(WRITE_TRIGGER);
 
 	if (cfg->dma_buf->iova & GUARD_BYTES) {
-		DRM_ERROR("Address is not aligned to %zx iova %x", ADDR_ALIGN,
+		DRM_ERROR("Address is not aligned to %zx iova %llx", ADDR_ALIGN,
 				cfg->dma_buf->iova);
 		return -EINVAL;
 	}
@@ -582,9 +582,9 @@ int reset_v1(struct sde_hw_ctl *ctl)
 	return 0;
 }
 
+#ifdef CONFIG_CHROME_MSM_SMMU
 static void sde_reg_dma_aspace_cb_locked(void *cb_data, bool is_detach)
 {
-#ifdef CONFIG_CHROME_MSM_SMMU
 	struct sde_reg_dma_buffer *dma_buf = NULL;
 	struct msm_gem_address_space *aspace = NULL;
 	u32 iova_aligned, offset;
@@ -626,8 +626,8 @@ static void sde_reg_dma_aspace_cb_locked(void *cb_data, bool is_detach)
 		dma_buf->vaddr = (void *)(((u8 *)dma_buf->vaddr) + offset);
 		dma_buf->next_op_allowed = DECODE_SEL_OP;
 	}
-#endif
 }
+#endif
 
 static struct sde_reg_dma_buffer *alloc_reg_dma_buf_v1(u32 size)
 {
