@@ -17,6 +17,7 @@
 #include <dt-bindings/reset/qcom,sdm845-aoss.h>
 #include <dt-bindings/soc/qcom,rpmh-rsc.h>
 #include <dt-bindings/msm/msm-bus-ids.h>
+#include <dt-bindings/phy/phy-qcom-qusb2.h>
 
 / {
 	interrupt-parent = <&intc>;
@@ -801,10 +802,15 @@
 
 		usb3: usb@a600000 {
 			compatible = "qcom,dwc3";
-			reg = <0xa600000 0xcd00>;
+			reg = <0xa6f8800 0x400>;
+			reg-names = "qscratch";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
+
+			interrupts = <0 131 0>, <0 486 0>, <0 488 0>, <0 489 0>;
+			interrupt-names = "hs_phy_irq", "ss_phy_irq",
+					  "dm_hs_phy_irq", "dp_hs_phy_irq";
 
 			clocks = <&gcc GCC_CFG_NOC_USB3_PRIM_AXI_CLK>,
 				<&gcc GCC_USB30_PRIM_MASTER_CLK>,
@@ -820,6 +826,8 @@
 					  <&gcc GCC_USB30_PRIM_MASTER_CLK>;
 			assigned-clock-rates = <19200000>, <150000000>;
 
+			resets = <&gcc GCC_USB30_PRIM_BCR>;
+			reset-names = "core_reset";
 			power-domains = <&gcc USB30_PRIM_GDSC>;
 
 			dwc3@6a00000 {
@@ -894,10 +902,15 @@
 		/* USB3 Secondary controller with QMP UNI-PHY */
 		usb3_uni: usb@a800000 {
 			compatible = "qcom,dwc3";
-			reg = <0xa800000 0xcd00>;
+			reg = <0xa8f8800 0x400>;
+			reg-names = "qscratch";
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges;
+
+			interrupts = <0 136 0>, <0 487 0>, <0 490 0>, <0 491 0>;
+			interrupt-names = "hs_phy_irq", "ss_phy_irq",
+					  "dm_hs_phy_irq", "dp_hs_phy_irq";
 
 			clocks = <&gcc GCC_CFG_NOC_USB3_SEC_AXI_CLK>,
 				<&gcc GCC_USB30_SEC_MASTER_CLK>,
@@ -913,6 +926,8 @@
 					  <&gcc GCC_USB30_SEC_MASTER_CLK>;
 			assigned-clock-rates = <19200000>, <150000000>;
 
+			resets = <&gcc GCC_USB30_SEC_BCR>;
+			reset-names = "core_reset";
 			power-domains = <&gcc USB30_SEC_GDSC>;
 
 			dwc3@a800000 {
@@ -924,7 +939,7 @@
 				snps,dis_enblslpm_quirk;
 				phys = <&hsusb_phy1>, <&ssusb_phy_1>;
 				phy-names = "usb2-phy", "usb3-phy";
-				dr_mode = "host";
+				dr_mode = "peripheral";
 			};
 		};
 
