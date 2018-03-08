@@ -62,6 +62,12 @@
 			no-map;
 			reg = <0 0x94f00000 0 0x200000>;
 		};
+
+		qcom,cmd-db@c3f000c {
+			compatible = "qcom,cmd-db";
+			reg = <0x0 0xc3f000c 0x0 0x8>,
+			      <0x0 0x85fe0000 0x0 0x20000>;
+		};
 	};
 
 	cpus {
@@ -612,11 +618,6 @@
 			reset-names = "core_reset";
 
 			status = "disabled";
-		};
-
-		cmd_db: qcom,cmd-db@861e0000 {
-			compatible = "qcom,cmd-db";
-			reg = <0xc3f000c 8>;
 		};
 
 		apps_rsc: mailbox@179e0000 {
