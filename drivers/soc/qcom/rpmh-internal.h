@@ -86,4 +86,6 @@ struct rsc_drv {
 
 int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg);
 
+void rpmh_tx_done(const struct tcs_request *msg, int r);
+
 #endif /* __RPM_INTERNAL_H__ */

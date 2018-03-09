@@ -252,6 +252,8 @@ static void tcs_notify_tx_done(unsigned long data)
 	struct rsc_drv *drv = (struct rsc_drv *)data;
 	struct tcs_response *resp;
 	unsigned long flags;
+	const struct tcs_request *msg;
+	int err;
 
 	for (;;) {
 		spin_lock_irqsave(&drv->drv_lock, flags);
@@ -264,7 +266,10 @@ static void tcs_notify_tx_done(unsigned long data)
 		list_del(&resp->list);
 		spin_unlock_irqrestore(&drv->drv_lock, flags);
 		trace_rpmh_notify_tx_done(drv, resp);
+		msg = resp->msg;
+		err = resp->err;
 		free_response(resp);
+		rpmh_tx_done(msg, err);
 	}
 }
 
@@ -553,6 +558,8 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 
 	/* Enable the active TCS to send requests immediately */
 	write_tcs_reg(drv, RSC_DRV_IRQ_ENABLE, 0, 0, drv->tcs[ACTIVE_TCS].mask);
+
+	dev_set_drvdata(&pdev->dev, drv);
 
 	return devm_of_platform_populate(&pdev->dev);
 }
