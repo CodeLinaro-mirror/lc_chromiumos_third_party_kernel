@@ -162,6 +162,54 @@ static struct tcs_group *get_tcs_of_type(struct rsc_drv *drv, int type)
 	return tcs;
 }
 
+static int __tcs_invalidate(struct rsc_drv *drv, int type)
+{
+	int m;
+	struct tcs_group *tcs;
+
+	tcs = get_tcs_of_type(drv, type);
+	if (IS_ERR(tcs))
+		return PTR_ERR(tcs);
+
+	spin_lock(&tcs->lock);
+	if (bitmap_empty(tcs->slots, MAX_TCS_SLOTS)) {
+		spin_unlock(&tcs->lock);
+		return 0;
+	}
+
+	for (m = tcs->offset; m < tcs->offset + tcs->num_tcs; m++) {
+		if (!tcs_is_free(drv, m)) {
+			spin_unlock(&tcs->lock);
+			return -EAGAIN;
+		}
+		write_tcs_reg_sync(drv, RSC_DRV_CMD_ENABLE, m, 0, 0);
+		bitmap_zero(tcs->slots, MAX_TCS_SLOTS);
+	}
+	spin_unlock(&tcs->lock);
+
+	return 0;
+}
+
+/**
+ * rpmh_rsc_invalidate - Invalidate sleep and wake TCSes
+ *
+ * @drv: the mailbox controller
+ */
+int rpmh_rsc_invalidate(struct rsc_drv *drv)
+{
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&drv->drv_lock, flags);
+	ret = __tcs_invalidate(drv, SLEEP_TCS);
+	if (!ret)
+		ret = __tcs_invalidate(drv, WAKE_TCS);
+	spin_unlock_irqrestore(&drv->drv_lock, flags);
+
+	return ret;
+}
+EXPORT_SYMBOL(rpmh_rsc_invalidate);
+
 static struct tcs_group *get_tcs_for_msg(struct rsc_drv *drv,
 					 const struct tcs_request *msg)
 {
