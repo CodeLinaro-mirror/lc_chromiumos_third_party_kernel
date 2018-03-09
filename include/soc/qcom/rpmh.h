@@ -17,6 +17,10 @@ int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 
 struct rpmh_client *rpmh_get_client(struct platform_device *pdev);
 
+int rpmh_flush(struct rpmh_client *rc);
+
+int rpmh_invalidate(struct rpmh_client *rc);
+
 void rpmh_release(struct rpmh_client *rc);
 
 #else
@@ -27,6 +31,12 @@ static inline int rpmh_write(struct rpmh_client *rc, enum rpmh_state state,
 
 static inline struct rpmh_client *rpmh_get_client(struct platform_device *pdev)
 { return ERR_PTR(-ENODEV); }
+
+static inline int rpmh_flush(struct rpmh_client *rc)
+{ return -ENODEV; }
+
+static inline int rpmh_invalidate(struct rpmh_client *rc)
+{ return -ENODEV; }
 
 static inline void rpmh_release(struct rpmh_client *rc) { }
 #endif /* CONFIG_QCOM_RPMH */
