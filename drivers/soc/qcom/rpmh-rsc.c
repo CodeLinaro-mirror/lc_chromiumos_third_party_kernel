@@ -24,6 +24,9 @@
 
 #include "rpmh-internal.h"
 
+#define CREATE_TRACE_POINTS
+#include "trace-rpmh.h"
+
 #define RSC_DRV_TCS_OFFSET		672
 #define RSC_DRV_CMD_OFFSET		20
 
@@ -228,6 +231,7 @@ skip_resp:
 		/* Reclaim the TCS */
 		write_tcs_reg(drv, RSC_DRV_CMD_ENABLE, m, 0, 0);
 		write_tcs_reg(drv, RSC_DRV_IRQ_CLEAR, 0, 0, BIT(m));
+		trace_rpmh_notify_irq(drv, resp);
 		clear_bit(m, drv->tcs_in_use);
 		send_tcs_response(resp);
 	}
@@ -259,6 +263,7 @@ static void tcs_notify_tx_done(unsigned long data)
 		}
 		list_del(&resp->list);
 		spin_unlock_irqrestore(&drv->drv_lock, flags);
+		trace_rpmh_notify_tx_done(drv, resp);
 		free_response(resp);
 	}
 }
@@ -287,6 +292,7 @@ static void __tcs_buffer_write(struct rsc_drv *drv, int m, int n,
 		write_tcs_reg(drv, RSC_DRV_CMD_MSGID, m, j, msgid);
 		write_tcs_reg(drv, RSC_DRV_CMD_ADDR, m, j, cmd->addr);
 		write_tcs_reg(drv, RSC_DRV_CMD_DATA, m, j, cmd->data);
+		trace_rpmh_send_msg(drv, m, j, msgid, cmd);
 	}
 
 	write_tcs_reg(drv, RSC_DRV_CMD_WAIT_FOR_CMPL, m, 0, cmd_complete);
