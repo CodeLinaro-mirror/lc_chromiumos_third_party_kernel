@@ -303,6 +303,7 @@
 			reg = <0x100000 0x1f0000>;
 			#clock-cells = <1>;
 			#reset-cells = <1>;
+			#power-domain-cells = <1>;
 		};
 
 		tlmm: pinctrl@3400000 {
