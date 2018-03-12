@@ -345,23 +345,43 @@ static void hotplug_notify_work_func(struct work_struct *work)
 }
 
 #if defined(CONFIG_DRM_AMD_DC_FBC)
-#include "dal_asic_id.h"
 /* Allocate memory for FBC compressed data  */
-/* TODO: Dynamic allocation */
-#define AMDGPU_FBC_SIZE    (3840 * 2160 * 4)
-
-static void amdgpu_dm_initialize_fbc(struct amdgpu_device *adev)
+static void amdgpu_dm_fbc_init(struct drm_connector *connector)
 {
-	int r;
+	struct drm_device *dev = connector->dev;
+	struct amdgpu_device *adev = dev->dev_private;
 	struct dm_comressor_info *compressor = &adev->dm.compressor;
+	struct amdgpu_dm_connector *aconn = to_amdgpu_dm_connector(connector);
+	struct drm_display_mode *mode;
+	unsigned long max_size = 0;
 
-	if (!compressor->bo_ptr) {
-		r = amdgpu_bo_create_kernel(adev, AMDGPU_FBC_SIZE, PAGE_SIZE,
-				AMDGPU_GEM_DOMAIN_VRAM, &compressor->bo_ptr,
-				&compressor->gpu_addr, &compressor->cpu_addr);
+	if (adev->dm.dc->fbc_compressor == NULL)
+		return;
+
+	if (aconn->dc_link->connector_signal != SIGNAL_TYPE_EDP)
+		return;
+
+	if (compressor->bo_ptr)
+		return;
+
+
+	list_for_each_entry(mode, &connector->modes, head) {
+		if (max_size < mode->htotal * mode->vtotal)
+			max_size = mode->htotal * mode->vtotal;
+	}
+
+	if (max_size) {
+		int r = amdgpu_bo_create_kernel(adev, max_size * 4, PAGE_SIZE,
+			    AMDGPU_GEM_DOMAIN_GTT, &compressor->bo_ptr,
+			    &compressor->gpu_addr, &compressor->cpu_addr);
 
 		if (r)
-			DRM_ERROR("DM: Failed to initialize fbc\n");
+			DRM_ERROR("DM: Failed to initialize FBC\n");
+		else {
+			adev->dm.dc->ctx->fbc_gpu_addr = compressor->gpu_addr;
+			DRM_INFO("DM: FBC alloc %lu\n", max_size*4);
+		}
+
 	}
 
 }
@@ -422,11 +442,6 @@ static int amdgpu_dm_init(struct amdgpu_device *adev)
 	else
 		init_data.log_mask = DC_MIN_LOG_MASK;
 
-#if defined(CONFIG_DRM_AMD_DC_FBC)
-	if (adev->family == FAMILY_CZ)
-		amdgpu_dm_initialize_fbc(adev);
-	init_data.fbc_gpu_addr = adev->dm.compressor.gpu_addr;
-#endif
 	/* Display Core create. */
 	adev->dm.dc = dc_create(&init_data);
 
@@ -1584,9 +1599,7 @@ static int dm_early_init(void *handle)
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
 
-	adev->ddev->driver->driver_features |= DRIVER_ATOMIC;
 	amdgpu_dm_set_irq_funcs(adev);
-
 	switch (adev->asic_type) {
 	case CHIP_BONAIRE:
 	case CHIP_HAWAII:
@@ -3343,9 +3356,12 @@ static int amdgpu_dm_connector_get_modes(struct drm_connector *connector)
 	struct edid *edid = amdgpu_dm_connector->edid;
 
 	encoder = helper->best_encoder(connector);
-
 	amdgpu_dm_connector_ddc_get_modes(connector, edid);
 	amdgpu_dm_connector_add_common_modes(encoder, connector);
+
+#if defined(CONFIG_DRM_AMD_DC_FBC)
+	amdgpu_dm_fbc_init(connector);
+#endif
 	return amdgpu_dm_connector->num_modes;
 }
 
@@ -4668,11 +4684,33 @@ static int dm_update_planes_state(struct dc *dc,
 	return ret;
 }
 
+static int dm_atomic_check_plane_state_fb(struct drm_atomic_state *state,
+					  struct drm_crtc *crtc)
+{
+	struct drm_plane *plane;
+	struct drm_crtc_state *crtc_state;
+
+	WARN_ON(!drm_atomic_get_new_crtc_state(state, crtc));
+
+	drm_for_each_plane_mask(plane, state->dev, crtc->state->plane_mask) {
+		struct drm_plane_state *plane_state =
+			drm_atomic_get_plane_state(state, plane);
+
+		if (IS_ERR(plane_state))
+			return -EDEADLK;
+
+		crtc_state = drm_atomic_get_crtc_state(plane_state->state, crtc);
+		if (crtc->primary == plane && crtc_state->active) {
+			if (!plane_state->fb)
+				return -EINVAL;
+		}
+	}
+	return 0;
+}
+
 static int amdgpu_dm_atomic_check(struct drm_device *dev,
 				  struct drm_atomic_state *state)
 {
-	int i;
-	int ret;
 	struct amdgpu_device *adev = dev->dev_private;
 	struct dc *dc = adev->dm.dc;
 	struct dm_atomic_state *dm_state = to_dm_atomic_state(state);
@@ -4680,6 +4718,7 @@ static int amdgpu_dm_atomic_check(struct drm_device *dev,
 	struct drm_connector_state *old_con_state, *new_con_state;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+	int ret, i;
 
 	/*
 	 * This bool will be set for true for any modeset/reset
@@ -4691,36 +4730,25 @@ static int amdgpu_dm_atomic_check(struct drm_device *dev,
 	if (ret)
 		goto fail;
 
-	/*
-	 * legacy_cursor_update should be made false for SoC's having
-	 * a dedicated hardware plane for cursor in amdgpu_dm_atomic_commit(),
-	 * otherwise for software cursor plane,
-	 * we should not add it to list of affected planes.
-	 */
-	if (state->legacy_cursor_update) {
-		for_each_new_crtc_in_state(state, crtc, new_crtc_state, i) {
-			if (new_crtc_state->color_mgmt_changed) {
-				ret = drm_atomic_add_affected_planes(state, crtc);
-				if (ret)
-					goto fail;
-			}
-		}
-	} else {
-		for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i) {
-			if (!drm_atomic_crtc_needs_modeset(new_crtc_state))
-				continue;
+	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i) {
+		ret = dm_atomic_check_plane_state_fb(state, crtc);
+		if (ret)
+			goto fail;
 
-			if (!new_crtc_state->enable)
-				continue;
+		if (!drm_atomic_crtc_needs_modeset(new_crtc_state) &&
+		    !new_crtc_state->color_mgmt_changed)
+			continue;
 
-			ret = drm_atomic_add_affected_connectors(state, crtc);
-			if (ret)
-				return ret;
+		if (!new_crtc_state->enable)
+			continue;
 
-			ret = drm_atomic_add_affected_planes(state, crtc);
-			if (ret)
-				goto fail;
-		}
+		ret = drm_atomic_add_affected_connectors(state, crtc);
+		if (ret)
+			return ret;
+
+		ret = drm_atomic_add_affected_planes(state, crtc);
+		if (ret)
+			goto fail;
 	}
 
 	dm_state->context = dc_create_state();
