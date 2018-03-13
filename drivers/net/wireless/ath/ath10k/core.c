@@ -2312,7 +2312,7 @@ int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 	 * possible to implicitly make it correct by creating a dummy vdev and
 	 * then deleting it.
 	 */
-	if (mode == ATH10K_FIRMWARE_MODE_NORMAL) {
+	if (mode == ATH10K_FIRMWARE_MODE_NORMAL && !QCA_REV_WCN3990(ar)) {
 		status = ath10k_core_reset_rx_filter(ar);
 		if (status) {
 			ath10k_err(ar,
