@@ -14,6 +14,7 @@
 #include <dt-bindings/clock/qcom,rpmh.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/spmi/spmi.h>
+#include <dt-bindings/reset/qcom,sdm845-aoss.h>
 
 / {
 	interrupt-parent = <&intc>;
@@ -50,6 +51,16 @@
 		removed_region3: removed-region3@86200000 {
 			no-map;
 			reg = <0 0x86200000 0 0x2d00000>;
+		};
+
+		mpss_mem: mpss@8cc00000 {
+			no-map;
+			reg = <0 0x8cc00000 0 0x7600000>;
+		};
+
+		mba_mem: mba@94f00000 {
+			no-map;
+			reg = <0 0x94f00000 0 0x200000>;
 		};
 	};
 
@@ -416,6 +427,18 @@
 		apcs: syscon@1799000c {
 			compatible = "syscon";
 			reg = <0x1799000c 0x4>;
+		};
+
+		apcs_glb: mailbox@17990000 {
+			compatible = "qcom,sdm845-apcs-hmss-global";
+			reg = <0x17990000 0x1000>;
+			#mbox-cells = <1>;
+		};
+
+		aoss_reset: qcom,reset-controller@b2e0100 {
+			compatible = "qcom,sdm845-aoss-reset";
+			reg = <0xc2b0000 0x20004>;
+			#reset-cells = <1>;
 		};
 
 		spmi_bus: spmi@c440000 {
@@ -795,6 +818,65 @@
 				phys = <&hsusb_phy1>, <&ssusb_phy_0>;
 				phy-names = "usb2-phy", "usb3-phy";
 				dr_mode = "host";
+			};
+		};
+
+		modem-pil@4080000 {
+			compatible = "qcom,sdm845-mss-pil";
+			reg = <0x04080000 0x408>, <0x04180000 0x48>;
+
+			reg-names = "qdsp6", "rmb";
+
+			interrupts-extended = <&intc 0 266 1>,
+					      <&modem_smp2p_in 0 0>,
+					      <&modem_smp2p_in 1 0>,
+					      <&modem_smp2p_in 2 0>,
+					      <&modem_smp2p_in 3 0>;
+
+			interrupt-names = "wdog", "fatal", "ready",
+					  "handover", "stop-ack";
+
+			clocks = <&gcc GCC_MSS_CFG_AHB_CLK>,
+				 <&gcc GCC_MSS_Q6_MEMNOC_AXI_CLK>,
+				 <&gcc GCC_BOOT_ROM_AHB_CLK>,
+				 <&gcc GCC_MSS_GPLL0_DIV_CLK_SRC>,
+				 <&gcc GCC_MSS_SNOC_AXI_CLK>,
+				 <&gcc GCC_MSS_AXIS2_CLK>,
+				 <&gcc GCC_MSS_MFAB_AXIS_CLK>,
+				 <&gcc GCC_PRNG_AHB_CLK>,
+				 <&xo_board>;
+
+			clock-names = "iface", "bus", "mem", "gpll0_mss",
+				      "snoc_axi", "axis2", "mnoc_axi",
+				      "prng", "xo";
+
+			qcom,smem-states = <&modem_smp2p_out 0>;
+			qcom,smem-state-names = "stop";
+
+			resets = <&aoss_reset AOSS_CC_MSS_RESTART>;
+			reset-names = "mss_restart";
+
+			cx-supply = <&pm8998_s9_level>;
+			mx-supply = <&pm8998_s6_level>;
+			mss-supply = <&pm8005_s2_level>;
+
+			qcom,halt-regs = <&tcsr_mutex_regs
+						0x23000 0x25000 0x24000>;
+
+			mba {
+				memory-region = <&mba_mem>;
+			};
+
+			mpss {
+				memory-region = <&mpss_mem>;
+			};
+
+			glink-edge {
+				interrupts = <0 449 IRQ_TYPE_EDGE_RISING>;
+				label = "modem";
+				qcom,remote-pid = <1>;
+				mboxes = <&apcs_glb 12>;
+				mbox-names = "mpss_smem";
 			};
 		};
 
