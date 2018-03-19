@@ -17,7 +17,7 @@
 #include <linux/bug.h>
 #include <linux/bitmap.h>
 #include <linux/err.h>
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 #include <linux/msm-bus.h>
 #endif
 #include <drm/drmP.h>

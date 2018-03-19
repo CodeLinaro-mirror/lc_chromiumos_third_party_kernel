@@ -21,7 +21,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/of_platform.h>
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 #include <linux/msm-bus.h>
 #include <linux/msm-bus-board.h>
 #endif

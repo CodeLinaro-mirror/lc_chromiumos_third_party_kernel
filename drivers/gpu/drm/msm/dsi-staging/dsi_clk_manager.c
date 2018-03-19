@@ -17,7 +17,7 @@
 #include <linux/slab.h>
 #include "dsi_clk.h"
 
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 #include <linux/msm-bus.h>
 #endif
 
@@ -228,7 +228,7 @@ int dsi_core_clk_start(struct dsi_core_clks *c_clks)
 		}
 	}
 
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 	if (c_clks->bus_handle) {
 		rc = msm_bus_scale_client_update_request(c_clks->bus_handle, 1);
 		if (rc) {
@@ -239,7 +239,7 @@ int dsi_core_clk_start(struct dsi_core_clks *c_clks)
 #endif
 	return rc;
 
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 error_disable_mmss_clk:
 	if (c_clks->clks.core_mmss_clk)
 		clk_disable_unprepare(c_clks->clks.core_mmss_clk);
@@ -265,7 +265,7 @@ int dsi_core_clk_stop(struct dsi_core_clks *c_clks)
 {
 	int rc = 0;
 
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 	if (c_clks->bus_handle) {
 		rc = msm_bus_scale_client_update_request(c_clks->bus_handle, 0);
 		if (rc) {

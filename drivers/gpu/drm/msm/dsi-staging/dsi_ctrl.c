@@ -17,7 +17,7 @@
 #include <linux/err.h>
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 #include <linux/msm-bus.h>
 #endif
 #include <linux/of_irq.h>
@@ -714,7 +714,7 @@ static int dsi_ctrl_axi_bus_client_init(struct platform_device *pdev,
 					struct dsi_ctrl *ctrl)
 {
 	int rc = 0;
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 	struct dsi_ctrl_bus_scale_info *bus = &ctrl->axi_bus_info;
 
 	bus->bus_scale_table = msm_bus_cl_get_pdata(pdev);
@@ -737,7 +737,7 @@ static int dsi_ctrl_axi_bus_client_init(struct platform_device *pdev,
 
 static int dsi_ctrl_axi_bus_client_deinit(struct dsi_ctrl *ctrl)
 {
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 	struct dsi_ctrl_bus_scale_info *bus = &ctrl->axi_bus_info;
 
 	if (bus->bus_handle) {
