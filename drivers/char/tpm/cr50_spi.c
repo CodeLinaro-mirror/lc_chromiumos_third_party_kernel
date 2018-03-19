@@ -30,7 +30,7 @@
 #define CR50_SLEEP_DELAY_MSEC			1000
 #define CR50_WAKE_START_DELAY_MSEC		1
 #define CR50_ACCESS_DELAY_MSEC			2
-#define CR50_FLOW_CONTROL_MSEC			100
+#define CR50_FLOW_CONTROL_MSEC			TPM2_TIMEOUT_A
 
 #define MAX_SPI_FRAMESIZE			64
 
@@ -154,8 +154,11 @@ static int cr50_spi_flow_control(struct cr50_spi_phy *phy)
 		ret = spi_sync_locked(phy->spi_device, &m);
 		if (ret < 0)
 			return ret;
-		if (time_after(jiffies, timeout_jiffies))
+		if (time_after(jiffies, timeout_jiffies)) {
+			dev_warn(&phy->spi_device->dev,
+				 "Timeout during flow control\n");
 			return -EBUSY;
+		}
 	} while (!(phy->rx_buf[0] & 0x01));
 	return 0;
 }
