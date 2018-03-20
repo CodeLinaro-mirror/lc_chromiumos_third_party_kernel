@@ -29,6 +29,13 @@ enum ath10k_qmi_driver_event_type {
 	ATH10K_QMI_EVENT_MAX,
 };
 
+enum ath10k_qmi_driver_mode {
+	QMI_MISSION,
+	QMI_FTM,
+	QMI_EPPING,
+	QMI_OFF,
+};
+
 struct ath10k_msa_mem_region_info {
 	u64 reg_addr;
 	u32 size;
@@ -59,28 +66,37 @@ struct ath10k_qmi_cal_data {
 	u8 *data;
 };
 
-struct ath10k_qmi {
-	struct platform_device *pdev;
-	struct qmi_handle qmi_hdl;
-	struct sockaddr_qrtr sq;
-	bool fw_ready;
-	bool msa_ready;
-	struct work_struct work_svc_arrive;
-	struct work_struct work_svc_exit;
-	struct work_struct work_msa_ready;
-	struct workqueue_struct *event_wq;
-	spinlock_t event_lock; /* spinlock for fw ready status*/
-	u32 nr_mem_region;
-	struct ath10k_msa_mem_region_info
-		mem_region[MAX_NUM_MEMORY_REGIONS];
-	phys_addr_t msa_pa;
-	u32 msa_mem_size;
-	void *msa_va;
-	struct ath10k_qmi_chip_info chip_info;
-	struct ath10k_qmi_board_info board_info;
-	struct ath10k_qmi_soc_info soc_info;
-	struct ath10k_qmi_fw_version_info fw_version_info;
-	char fw_build_id[MAX_BUILD_ID_LEN + 1];
-	struct ath10k_qmi_cal_data cal_data[MAX_NUM_CAL_V01];
+struct ath10k_tgt_pipe_cfg {
+	u32 pipe_num;
+	u32 pipe_dir;
+	u32 nentries;
+	u32 nbytes_max;
+	u32 flags;
+	u32 reserved;
 };
+
+struct ath10k_svc_pipe_cfg {
+	u32 service_id;
+	u32 pipe_dir;
+	u32 pipe_num;
+};
+
+struct ath10k_shadow_reg_cfg {
+	u16 ce_id;
+	u16 reg_offset;
+};
+
+struct ath10k_qmi_wlan_enable_cfg {
+	u32 num_ce_tgt_cfg;
+	struct ath10k_tgt_pipe_cfg *ce_tgt_cfg;
+	u32 num_ce_svc_pipe_cfg;
+	struct ath10k_svc_pipe_cfg *ce_svc_cfg;
+	u32 num_shadow_reg_cfg;
+	struct ath10k_shadow_reg_cfg *shadow_reg_cfg;
+};
+
+int ath10k_qmi_wlan_enable(struct ath10k_qmi_wlan_enable_cfg *config,
+			   enum ath10k_qmi_driver_mode mode,
+			   const char *host_version);
+int ath10k_qmi_wlan_disable(void);
 #endif /* _QMI_H_ */
