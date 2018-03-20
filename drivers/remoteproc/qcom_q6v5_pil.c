@@ -1,6 +1,7 @@
 /*
  * Qualcomm Peripheral Image Loader
  *
+ * Copyright (C) 2018 The Linux Foundation. All rights reserved.
  * Copyright (C) 2016 Linaro Ltd.
  * Copyright (C) 2014 Sony Mobile Communications AB
  * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
@@ -1390,6 +1391,23 @@ static const struct rproc_hexagon_res sdm845_mss = {
 			"axis2",
 			"prng",
 			NULL
+	},
+	.proxy_supply = (struct qcom_mss_reg_res[]) {
+		{
+			.supply = "mx",
+			.uV = 385,
+		},
+		{
+			.supply = "mss",
+			.uV = 385,
+			.uA = 100000,
+		},
+		{
+			.supply = "cx",
+			.uV = 385,
+			.uA = 100000,
+		},
+		{}
 	},
 	.reset_clk_names = (char*[]){
 			"iface",
