@@ -17,6 +17,8 @@
 #define _QMI_H_
 
 #define MAX_NUM_MEMORY_REGIONS			2
+#define MAX_TIMESTAMP_LEN			32
+#define MAX_BUILD_ID_LEN			128
 
 enum ath10k_qmi_driver_event_type {
 	ATH10K_QMI_EVENT_SERVER_ARRIVE,
@@ -29,6 +31,24 @@ struct ath10k_msa_mem_region_info {
 	u64 reg_addr;
 	u32 size;
 	u8 secure_flag;
+};
+
+struct ath10k_qmi_chip_info {
+	u32 chip_id;
+	u32 chip_family;
+};
+
+struct ath10k_qmi_board_info {
+	u32 board_id;
+};
+
+struct ath10k_qmi_soc_info {
+	u32 soc_id;
+};
+
+struct ath10k_qmi_fw_version_info {
+	u32 fw_version;
+	char fw_build_timestamp[MAX_TIMESTAMP_LEN + 1];
 };
 
 struct ath10k_qmi {
@@ -47,5 +67,10 @@ struct ath10k_qmi {
 	phys_addr_t msa_pa;
 	u32 msa_mem_size;
 	void *msa_va;
+	struct ath10k_qmi_chip_info chip_info;
+	struct ath10k_qmi_board_info board_info;
+	struct ath10k_qmi_soc_info soc_info;
+	struct ath10k_qmi_fw_version_info fw_version_info;
+	char fw_build_id[MAX_BUILD_ID_LEN + 1];
 };
 #endif /* _QMI_H_ */
