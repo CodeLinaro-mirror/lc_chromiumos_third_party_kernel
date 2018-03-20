@@ -19,6 +19,8 @@
 #define MAX_NUM_MEMORY_REGIONS			2
 #define MAX_TIMESTAMP_LEN			32
 #define MAX_BUILD_ID_LEN			128
+#define BDF_FILE_NAME			"bdwlan.bin"
+#define MAX_NUM_CAL_V01			5
 
 enum ath10k_qmi_driver_event_type {
 	ATH10K_QMI_EVENT_SERVER_ARRIVE,
@@ -51,6 +53,12 @@ struct ath10k_qmi_fw_version_info {
 	char fw_build_timestamp[MAX_TIMESTAMP_LEN + 1];
 };
 
+struct ath10k_qmi_cal_data {
+	u32 cal_id;
+	u32 total_size;
+	u8 *data;
+};
+
 struct ath10k_qmi {
 	struct platform_device *pdev;
 	struct qmi_handle qmi_hdl;
@@ -59,6 +67,7 @@ struct ath10k_qmi {
 	bool msa_ready;
 	struct work_struct work_svc_arrive;
 	struct work_struct work_svc_exit;
+	struct work_struct work_msa_ready;
 	struct workqueue_struct *event_wq;
 	spinlock_t event_lock; /* spinlock for fw ready status*/
 	u32 nr_mem_region;
@@ -72,5 +81,6 @@ struct ath10k_qmi {
 	struct ath10k_qmi_soc_info soc_info;
 	struct ath10k_qmi_fw_version_info fw_version_info;
 	char fw_build_id[MAX_BUILD_ID_LEN + 1];
+	struct ath10k_qmi_cal_data cal_data[MAX_NUM_CAL_V01];
 };
 #endif /* _QMI_H_ */
