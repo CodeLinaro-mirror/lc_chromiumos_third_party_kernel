@@ -35,6 +35,8 @@
 #define WLFW_CLIENT_ID			0x4b4e454c
 #define WLFW_TIMEOUT			500
 
+static BLOCKING_NOTIFIER_HEAD(ath10k_qmi_notifiers);
+
 static struct ath10k_qmi {
 	struct platform_device *pdev;
 	struct qmi_handle qmi_hdl;
@@ -59,6 +61,37 @@ static struct ath10k_qmi {
 	char fw_build_id[MAX_BUILD_ID_LEN + 1];
 	struct ath10k_qmi_cal_data cal_data[MAX_NUM_CAL_V01];
 } *qmi;
+
+static void ath10k_qmi_service_notify(enum ath10k_qmi_driver_event_type type)
+{
+	blocking_notifier_call_chain(&ath10k_qmi_notifiers, type, NULL);
+}
+
+int ath10k_qmi_register_service_notifier(struct notifier_block *nb)
+{
+	int ret;
+	bool fw_ready;
+
+	ret =  blocking_notifier_chain_register(&ath10k_qmi_notifiers, nb);
+	if (ret)
+		return ret;
+
+	spin_lock(&qmi->event_lock);
+	fw_ready = qmi->fw_ready;
+	spin_unlock(&qmi->event_lock);
+
+	if (fw_ready)
+		ath10k_qmi_service_notify(ATH10K_QMI_EVENT_FW_READY_IND);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(ath10k_qmi_register_service_notifier);
+
+void ath10k_qmi_unregister_service_notifier(struct notifier_block *nb)
+{
+	blocking_notifier_chain_unregister(&ath10k_qmi_notifiers, nb);
+}
+EXPORT_SYMBOL_GPL(ath10k_qmi_unregister_service_notifier);
 
 static int
 ath10k_qmi_map_msa_permissions(struct ath10k_msa_mem_region_info *mem_region)
@@ -888,6 +921,7 @@ static int ath10k_qmi_event_fw_ready_ind(struct ath10k_qmi *qmi)
 	spin_lock(&qmi->event_lock);
 	qmi->fw_ready = true;
 	spin_unlock(&qmi->event_lock);
+	ath10k_qmi_service_notify(ATH10K_QMI_EVENT_FW_READY_IND);
 
 	return 0;
 }
@@ -996,6 +1030,8 @@ static void ath10k_qmi_event_server_exit(struct work_struct *work)
 	spin_lock(&qmi->event_lock);
 	qmi->fw_ready = false;
 	spin_unlock(&qmi->event_lock);
+	ath10k_qmi_service_notify(ATH10K_QMI_EVENT_FW_DOWN_IND);
+
 	pr_info("wlan fw service disconnected\n");
 }
 

@@ -26,6 +26,7 @@ enum ath10k_qmi_driver_event_type {
 	ATH10K_QMI_EVENT_SERVER_ARRIVE,
 	ATH10K_QMI_EVENT_SERVER_EXIT,
 	ATH10K_QMI_EVENT_FW_READY_IND,
+	ATH10K_QMI_EVENT_FW_DOWN_IND,
 	ATH10K_QMI_EVENT_MAX,
 };
 
@@ -99,4 +100,6 @@ int ath10k_qmi_wlan_enable(struct ath10k_qmi_wlan_enable_cfg *config,
 			   enum ath10k_qmi_driver_mode mode,
 			   const char *host_version);
 int ath10k_qmi_wlan_disable(void);
+int ath10k_qmi_register_service_notifier(struct notifier_block *nb);
+void ath10k_qmi_unregister_service_notifier(struct notifier_block *nb);
 #endif /* _QMI_H_ */

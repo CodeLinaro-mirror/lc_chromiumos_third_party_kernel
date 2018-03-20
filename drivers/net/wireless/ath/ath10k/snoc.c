@@ -1121,6 +1121,19 @@ out:
 	return ret;
 }
 
+static int ath10k_qmi_service_notify(struct notifier_block *nb,
+				     unsigned long type, void *data)
+{
+	switch (type) {
+	case ATH10K_QMI_EVENT_FW_READY_IND:
+		break;
+	case ATH10K_QMI_EVENT_FW_DOWN_IND:
+		break;
+	}
+
+	return 0;
+}
+
 static int ath10k_snoc_setup_resource(struct ath10k *ar)
 {
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
@@ -1147,16 +1160,21 @@ static int ath10k_snoc_setup_resource(struct ath10k *ar)
 	}
 	ath10k_snoc_init_napi(ar);
 
+	ar_snoc->nb.notifier_call = ath10k_qmi_service_notify;
+	ath10k_qmi_register_service_notifier(&ar_snoc->nb);
+
 	return 0;
 }
 
 static void ath10k_snoc_release_resource(struct ath10k *ar)
 {
+	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
 	int i;
 
 	netif_napi_del(&ar->napi);
 	for (i = 0; i < CE_COUNT; i++)
 		ath10k_ce_free_pipe(ar, i);
+	ath10k_qmi_unregister_service_notifier(&ar_snoc->nb);
 }
 
 static int ath10k_get_vreg_info(struct ath10k *ar, struct device *dev,
