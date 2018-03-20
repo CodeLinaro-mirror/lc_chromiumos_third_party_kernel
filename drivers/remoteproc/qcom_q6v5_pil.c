@@ -130,10 +130,13 @@ struct rproc_hexagon_res {
 	struct qcom_mss_reg_res *proxy_supply;
 	struct qcom_mss_reg_res *active_supply;
 	char **proxy_clk_names;
+	char **reset_clk_names;
 	char **active_clk_names;
 	int version;
 	bool need_mem_protection;
 };
+
+struct q6v5_reset_ops;
 
 struct q6v5 {
 	struct device *dev;
@@ -153,8 +156,10 @@ struct q6v5 {
 	unsigned stop_bit;
 
 	struct clk *active_clks[8];
+	struct clk *reset_clks[4];
 	struct clk *proxy_clks[4];
 	int active_clk_count;
+	int reset_clk_count;
 	int proxy_clk_count;
 
 	struct reg_info active_regs[1];
@@ -175,6 +180,7 @@ struct q6v5 {
 	void *mpss_region;
 	size_t mpss_size;
 
+	const struct q6v5_reset_ops *ops;
 	struct qcom_rproc_glink glink_subdev;
 	struct qcom_rproc_subdev smd_subdev;
 	struct qcom_rproc_ssr ssr_subdev;
@@ -182,6 +188,11 @@ struct q6v5 {
 	int mpss_perm;
 	int mba_perm;
 	int version;
+};
+
+struct q6v5_reset_ops {
+	int (*reset_start)(struct q6v5 *qproc);
+	int (*reset_stop)(struct q6v5 *qproc);
 };
 
 enum {
@@ -358,6 +369,52 @@ static const struct rproc_fw_ops q6v5_fw_ops = {
 	.load = q6v5_load,
 };
 
+static void alt_reset_restart(struct q6v5 *qproc, u32 restart)
+{
+	writel(restart, qproc->rmb_base + RMB_MBA_ALT_RESET);
+}
+
+static int q6v5_msm_reset_stop(struct q6v5 *qproc)
+{
+	return reset_control_assert(qproc->mss_restart);
+}
+
+static int q6v5_msm_reset_start(struct q6v5 *qproc)
+{
+	return reset_control_deassert(qproc->mss_restart);
+}
+
+static int q6v5_sdm_reset_stop(struct q6v5 *qproc)
+{
+	return reset_control_reset(qproc->mss_restart);
+}
+
+static int q6v5_sdm_reset_start(struct q6v5 *qproc)
+{
+	int ret;
+
+	alt_reset_restart(qproc, 1);
+	/* Ensure alt reset is written before restart reg */
+	udelay(100);
+
+	ret = reset_control_reset(qproc->mss_restart);
+
+	udelay(100);
+	alt_reset_restart(qproc, 0);
+
+	return ret;
+}
+
+static const struct q6v5_reset_ops q6v5_msm_ops = {
+	.reset_stop = q6v5_msm_reset_stop,
+	.reset_start = q6v5_msm_reset_start,
+};
+
+static const struct q6v5_reset_ops q6v5_sdm_ops = {
+	.reset_stop = q6v5_sdm_reset_stop,
+	.reset_start = q6v5_sdm_reset_start,
+};
+
 static int q6v5_rmb_pbl_wait(struct q6v5 *qproc, int ms)
 {
 	unsigned long timeout;
@@ -433,6 +490,8 @@ static int q6v5proc_reset(struct q6v5 *qproc)
 				val, (val & BIT(0)) != 0, 10, BOOT_FSM_TIMEOUT);
 		if (ret) {
 			dev_err(qproc->dev, "Boot FSM failed to complete.\n");
+			/* Reset the modem so that boot FSM is in reset state */
+			qproc->ops->reset_start(qproc);
 			return ret;
 		}
 
@@ -800,10 +859,18 @@ static int q6v5_start(struct rproc *rproc)
 		dev_err(qproc->dev, "failed to enable supplies\n");
 		goto disable_proxy_clk;
 	}
-	ret = reset_control_deassert(qproc->mss_restart);
+
+	ret = q6v5_clk_enable(qproc->dev, qproc->reset_clks,
+			      qproc->reset_clk_count);
+	if (ret) {
+		dev_err(qproc->dev, "failed to enable reset clocks\n");
+		goto disable_vdd;
+	}
+
+	ret = qproc->ops->reset_start(qproc);
 	if (ret) {
 		dev_err(qproc->dev, "failed to deassert mss restart\n");
-		goto disable_vdd;
+		goto disable_reset_clks;
 	}
 
 	ret = q6v5_clk_enable(qproc->dev, qproc->active_clks,
@@ -895,7 +962,10 @@ disable_active_clks:
 			 qproc->active_clk_count);
 
 assert_reset:
-	reset_control_assert(qproc->mss_restart);
+	qproc->ops->reset_stop(qproc);
+disable_reset_clks:
+	q6v5_clk_disable(qproc->dev, qproc->reset_clks,
+			 qproc->reset_clk_count);
 disable_vdd:
 	q6v5_regulator_disable(qproc, qproc->active_regs,
 			       qproc->active_reg_count);
@@ -945,9 +1015,11 @@ static int q6v5_stop(struct rproc *rproc)
 				      qproc->mpss_phys, qproc->mpss_size);
 	WARN_ON(ret);
 
-	reset_control_assert(qproc->mss_restart);
+	qproc->ops->reset_stop(qproc);
 	q6v5_clk_disable(qproc->dev, qproc->active_clks,
 			 qproc->active_clk_count);
+	q6v5_clk_disable(qproc->dev, qproc->reset_clks,
+			 qproc->reset_clk_count);
 	q6v5_regulator_disable(qproc, qproc->active_regs,
 			       qproc->active_reg_count);
 
@@ -1195,6 +1267,12 @@ static int q6v5_probe(struct platform_device *pdev)
 	qproc->dev = &pdev->dev;
 	qproc->rproc = rproc;
 	platform_set_drvdata(pdev, qproc);
+	qproc->version = desc->version;
+
+	if (qproc->version == MSS_SDM845)
+		qproc->ops = &q6v5_sdm_ops;
+	else
+		qproc->ops = &q6v5_msm_ops;
 
 	init_completion(&qproc->start_done);
 	init_completion(&qproc->stop_done);
@@ -1214,6 +1292,14 @@ static int q6v5_probe(struct platform_device *pdev)
 		goto free_rproc;
 	}
 	qproc->proxy_clk_count = ret;
+
+	ret = q6v5_init_clocks(&pdev->dev, qproc->reset_clks,
+			       desc->reset_clk_names);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Failed to get reset clocks.\n");
+		goto free_rproc;
+	}
+	qproc->reset_clk_count = ret;
 
 	ret = q6v5_init_clocks(&pdev->dev, qproc->active_clks,
 			       desc->active_clk_names);
@@ -1243,7 +1329,6 @@ static int q6v5_probe(struct platform_device *pdev)
 	if (ret)
 		goto free_rproc;
 
-	qproc->version = desc->version;
 	qproc->need_mem_protection = desc->need_mem_protection;
 	ret = q6v5_request_irq(qproc, pdev, "wdog", q6v5_wdog_interrupt);
 	if (ret < 0)
@@ -1306,8 +1391,11 @@ static const struct rproc_hexagon_res sdm845_mss = {
 			"prng",
 			NULL
 	},
-	.active_clk_names = (char*[]){
+	.reset_clk_names = (char*[]){
 			"iface",
+			NULL
+	},
+	.active_clk_names = (char*[]){
 			"bus",
 			"mem",
 			"gpll0_mss",
