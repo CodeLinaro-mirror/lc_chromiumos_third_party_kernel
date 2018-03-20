@@ -357,6 +357,67 @@ out:
 	return ret;
 }
 
+static int ath10k_qmi_host_cap_send_sync(struct ath10k_qmi *qmi)
+{
+	struct wlfw_host_cap_resp_msg_v01 *resp;
+	struct wlfw_host_cap_req_msg_v01 *req;
+	struct qmi_txn txn;
+	int ret;
+
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp) {
+		kfree(req);
+		return -ENOMEM;
+	}
+
+	req->daemon_support_valid = 1;
+	req->daemon_support = 0;
+
+	pr_debug("daemon_support is %d\n", req->daemon_support);
+
+	ret = qmi_txn_init(&qmi->qmi_hdl, &txn,
+			   wlfw_host_cap_resp_msg_v01_ei, resp);
+	if (ret < 0) {
+		pr_err("Fail to init txn for Capability resp %d\n", ret);
+		goto out;
+	}
+
+	ret = qmi_send_request(&qmi->qmi_hdl, NULL, &txn,
+			       QMI_WLFW_HOST_CAP_REQ_V01,
+			       WLFW_HOST_CAP_REQ_MSG_V01_MAX_MSG_LEN,
+			       wlfw_host_cap_req_msg_v01_ei, req);
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		pr_err("Fail to send Capability req %d\n", ret);
+		goto out;
+	}
+
+	ret = qmi_txn_wait(&txn, WLFW_TIMEOUT * HZ);
+	if (ret < 0)
+		goto out;
+
+	if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+		pr_err("qmi host capability req rejected, result:%d error:%d\n",
+		       resp->resp.result, resp->resp.error);
+		ret = -resp->resp.result;
+		goto out;
+	}
+
+	pr_debug("host cap request completed\n");
+	kfree(resp);
+	kfree(req);
+	return 0;
+
+out:
+	kfree(resp);
+	kfree(req);
+	return ret;
+}
+
 static int
 ath10k_qmi_ind_register_send_sync_msg(struct ath10k_qmi *qmi)
 {
@@ -497,6 +558,10 @@ static void ath10k_qmi_event_server_arrive(struct work_struct *work)
 		return;
 
 	ret = ath10k_qmi_ind_register_send_sync_msg(qmi);
+	if (ret)
+		return;
+
+	ret = ath10k_qmi_host_cap_send_sync(qmi);
 	if (ret)
 		return;
 
