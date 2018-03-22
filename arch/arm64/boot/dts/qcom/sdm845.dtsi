@@ -988,6 +988,11 @@
 			qcom,vdd-3.3-ch0-config = <3104000 3312000>;
 		};
 
+		qcom,ath10k-qmi {
+			compatible = "qcom,ath10k-qmi";
+			qcom,wlan-msa-memory = <0x100000>;
+		};
+
 	};
 };
 
