@@ -632,3 +632,23 @@ put_cpu_node:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_of_get_sharing_cpus);
+
+/**
+ * dev_pm_opp_get_of_node() - Gets the DT node corresponding to an opp
+ * @opp:	opp for which DT node has to be returned for
+ *
+ * Return: DT node corresponding to the opp, else 0 on success.
+ *
+ * The caller needs to put the node of_node_put() after using it.
+ */
+struct device_node *dev_pm_opp_get_of_node(struct dev_pm_opp *opp)
+{
+	if (IS_ERR_OR_NULL(opp)) {
+		pr_err("%s: Invalid parameters\n", __func__);
+		return NULL;
+	}
+
+	return of_node_get(opp->np);
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_of_node);
+
