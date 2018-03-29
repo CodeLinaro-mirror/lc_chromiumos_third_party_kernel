@@ -270,6 +270,93 @@ out:
 	return ret;
 }
 
+static int ath10k_qmi_cap_send_sync_msg(struct ath10k_qmi *qmi)
+{
+	struct wlfw_cap_resp_msg_v01 *resp;
+	struct wlfw_cap_req_msg_v01 *req;
+	struct qmi_txn txn;
+	int ret;
+
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp) {
+		kfree(req);
+		return -ENOMEM;
+	}
+
+	ret = qmi_txn_init(&qmi->qmi_hdl, &txn, wlfw_cap_resp_msg_v01_ei, resp);
+	if (ret < 0) {
+		pr_err("fail to init txn for capability resp %d\n", ret);
+		goto out;
+	}
+
+	ret = qmi_send_request(&qmi->qmi_hdl, NULL, &txn,
+			       QMI_WLFW_CAP_REQ_V01,
+			       WLFW_CAP_REQ_MSG_V01_MAX_MSG_LEN,
+			       wlfw_cap_req_msg_v01_ei, req);
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		pr_err("fail to send capability req %d\n", ret);
+		goto out;
+	}
+
+	ret = qmi_txn_wait(&txn, WLFW_TIMEOUT * HZ);
+	if (ret < 0)
+		goto out;
+
+	if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+		pr_err("qmi capability request rejected, result:%d error:%d\n",
+		       resp->resp.result, resp->resp.error);
+		ret = -resp->resp.result;
+		goto out;
+	}
+
+	if (resp->chip_info_valid) {
+		qmi->chip_info.chip_id = resp->chip_info.chip_id;
+		qmi->chip_info.chip_family = resp->chip_info.chip_family;
+	}
+
+	if (resp->board_info_valid)
+		qmi->board_info.board_id = resp->board_info.board_id;
+	else
+		qmi->board_info.board_id = 0xFF;
+
+	if (resp->soc_info_valid)
+		qmi->soc_info.soc_id = resp->soc_info.soc_id;
+
+	if (resp->fw_version_info_valid) {
+		qmi->fw_version_info.fw_version =
+			resp->fw_version_info.fw_version;
+		strlcpy(qmi->fw_version_info.fw_build_timestamp,
+			resp->fw_version_info.fw_build_timestamp,
+			MAX_TIMESTAMP_LEN + 1);
+	}
+
+	if (resp->fw_build_id_valid)
+		strlcpy(qmi->fw_build_id, resp->fw_build_id,
+			MAX_BUILD_ID_LEN + 1);
+
+	pr_debug("chip_id: 0x%x, chip_family: 0x%x, board_id: 0x%x, soc_id: 0x%x, fw_version: 0x%x, fw_build_timestamp: %s, fw_build_id: %s",
+		 qmi->chip_info.chip_id, qmi->chip_info.chip_family,
+		 qmi->board_info.board_id, qmi->soc_info.soc_id,
+		 qmi->fw_version_info.fw_version,
+		 qmi->fw_version_info.fw_build_timestamp,
+		 qmi->fw_build_id);
+
+	pr_debug("target cap request completed\n");
+	kfree(resp);
+	kfree(req);
+
+	return 0;
+out:
+	kfree(resp);
+	kfree(req);
+	return ret;
+}
+
 static int
 ath10k_qmi_ind_register_send_sync_msg(struct ath10k_qmi *qmi)
 {
@@ -422,6 +509,10 @@ static void ath10k_qmi_event_server_arrive(struct work_struct *work)
 		return;
 
 	ret = ath10k_qmi_msa_ready_send_sync_msg(qmi);
+	if (ret)
+		goto err_setup_msa;
+
+	ret = ath10k_qmi_cap_send_sync_msg(qmi);
 	if (ret)
 		goto err_setup_msa;
 
