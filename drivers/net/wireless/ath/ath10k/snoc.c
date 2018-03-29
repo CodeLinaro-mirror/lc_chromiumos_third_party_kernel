@@ -1124,8 +1124,17 @@ out:
 static int ath10k_qmi_service_notify(struct notifier_block *nb,
 				     unsigned long type, void *data)
 {
+	struct ath10k_snoc *ar_snoc = container_of(nb, struct ath10k_snoc, nb);
+	struct ath10k *ar = ar_snoc->ar;
+	int ret;
 	switch (type) {
 	case ATH10K_QMI_EVENT_FW_READY_IND:
+		ret = ath10k_core_register(ar,
+					   ar_snoc->target_info.soc_version);
+		if (ret) {
+			ath10k_err(ar, "Failed to register driver core: %d\n",
+				   ret);
+		}
 		break;
 	case ATH10K_QMI_EVENT_FW_DOWN_IND:
 		break;
@@ -1532,19 +1541,10 @@ static int ath10k_snoc_probe(struct platform_device *pdev)
 		goto err_free_irq;
 	}
 
-	ret = ath10k_core_register(ar, drv_data->hw_rev);
-	if (ret) {
-		ath10k_err(ar, "failed to register driver core: %d\n", ret);
-		goto err_hw_power_off;
-	}
-
 	ath10k_dbg(ar, ATH10K_DBG_SNOC, "snoc probe\n");
 	ath10k_warn(ar, "Warning: SNOC support is still work-in-progress, it will not work properly!");
 
 	return 0;
-
-err_hw_power_off:
-	ath10k_hw_power_off(ar);
 
 err_free_irq:
 	ath10k_snoc_free_irq(ar);
