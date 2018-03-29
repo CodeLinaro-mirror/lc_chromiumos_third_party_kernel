@@ -5,6 +5,7 @@ Required properties:
 	* "qcom,ath10k"
 	* "qcom,ipq4019-wifi"
 	* "qcom,wcn3990-wifi"
+	* "qcom,ath10k-qmi"
 
 PCI based devices uses compatible string "qcom,ath10k" and takes calibration
 data along with board specific data via "qcom,ath10k-calibration-data".
@@ -20,6 +21,8 @@ In general, entry "qcom,ath10k-pre-calibration-data" and
 can be provided per device.
 
 SNOC based devices (i.e. wcn3990) uses compatible string "qcom,wcn3990-wifi".
+
+- qcom,wlan-msa-memory: MSA memory size
 
 Optional properties:
 - reg: Address and length of the register set for the device.
@@ -146,4 +149,9 @@ qcom,wifi@18000000 {
 			   <0 140 0 /* CE10 */ >,
 			   <0 141 0 /* CE11 */ >;
 		vdd-0.8-cx-mx-supply = <&pm8998_l5>;
+};
+
+qcom,ath10k-qmi {
+	compatible = "qcom,ath10k-qmi";
+	qcom,wlan-msa-memory = <0x100000>;
 };
