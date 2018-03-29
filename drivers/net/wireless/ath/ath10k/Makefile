@@ -37,5 +37,9 @@ ath10k_usb-y += usb.o
 obj-$(CONFIG_ATH10K_SNOC) += ath10k_snoc.o
 ath10k_snoc-y += snoc.o
 
+obj-$(CONFIG_ATH10K_SNOC) += ath10k_qmi.o
+ath10k_qmi-y += qmi.o \
+		qmi_svc_v01.o
+
 # for tracing framework to find trace.h
 CFLAGS_trace.o := -I$(src)
