@@ -27,6 +27,11 @@
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
+#include <linux/iommu.h>
+#include <linux/dma-mapping.h>
+#include <linux/pm.h>
+#include <linux/pm_runtime.h>
+
 #define  WCN3990_CE_ATTR_FLAGS 0
 #define ATH10K_SNOC_RX_POST_RETRY_MS 50
 #define CE_POLL_PIPE 4
@@ -1457,6 +1462,91 @@ static int ath10k_hw_power_off(struct ath10k *ar)
 	return ret;
 }
 
+static int ath10k_iommu_attach(struct ath10k *ar)
+{
+	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
+	struct iommu_domain *mapping;
+	struct platform_device *pdev;
+	int ret = 0;
+
+	ath10k_dbg(ar, ATH10K_DBG_SNOC, "initializing iommu\n");
+
+	pdev = ar_snoc->dev;
+
+	pm_runtime_get_sync(&pdev->dev);
+	mapping = iommu_get_domain_for_dev(&pdev->dev);
+	if (IS_ERR(mapping)) {
+		ath10k_err(ar, "create mapping failed, err = %d\n", ret);
+		ret = PTR_ERR(mapping);
+		goto map_fail;
+	} else {
+		mapping->geometry.aperture_start = ar_snoc->iommu_iova_start;
+		mapping->geometry.aperture_end = ar_snoc->iommu_iova_start +
+						 ar_snoc->iommu_iova_len;
+	}
+
+	ret = iommu_attach_device(mapping, &pdev->dev);
+	if (ret < 0 && ret != -EEXIST) {
+		ath10k_err(ar, "iommu attach device failed, err = %d\n", ret);
+		goto attach_fail;
+	} else if (ret == -EEXIST) {
+		ret = 0;
+	}
+
+	ar_snoc->iommu_mapping = mapping;
+
+	return ret;
+
+attach_fail:
+	iommu_domain_free(mapping);
+map_fail:
+	return ret;
+}
+
+static void ath10k_iommu_deinit(struct ath10k *ar)
+{
+	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
+	struct platform_device *pdev;
+
+	pdev = ar_snoc->dev;
+
+	if (!ar_snoc->iommu_mapping)
+		return;
+
+	iommu_detach_device(ar_snoc->iommu_mapping, &pdev->dev);
+	pm_runtime_put_sync(&pdev->dev);
+	ar_snoc->iommu_mapping = NULL;
+}
+
+static int ath10k_iommu_init(struct ath10k *ar)
+{
+	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
+	struct platform_device *pdev;
+	struct resource *res;
+	int ret = 0;
+
+	pdev = ar_snoc->dev;
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+					   "iommu_iova_base");
+	if (!res) {
+		ath10k_err(ar, "iommu iova base not found\n");
+	} else {
+		ar_snoc->iommu_iova_start = res->start;
+		ar_snoc->iommu_iova_len = resource_size(res);
+		ath10k_dbg(ar, ATH10K_DBG_SNOC, "iommu iova start: %pa, len: %zu\n",
+			   &ar_snoc->iommu_iova_start, ar_snoc->iommu_iova_len);
+
+		ret = ath10k_iommu_attach(ar);
+		if (ret < 0) {
+			ath10k_err(ar, "iommu init failed, err = %d, start: %pad, len: %zx\n",
+				   ret, &ar_snoc->iommu_iova_start,
+				   ar_snoc->iommu_iova_len);
+		}
+	}
+
+	return ret;
+}
+
 static const struct of_device_id ath10k_snoc_dt_match[] = {
 	{ .compatible = "qcom,wcn3990-wifi",
 	 .data = &drv_priv,
@@ -1504,16 +1594,22 @@ static int ath10k_snoc_probe(struct platform_device *pdev)
 	ar_snoc->ce.bus_ops = &ath10k_snoc_bus_ops;
 	ar->ce_priv = &ar_snoc->ce;
 
+	ret = ath10k_iommu_init(ar);
+	if (ret) {
+		ath10k_warn(ar, "failed to int iommu: %d\n", ret);
+		goto err_core_destroy;
+	}
+
 	ath10k_snoc_resource_init(ar);
 	if (ret) {
 		ath10k_warn(ar, "failed to initialize resource: %d\n", ret);
-		goto err_core_destroy;
+		goto err_iommu_deinit;
 	}
 
 	ath10k_snoc_setup_resource(ar);
 	if (ret) {
 		ath10k_warn(ar, "failed to setup resource: %d\n", ret);
-		goto err_core_destroy;
+		goto err_iommu_deinit;
 	}
 	ret = ath10k_snoc_request_irq(ar);
 	if (ret) {
@@ -1552,6 +1648,9 @@ err_free_irq:
 err_release_resource:
 	ath10k_snoc_release_resource(ar);
 
+err_iommu_deinit:
+	ath10k_iommu_deinit(ar);
+
 err_core_destroy:
 	ath10k_core_destroy(ar);
 
@@ -1567,6 +1666,7 @@ static int ath10k_snoc_remove(struct platform_device *pdev)
 	ath10k_hw_power_off(ar);
 	ath10k_snoc_free_irq(ar);
 	ath10k_snoc_release_resource(ar);
+	ath10k_iommu_deinit(ar);
 	ath10k_core_destroy(ar);
 
 	return 0;
