@@ -1032,7 +1032,8 @@ static int ath10k_wmi_tlv_op_pull_rdy_ev(struct ath10k *ar,
 	const struct wmi_tlv_rdy_ev *ev;
 	int ret;
 
-	tb = ath10k_wmi_tlv_parse_alloc(ar, skb->data, skb->len, GFP_ATOMIC);
+	tb = ath10k_wmi_tlv_parse_alloc(ar, skb->data, skb->len - 8,
+					GFP_ATOMIC);
 	if (IS_ERR(tb)) {
 		ret = PTR_ERR(tb);
 		ath10k_warn(ar, "failed to parse tlv: %d\n", ret);
