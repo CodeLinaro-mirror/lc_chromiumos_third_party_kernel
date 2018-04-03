@@ -168,6 +168,8 @@ struct msm_format {
 
 int msm_atomic_check(struct drm_device *dev,
 		     struct drm_atomic_state *state);
+int msm_atomic_prepare_fb(struct drm_plane *plane,
+			  struct drm_plane_state *new_state);
 int msm_atomic_commit(struct drm_device *dev,
 		struct drm_atomic_state *state, bool nonblock);
 struct drm_atomic_state *msm_atomic_state_alloc(struct drm_device *dev);
