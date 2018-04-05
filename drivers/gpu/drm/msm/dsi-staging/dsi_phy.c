@@ -17,7 +17,7 @@
 #include <linux/err.h>
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
-#ifdef CONFIG_CHROME_BUS_SCALE
+#ifdef CONFIG_QCOM_BUS_SCALING
 #include <linux/msm-bus.h>
 #endif
 #include <linux/list.h>
