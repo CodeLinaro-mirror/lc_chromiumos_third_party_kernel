@@ -40,5 +40,3 @@ obj-$(CONFIG_MSM_GPUCC_SDM845) += gpucc-sdm845.o
 obj-$(CONFIG_MSM_VIDEOCC_845) += videocc-sdm845.o
 obj-$(CONFIG_SDM_GCC_845)  += gcc-sdm845.o
 obj-$(CONFIG_SPMI_PMIC_CLKDIV) += clk-spmi-pmic-div.o
-
-obj-y += mdss/
