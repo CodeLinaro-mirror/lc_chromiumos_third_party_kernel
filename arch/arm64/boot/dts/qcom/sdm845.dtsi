@@ -1218,8 +1218,6 @@
 	};
 };
 
-#include "sdm845-sde-pll.dtsi"
-#include "sdm845-sde.dtsi"
 #include "pmi8998.dtsi"
 #include "sdm845-pinctrl.dtsi"
 #include "sdm845-regulator.dtsi"
