@@ -1030,7 +1030,6 @@ static void arm_smmu_test_smr_masks(struct arm_smmu_device *smmu)
 {
 	void __iomem *gr0_base = ARM_SMMU_GR0(smmu);
 	u32 smr;
-	int i;
 
 	if (!smmu->smrs)
 		return;
@@ -1040,31 +1039,14 @@ static void arm_smmu_test_smr_masks(struct arm_smmu_device *smmu)
 	 * bits are set, so check each one separately. We can reject
 	 * masters later if they try to claim IDs outside these masks.
 	 */
-	/*
-	 * XXX: Use 'num_mapping_groups' here for iteration value
-	 * for SMRs instead of the 'size' that was calculated in downstream
-	 * as follows:
-	 * size = (id >> ID0_NUMSMRG_SHIFT) & ID0_NUMSMRG_MASK
-	 */
-	for (i = 0; i < smmu->num_mapping_groups; i++) {
-		smr = readl_relaxed(gr0_base + ARM_SMMU_GR0_SMR(i));
-		if (!(smr & SMR_VALID))
-			break;
-	}
-	if (i == smmu->num_mapping_groups) {
-		dev_err(smmu->dev,
-			"Unable to compute streamid_masks\n");
-		return;
-	}
-
 	smr = smmu->streamid_mask << SMR_ID_SHIFT;
-	writel_relaxed(smr, gr0_base + ARM_SMMU_GR0_SMR(i));
-	smr = readl_relaxed(gr0_base + ARM_SMMU_GR0_SMR(i));
+	writel_relaxed(smr, gr0_base + ARM_SMMU_GR0_SMR(0));
+	smr = readl_relaxed(gr0_base + ARM_SMMU_GR0_SMR(0));
 	smmu->streamid_mask = smr >> SMR_ID_SHIFT;
 
 	smr = smmu->streamid_mask << SMR_MASK_SHIFT;
-	writel_relaxed(smr, gr0_base + ARM_SMMU_GR0_SMR(i));
-	smr = readl_relaxed(gr0_base + ARM_SMMU_GR0_SMR(i));
+	writel_relaxed(smr, gr0_base + ARM_SMMU_GR0_SMR(0));
+	smr = readl_relaxed(gr0_base + ARM_SMMU_GR0_SMR(0));
 	smmu->smr_mask_mask = smr >> SMR_MASK_SHIFT;
 }
 
