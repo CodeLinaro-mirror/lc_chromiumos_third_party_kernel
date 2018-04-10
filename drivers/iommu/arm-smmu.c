@@ -1229,10 +1229,15 @@ static int arm_smmu_attach_dev(struct iommu_domain *domain, struct device *dev)
 		return -ENODEV;
 
 	smmu = fwspec_smmu(fwspec);
+
+	ret = pm_runtime_get_sync(smmu->dev);
+	if (ret < 0)
+		return ret;
+
 	/* Ensure that the domain is finalised */
 	ret = arm_smmu_init_domain_context(domain, smmu);
 	if (ret < 0)
-		return ret;
+		goto rpm_put;
 
 	/*
 	 * Sanity check the domain. We don't support domains across
@@ -1242,33 +1247,50 @@ static int arm_smmu_attach_dev(struct iommu_domain *domain, struct device *dev)
 		dev_err(dev,
 			"cannot attach to SMMU %s whilst already attached to domain on SMMU %s\n",
 			dev_name(smmu_domain->smmu->dev), dev_name(smmu->dev));
-		return -EINVAL;
+		ret = -EINVAL;
+		goto rpm_put;
 	}
 
 	/* Looks ok, so add the device to the domain */
-	return arm_smmu_domain_add_master(smmu_domain, fwspec);
+	ret = arm_smmu_domain_add_master(smmu_domain, fwspec);
+
+rpm_put:
+	pm_runtime_put_sync(smmu->dev);
+	return ret;
 }
 
 static int arm_smmu_map(struct iommu_domain *domain, unsigned long iova,
 			phys_addr_t paddr, size_t size, int prot)
 {
 	struct io_pgtable_ops *ops = to_smmu_domain(domain)->pgtbl_ops;
+	struct arm_smmu_device *smmu = to_smmu_domain(domain)->smmu;
+	int ret;
 
 	if (!ops)
 		return -ENODEV;
 
-	return ops->map(ops, iova, paddr, size, prot);
+	pm_runtime_get_sync(smmu->dev);
+	ret = ops->map(ops, iova, paddr, size, prot);
+	pm_runtime_put_sync(smmu->dev);
+
+	return ret;
 }
 
 static size_t arm_smmu_unmap(struct iommu_domain *domain, unsigned long iova,
 			     size_t size)
 {
 	struct io_pgtable_ops *ops = to_smmu_domain(domain)->pgtbl_ops;
+	struct arm_smmu_device *smmu = to_smmu_domain(domain)->smmu;
+	size_t ret;
 
 	if (!ops)
 		return 0;
 
-	return ops->unmap(ops, iova, size);
+	pm_runtime_get_sync(smmu->dev);
+	ret = ops->unmap(ops, iova, size);
+	pm_runtime_put_sync(smmu->dev);
+
+	return ret;
 }
 
 static phys_addr_t arm_smmu_iova_to_phys_hard(struct iommu_domain *domain,
@@ -1421,14 +1443,11 @@ static int arm_smmu_add_device(struct device *dev)
 		goto out_cfg_free;
 
 	ret = arm_smmu_master_alloc_smes(dev);
-	if (ret) {
-		pm_runtime_put_sync(smmu->dev);
+	pm_runtime_put_sync(smmu->dev);
+	if (ret)
 		goto out_cfg_free;
-	}
 
 	iommu_device_link(&smmu->iommu, dev);
-
-	pm_runtime_put_sync(smmu->dev);
 
 	/*
 	 * Establish the link between smmu and master, so that the
@@ -2290,9 +2309,11 @@ static int arm_smmu_device_remove(struct platform_device *pdev)
 	if (!bitmap_empty(smmu->context_map, ARM_SMMU_MAX_CBS))
 		dev_err(&pdev->dev, "removing device with active domains!\n");
 
+	pm_runtime_get_sync(smmu->dev);
 	/* Turn the thing off */
 	writel(sCR0_CLIENTPD, ARM_SMMU_GR0_NS(smmu) + ARM_SMMU_GR0_sCR0);
-	pm_runtime_force_suspend(smmu->dev);
+	pm_runtime_put_sync(smmu->dev);
+	pm_runtime_disable(smmu->dev);
 
 	clk_bulk_unprepare(smmu->num_clks, smmu->clocks);
 
