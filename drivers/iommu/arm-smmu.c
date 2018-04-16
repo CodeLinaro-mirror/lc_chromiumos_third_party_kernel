@@ -1735,6 +1735,7 @@ static int arm_smmu_id_size_to_bits(int size)
 static int arm_smmu_init_clocks(struct arm_smmu_device *smmu)
 {
 	int i;
+	int err;
 	int num = smmu->num_clks;
 
 	if (num < 1)
@@ -1748,7 +1749,11 @@ static int arm_smmu_init_clocks(struct arm_smmu_device *smmu)
 	for (i = 0; i < num; i++)
 		smmu->clocks->id = smmu->clk_names[i];
 
-	return devm_clk_bulk_get(smmu->dev, num, smmu->clocks);
+	err = devm_clk_bulk_get(smmu->dev, num, smmu->clocks);
+	if (err)
+		return err;
+
+	return clk_bulk_prepare(smmu->num_clks, smmu->clocks);
 }
 
 static int arm_smmu_device_cfg_probe(struct arm_smmu_device *smmu)
@@ -2289,6 +2294,8 @@ static int arm_smmu_device_remove(struct platform_device *pdev)
 	writel(sCR0_CLIENTPD, ARM_SMMU_GR0_NS(smmu) + ARM_SMMU_GR0_sCR0);
 	pm_runtime_force_suspend(smmu->dev);
 
+	clk_bulk_unprepare(smmu->num_clks, smmu->clocks);
+
 	return 0;
 }
 
@@ -2309,14 +2316,14 @@ static int __maybe_unused arm_smmu_resume(struct device *dev)
 {
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
-	return clk_bulk_prepare_enable(smmu->num_clks, smmu->clocks);
+	return clk_bulk_enable(smmu->num_clks, smmu->clocks);
 }
 
 static int __maybe_unused arm_smmu_suspend(struct device *dev)
 {
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
-	clk_bulk_disable_unprepare(smmu->num_clks, smmu->clocks);
+	clk_bulk_disable(smmu->num_clks, smmu->clocks);
 
 	return 0;
 }
