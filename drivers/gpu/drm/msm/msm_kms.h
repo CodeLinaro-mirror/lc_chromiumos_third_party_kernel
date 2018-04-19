@@ -92,8 +92,6 @@ struct msm_kms_funcs {
 	void (*preclose)(struct msm_kms *kms, struct drm_file *file);
 	void (*postclose)(struct msm_kms *kms, struct drm_file *file);
 	void (*lastclose)(struct msm_kms *kms);
-	int (*register_events)(struct msm_kms *kms,
-			struct drm_mode_object *obj, u32 event, bool en);
 	void (*set_encoder_mode)(struct msm_kms *kms,
 				 struct drm_encoder *encoder,
 				 bool cmd_mode);

@@ -90,8 +90,6 @@ MODULE_PARM_DESC(dpucustom, "Enable customizations for dpu clients");
 
 static int dpu_kms_hw_init(struct msm_kms *kms);
 static int _dpu_kms_mmu_destroy(struct dpu_kms *dpu_kms);
-static int _dpu_kms_register_events(struct msm_kms *kms,
-		struct drm_mode_object *obj, u32 event, bool en);
 bool dpu_is_custom_client(void)
 {
 	return dpucustom;
@@ -1814,7 +1812,6 @@ static const struct msm_kms_funcs kms_funcs = {
 	.pm_suspend      = dpu_kms_pm_suspend,
 	.pm_resume       = dpu_kms_pm_resume,
 	.destroy         = dpu_kms_destroy,
-	.register_events = _dpu_kms_register_events,
 	.get_address_space = _dpu_kms_get_address_space,
 	.postopen = _dpu_kms_post_open,
 };
@@ -2228,31 +2225,3 @@ struct msm_kms *dpu_kms_init(struct drm_device *dev)
 	return &dpu_kms->base;
 }
 
-static int _dpu_kms_register_events(struct msm_kms *kms,
-		struct drm_mode_object *obj, u32 event, bool en)
-{
-	int ret = 0;
-	struct drm_crtc *crtc = NULL;
-	struct drm_connector *conn = NULL;
-	struct dpu_kms *dpu_kms = NULL;
-
-	if (!kms || !obj) {
-		DPU_ERROR("invalid argument kms %pK obj %pK\n", kms, obj);
-		return -EINVAL;
-	}
-
-	dpu_kms = to_dpu_kms(kms);
-	switch (obj->type) {
-	case DRM_MODE_OBJECT_CRTC:
-		crtc = obj_to_crtc(obj);
-		ret = dpu_crtc_register_custom_event(dpu_kms, crtc, event, en);
-		break;
-	case DRM_MODE_OBJECT_CONNECTOR:
-		conn = obj_to_connector(obj);
-		ret = dpu_connector_register_custom_event(dpu_kms, conn, event,
-				en);
-		break;
-	}
-
-	return ret;
-}

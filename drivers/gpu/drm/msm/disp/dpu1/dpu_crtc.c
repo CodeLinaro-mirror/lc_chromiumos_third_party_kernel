@@ -39,31 +39,6 @@
 #include "dpu_core_perf.h"
 #include "dpu_trace.h"
 
-struct dpu_crtc_irq_info {
-	struct dpu_irq_callback irq;
-	u32 event;
-	int (*func)(struct drm_crtc *crtc, bool en,
-			struct dpu_irq_callback *irq);
-	struct list_head list;
-};
-
-struct dpu_crtc_custom_events {
-	u32 event;
-	int (*func)(struct drm_crtc *crtc, bool en,
-			struct dpu_irq_callback *irq);
-};
-
-static int dpu_crtc_power_interrupt_handler(struct drm_crtc *crtc_drm,
-	bool en, struct dpu_irq_callback *ad_irq);
-static int dpu_crtc_idle_interrupt_handler(struct drm_crtc *crtc_drm,
-	bool en, struct dpu_irq_callback *idle_irq);
-
-static struct dpu_crtc_custom_events custom_events[] = {
-	{DRM_EVENT_AD_BACKLIGHT, dpu_cp_ad_interrupt},
-	{DRM_EVENT_CRTC_POWER, dpu_crtc_power_interrupt_handler},
-	{DRM_EVENT_IDLE_NOTIFY, dpu_crtc_idle_interrupt_handler}
-};
-
 /* layer mixer index on dpu_crtc */
 #define LEFT_MIXER 0
 #define RIGHT_MIXER 1
@@ -2455,9 +2430,6 @@ static void dpu_crtc_handle_power_event(u32 event_type, void *arg)
 	struct drm_encoder *encoder;
 	struct dpu_crtc_mixer *m;
 	u32 i, misr_status;
-	unsigned long flags;
-	struct dpu_crtc_irq_info *node = NULL;
-	int ret = 0;
 
 	if (!crtc) {
 		DPU_ERROR("invalid crtc\n");
@@ -2478,17 +2450,6 @@ static void dpu_crtc_handle_power_event(u32 event_type, void *arg)
 
 			dpu_encoder_virt_restore(encoder);
 		}
-
-		spin_lock_irqsave(&dpu_crtc->spin_lock, flags);
-		list_for_each_entry(node, &dpu_crtc->user_event_list, list) {
-			ret = 0;
-			if (node->func)
-				ret = node->func(crtc, true, &node->irq);
-			if (ret)
-				DPU_ERROR("%s failed to enable event %x\n",
-						dpu_crtc->name, node->event);
-		}
-		spin_unlock_irqrestore(&dpu_crtc->spin_lock, flags);
 
 		dpu_cp_crtc_post_ipc(crtc);
 
@@ -2513,18 +2474,6 @@ static void dpu_crtc_handle_power_event(u32 event_type, void *arg)
 			dpu_crtc->misr_data[i] = misr_status ? misr_status :
 							dpu_crtc->misr_data[i];
 		}
-
-		spin_lock_irqsave(&dpu_crtc->spin_lock, flags);
-		node = NULL;
-		list_for_each_entry(node, &dpu_crtc->user_event_list, list) {
-			ret = 0;
-			if (node->func)
-				ret = node->func(crtc, false, &node->irq);
-			if (ret)
-				DPU_ERROR("%s failed to disable event %x\n",
-						dpu_crtc->name, node->event);
-		}
-		spin_unlock_irqrestore(&dpu_crtc->spin_lock, flags);
 
 		dpu_cp_crtc_pre_ipc(crtc);
 		break;
@@ -2553,8 +2502,6 @@ static void dpu_crtc_disable(struct drm_crtc *crtc)
 	struct drm_display_mode *mode;
 	struct drm_encoder *encoder;
 	struct msm_drm_private *priv;
-	unsigned long flags;
-	struct dpu_crtc_irq_info *node = NULL;
 	struct drm_event event;
 	u32 power_on;
 	int ret;
@@ -2614,17 +2561,6 @@ static void dpu_crtc_disable(struct drm_crtc *crtc)
 		atomic_set(&dpu_crtc->frame_pending, 0);
 	}
 
-	spin_lock_irqsave(&dpu_crtc->spin_lock, flags);
-	list_for_each_entry(node, &dpu_crtc->user_event_list, list) {
-		ret = 0;
-		if (node->func)
-			ret = node->func(crtc, false, &node->irq);
-		if (ret)
-			DPU_ERROR("%s failed to disable event %x\n",
-					dpu_crtc->name, node->event);
-	}
-	spin_unlock_irqrestore(&dpu_crtc->spin_lock, flags);
-
 	dpu_core_perf_crtc_update(crtc, 0, true);
 
 	drm_for_each_encoder(encoder, crtc->dev) {
@@ -2656,8 +2592,6 @@ static void dpu_crtc_enable(struct drm_crtc *crtc,
 	struct dpu_crtc *dpu_crtc;
 	struct drm_encoder *encoder;
 	struct msm_drm_private *priv;
-	unsigned long flags;
-	struct dpu_crtc_irq_info *node = NULL;
 	struct drm_event event;
 	u32 power_on;
 	int ret;
@@ -2708,17 +2642,6 @@ static void dpu_crtc_enable(struct drm_crtc *crtc,
 			(u8 *)&power_on);
 
 	mutex_unlock(&dpu_crtc->crtc_lock);
-
-	spin_lock_irqsave(&dpu_crtc->spin_lock, flags);
-	list_for_each_entry(node, &dpu_crtc->user_event_list, list) {
-		ret = 0;
-		if (node->func)
-			ret = node->func(crtc, true, &node->irq);
-		if (ret)
-			DPU_ERROR("%s failed to enable event %x\n",
-				dpu_crtc->name, node->event);
-	}
-	spin_unlock_irqrestore(&dpu_crtc->spin_lock, flags);
 
 	dpu_crtc->power_event = dpu_power_handle_register_event(
 		&priv->phandle,
@@ -3983,7 +3906,7 @@ struct drm_crtc *dpu_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	init_completion(&dpu_crtc->frame_done_comp);
 
 	INIT_LIST_HEAD(&dpu_crtc->frame_event_list);
-	INIT_LIST_HEAD(&dpu_crtc->user_event_list);
+
 	for (i = 0; i < ARRAY_SIZE(dpu_crtc->frame_events); i++) {
 		INIT_LIST_HEAD(&dpu_crtc->frame_events[i].list);
 		list_add(&dpu_crtc->frame_events[i].list,
@@ -4026,143 +3949,4 @@ struct drm_crtc *dpu_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 
 	DPU_DEBUG("%s: successfully initialized crtc\n", dpu_crtc->name);
 	return crtc;
-}
-
-static int _dpu_crtc_event_enable(struct dpu_kms *kms,
-		struct drm_crtc *crtc_drm, u32 event)
-{
-	struct dpu_crtc *crtc = NULL;
-	struct dpu_crtc_irq_info *node;
-	struct msm_drm_private *priv;
-	unsigned long flags;
-	bool found = false;
-	int ret, i = 0;
-
-	crtc = to_dpu_crtc(crtc_drm);
-	spin_lock_irqsave(&crtc->spin_lock, flags);
-	list_for_each_entry(node, &crtc->user_event_list, list) {
-		if (node->event == event) {
-			found = true;
-			break;
-		}
-	}
-	spin_unlock_irqrestore(&crtc->spin_lock, flags);
-
-	/* event already enabled */
-	if (found)
-		return 0;
-
-	node = NULL;
-	for (i = 0; i < ARRAY_SIZE(custom_events); i++) {
-		if (custom_events[i].event == event &&
-			custom_events[i].func) {
-			node = kzalloc(sizeof(*node), GFP_KERNEL);
-			if (!node)
-				return -ENOMEM;
-			node->event = event;
-			INIT_LIST_HEAD(&node->list);
-			node->func = custom_events[i].func;
-			node->event = event;
-			break;
-		}
-	}
-
-	if (!node) {
-		DPU_ERROR("unsupported event %x\n", event);
-		return -EINVAL;
-	}
-
-	priv = kms->dev->dev_private;
-	ret = 0;
-	if (crtc_drm->enabled) {
-		dpu_power_resource_enable(&priv->phandle, kms->core_client,
-				true);
-		INIT_LIST_HEAD(&node->irq.list);
-		ret = node->func(crtc_drm, true, &node->irq);
-		dpu_power_resource_enable(&priv->phandle, kms->core_client,
-				false);
-	}
-
-	if (!ret) {
-		spin_lock_irqsave(&crtc->spin_lock, flags);
-		list_add_tail(&node->list, &crtc->user_event_list);
-		spin_unlock_irqrestore(&crtc->spin_lock, flags);
-	} else {
-		kfree(node);
-	}
-
-	return ret;
-}
-
-static int _dpu_crtc_event_disable(struct dpu_kms *kms,
-		struct drm_crtc *crtc_drm, u32 event)
-{
-	struct dpu_crtc *crtc = NULL;
-	struct dpu_crtc_irq_info *node = NULL;
-	struct msm_drm_private *priv;
-	unsigned long flags;
-	bool found = false;
-	int ret;
-
-	crtc = to_dpu_crtc(crtc_drm);
-	spin_lock_irqsave(&crtc->spin_lock, flags);
-	list_for_each_entry(node, &crtc->user_event_list, list) {
-		if (node->event == event) {
-			list_del(&node->list);
-			found = true;
-			break;
-		}
-	}
-	spin_unlock_irqrestore(&crtc->spin_lock, flags);
-
-	/* event already disabled */
-	if (!found)
-		return 0;
-
-	/**
-	 * crtc is disabled interrupts are cleared remove from the list,
-	 * no need to disable/de-register.
-	 */
-	if (!crtc_drm->enabled) {
-		kfree(node);
-		return 0;
-	}
-	priv = kms->dev->dev_private;
-	dpu_power_resource_enable(&priv->phandle, kms->core_client, true);
-	ret = node->func(crtc_drm, false, &node->irq);
-	dpu_power_resource_enable(&priv->phandle, kms->core_client, false);
-	return ret;
-}
-
-int dpu_crtc_register_custom_event(struct dpu_kms *kms,
-		struct drm_crtc *crtc_drm, u32 event, bool en)
-{
-	struct dpu_crtc *crtc = NULL;
-	int ret;
-
-	crtc = to_dpu_crtc(crtc_drm);
-	if (!crtc || !kms || !kms->dev) {
-		DRM_ERROR("invalid dpu_crtc %pK kms %pK dev %pK\n", crtc,
-			kms, ((kms) ? (kms->dev) : NULL));
-		return -EINVAL;
-	}
-
-	if (en)
-		ret = _dpu_crtc_event_enable(kms, crtc_drm, event);
-	else
-		ret = _dpu_crtc_event_disable(kms, crtc_drm, event);
-
-	return ret;
-}
-
-static int dpu_crtc_power_interrupt_handler(struct drm_crtc *crtc_drm,
-	bool en, struct dpu_irq_callback *irq)
-{
-	return 0;
-}
-
-static int dpu_crtc_idle_interrupt_handler(struct drm_crtc *crtc_drm,
-	bool en, struct dpu_irq_callback *irq)
-{
-	return 0;
 }

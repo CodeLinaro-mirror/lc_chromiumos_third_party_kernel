@@ -223,7 +223,6 @@ struct dpu_crtc {
 	struct list_head dirty_list;
 	struct list_head ad_dirty;
 	struct list_head ad_active;
-	struct list_head user_event_list;
 
 	struct mutex crtc_lock;
 
