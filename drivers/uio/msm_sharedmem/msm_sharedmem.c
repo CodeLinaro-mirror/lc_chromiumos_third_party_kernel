@@ -20,7 +20,8 @@
 #include <linux/of.h>
 #include <linux/dma-mapping.h>
 
-#include <soc/qcom/secure_buffer.h>
+#include <linux/qcom_scm.h>
+#include <linux/of.h>
 
 #define CLIENT_ID_PROP "qcom,client-id"
 #define MPSS_RMTS_CLIENT_ID 1
@@ -78,22 +79,25 @@ static int sharedmem_mmap(struct uio_info *info, struct vm_area_struct *vma)
 static void setup_shared_ram_perms(u32 client_id, phys_addr_t addr, u32 size)
 {
 	int ret;
-	u32 source_vmlist[1] = {VMID_HLOS};
-	int dest_vmids[2] = {VMID_HLOS, VMID_MSS_MSA};
-	int dest_perms[2] = {PERM_READ|PERM_WRITE,
-			     PERM_READ|PERM_WRITE};
+	u32 src_perms = BIT(QCOM_SCM_VMID_HLOS);
+	struct qcom_scm_vmperm dest_perms[2];
+
+	dest_perms[0].vmid = QCOM_SCM_VMID_HLOS;
+	dest_perms[0].perm = QCOM_SCM_PERM_RW;
+	dest_perms[1].vmid = QCOM_SCM_VMID_MSS_MSA;
+	dest_perms[1].perm = QCOM_SCM_PERM_RW;
 
 	if (client_id != MPSS_RMTS_CLIENT_ID)
 		return;
 
-	ret = hyp_assign_phys(addr, size, source_vmlist, 1, dest_vmids,
-				dest_perms, 2);
+	ret = qcom_scm_assign_mem(addr, size, &src_perms, dest_perms, 2);
+
 	if (ret != 0) {
 		if (ret == -EINVAL)
-			pr_warn("hyp_assign_phys is not supported!");
+			pr_warn("qcom_scm_assign_mem is not supported.");
 		else
-			pr_err("hyp_assign_phys failed IPA=0x016%pa size=%u err=%d\n",
-				&addr, size, ret);
+			pr_err("qcom_scm_assign_mem failed IPA=0x016%pa size=%u err=%d\n",
+				    &addr, size, ret);
 	}
 }
 
