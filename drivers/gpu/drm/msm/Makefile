@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 ccflags-y := -Idrivers/gpu/drm/msm
 ccflags-y += -Idrivers/gpu/drm/msm/disp/dpu1
-ccflags-y += -Idrivers/gpu/drm/msm/dsi-staging
 ccflags-$(CONFIG_DRM_MSM_DSI) += -Idrivers/gpu/drm/msm/dsi
 
 msm-y := \
@@ -142,26 +141,6 @@ msm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi.o \
 			dsi/dsi_manager.o \
 			dsi/phy/dsi_phy.o \
 			disp/mdp5/mdp5_cmd_encoder.o
-
-msm-$(CONFIG_DRM_MSM_DSI_STAGING) += dsi-staging/dsi_phy.o \
-				dsi-staging/dsi_pwr.o \
-				dsi-staging/dsi_phy.o \
-				dsi-staging/dsi_phy_hw_v2_0.o \
-				dsi-staging/dsi_phy_hw_v3_0.o \
-				dsi-staging/dsi_phy_timing_calc.o \
-				dsi-staging/dsi_phy_timing_v2_0.o \
-				dsi-staging/dsi_phy_timing_v3_0.o \
-				dsi-staging/dsi_ctrl_hw_cmn.o \
-				dsi-staging/dsi_ctrl_hw_1_4.o \
-				dsi-staging/dsi_ctrl_hw_2_0.o \
-				dsi-staging/dsi_ctrl_hw_2_2.o \
-				dsi-staging/dsi_ctrl.o \
-				dsi-staging/dsi_catalog.o \
-				dsi-staging/dsi_drm.o \
-				dsi-staging/dsi_display.o \
-				dsi-staging/dsi_panel.o \
-				dsi-staging/dsi_clk_manager.o \
-				dsi-staging/dsi_display_test.o
 
 msm-$(CONFIG_DRM_MSM_DSI_28NM_PHY) += dsi/phy/dsi_phy_28nm.o
 msm-$(CONFIG_DRM_MSM_DSI_20NM_PHY) += dsi/phy/dsi_phy_20nm.o
