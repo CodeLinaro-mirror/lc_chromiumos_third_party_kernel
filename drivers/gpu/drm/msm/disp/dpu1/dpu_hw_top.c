@@ -317,18 +317,6 @@ static void dpu_hw_get_safe_status(struct dpu_hw_mdp *mdp,
 	status->wb[WB_3] = 0;
 }
 
-static void dpu_hw_setup_dce(struct dpu_hw_mdp *mdp, u32 dce_sel)
-{
-	struct dpu_hw_blk_reg_map *c;
-
-	if (!mdp)
-		return;
-
-	c = &mdp->hw;
-
-	DPU_REG_WRITE(c, DCE_SEL, dce_sel);
-}
-
 void dpu_hw_reset_ubwc(struct dpu_hw_mdp *mdp, struct dpu_mdss_cfg *m)
 {
 	struct dpu_hw_blk_reg_map c;
@@ -367,7 +355,6 @@ static void _setup_mdp_ops(struct dpu_hw_mdp_ops *ops,
 	ops->get_danger_status = dpu_hw_get_danger_status;
 	ops->setup_vsync_source = dpu_hw_setup_vsync_source;
 	ops->get_safe_status = dpu_hw_get_safe_status;
-	ops->setup_dce = dpu_hw_setup_dce;
 	ops->reset_ubwc = dpu_hw_reset_ubwc;
 	ops->intf_audio_select = dpu_hw_intf_audio_select;
 }

@@ -67,7 +67,6 @@ msm-y := \
 	disp/dpu1/dpu_hw_color_processing_v1_7.o \
 	disp/dpu1/dpu_hw_ctl.o \
 	disp/dpu1/dpu_hw_ds.o \
-	disp/dpu1/dpu_hw_dsc.o \
 	disp/dpu1/dpu_hw_dspp.o \
 	disp/dpu1/dpu_hw_interrupts.o \
 	disp/dpu1/dpu_hw_intf.o \

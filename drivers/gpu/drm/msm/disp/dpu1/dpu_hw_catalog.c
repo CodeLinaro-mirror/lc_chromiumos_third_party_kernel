@@ -380,29 +380,6 @@ static struct dpu_pingpong_cfg sdm845_pp[] = {
 };
 
 /*************************************************************
- * DSC sub blocks config
- *************************************************************/
-
-static struct dpu_dsc_cfg sdm845_dsc[] = {
-	{
-	.name = "dsc_0", .id = DSC_0,
-	.base = 0x81000, .len = 0x140
-	},
-	{
-	.name = "dsc_1", .id = DSC_1,
-	.base = 0x81400, .len = 0x140
-	},
-	{
-	.name = "dsc_2", .id = DSC_2,
-	.base = 0x81800, .len = 0x140
-	},
-	{
-	.name = "dsc_3", .id = DSC_3,
-	.base = 0x81c00, .len = 0x140
-	},
-};
-
-/*************************************************************
  * INTF sub blocks config
  *************************************************************/
 #define INTF_BLK(_name, _id, _base, _type, _ctrl_id) \
@@ -591,8 +568,6 @@ void sdm845_cfg_init(struct dpu_mdss_cfg *dpu_cfg)
 		.ds = sdm845_ds,
 		.pingpong_count = ARRAY_SIZE(sdm845_pp),
 		.pingpong = sdm845_pp,
-		.dsc_count = ARRAY_SIZE(sdm845_dsc),
-		.dsc = sdm845_dsc,
 		.cdm_count = ARRAY_SIZE(sdm845_cdm),
 		.cdm = sdm845_cdm,
 		.intf_count = ARRAY_SIZE(sdm845_intf),

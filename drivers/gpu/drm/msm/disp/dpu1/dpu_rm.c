@@ -24,7 +24,6 @@
 #include "dpu_hw_wb.h"
 #include "dpu_encoder.h"
 #include "dpu_connector.h"
-#include "dpu_hw_dsc.h"
 
 #define RESERVED_BY_OTHER(h, r) \
 	((h)->rsvp && ((h)->rsvp->enc_id != (r)->enc_id))
@@ -49,12 +48,8 @@ struct dpu_rm_topology_def {
 static const struct dpu_rm_topology_def g_top_table[] = {
 	{   DPU_RM_TOPOLOGY_NONE,                 0, 0, 0, 0, false },
 	{   DPU_RM_TOPOLOGY_SINGLEPIPE,           1, 0, 1, 1, false },
-	{   DPU_RM_TOPOLOGY_SINGLEPIPE_DSC,       1, 1, 1, 1, false },
 	{   DPU_RM_TOPOLOGY_DUALPIPE,             2, 0, 2, 2, true  },
-	{   DPU_RM_TOPOLOGY_DUALPIPE_DSC,         2, 2, 2, 2, true  },
 	{   DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE,     2, 0, 1, 1, false },
-	{   DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC, 2, 1, 1, 1, false },
-	{   DPU_RM_TOPOLOGY_DUALPIPE_DSCMERGE,    2, 2, 1, 1, false },
 	{   DPU_RM_TOPOLOGY_PPSPLIT,              1, 0, 2, 1, true  },
 };
 
@@ -253,9 +248,6 @@ static void _dpu_rm_hw_destroy(enum dpu_hw_blk_type type, void *hw)
 	case DPU_HW_BLK_WB:
 		dpu_hw_wb_destroy(hw);
 		break;
-	case DPU_HW_BLK_DSC:
-		dpu_hw_dsc_destroy(hw);
-		break;
 	case DPU_HW_BLK_SSPP:
 		/* SSPPs are not managed by the resource manager */
 	case DPU_HW_BLK_TOP:
@@ -340,9 +332,6 @@ static int _dpu_rm_hw_blk_create(
 		break;
 	case DPU_HW_BLK_WB:
 		hw = dpu_hw_wb_init(id, mmio, cat, hw_mdp);
-		break;
-	case DPU_HW_BLK_DSC:
-		hw = dpu_hw_dsc_init(id, mmio, cat);
 		break;
 	case DPU_HW_BLK_SSPP:
 		/* SSPPs are not managed by the resource manager */
@@ -461,15 +450,6 @@ int dpu_rm_init(struct dpu_rm *rm,
 				cat->pingpong[i].id, &cat->pingpong[i]);
 		if (rc) {
 			DPU_ERROR("failed: pp hw not available\n");
-			goto fail;
-		}
-	}
-
-	for (i = 0; i < cat->dsc_count; i++) {
-		rc = _dpu_rm_hw_blk_create(rm, cat, mmio, DPU_HW_BLK_DSC,
-			cat->dsc[i].id, &cat->dsc[i]);
-		if (rc) {
-			DPU_ERROR("failed: dsc hw not available\n");
 			goto fail;
 		}
 	}
@@ -834,37 +814,6 @@ static int _dpu_rm_reserve_ctls(
 	return 0;
 }
 
-static int _dpu_rm_reserve_dsc(
-		struct dpu_rm *rm,
-		struct dpu_rm_rsvp *rsvp,
-		const struct dpu_rm_topology_def *top)
-{
-	struct dpu_rm_hw_iter iter;
-	int alloc_count = 0;
-	int num_dsc_enc = top->num_lm;
-
-	if (!top->num_comp_enc)
-		return 0;
-
-	dpu_rm_init_hw_iter(&iter, 0, DPU_HW_BLK_DSC);
-
-	while (_dpu_rm_get_hw_locked(rm, &iter)) {
-		if (RESERVED_BY_OTHER(iter.blk, rsvp))
-			continue;
-
-		iter.blk->rsvp_nxt = rsvp;
-		DPU_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id);
-
-		if (++alloc_count == num_dsc_enc)
-			return 0;
-	}
-
-	DPU_ERROR("couldn't reserve %d dsc blocks for enc id %d\n",
-		num_dsc_enc, rsvp->enc_id);
-
-	return -ENAVAIL;
-}
-
 static int _dpu_rm_reserve_cdm(
 		struct dpu_rm *rm,
 		struct dpu_rm_rsvp *rsvp,
@@ -1029,10 +978,6 @@ static int _dpu_rm_make_next_rsvp(
 
 	/* Assign INTFs, WBs, and blks whose usage is tied to them: CTL & CDM */
 	ret = _dpu_rm_reserve_intf_related_hw(rm, rsvp, &reqs->hw_res);
-	if (ret)
-		return ret;
-
-	ret = _dpu_rm_reserve_dsc(rm, rsvp, reqs->topology);
 	if (ret)
 		return ret;
 

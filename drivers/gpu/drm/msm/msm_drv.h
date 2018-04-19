@@ -319,20 +319,6 @@ struct msm_display_dsc_info {
 };
 
 /**
- * struct msm_compression_info - defined panel compression
- * @comp_type:        type of compression supported
- * @dsc_info:         dsc configuration if the compression
- *                    supported is DSC
- */
-struct msm_compression_info {
-	enum msm_display_compression_type comp_type;
-
-	union{
-		struct msm_display_dsc_info dsc_info;
-	};
-};
-
-/**
  * struct msm_display_topology - defines a display topology pipeline
  * @num_lm:       number of layer mixers used
  * @num_enc:      number of compression encoder blocks used
@@ -352,7 +338,6 @@ struct msm_display_topology {
  * @jitter_numer:	display panel jitter numerator configuration
  * @jitter_denom:	display panel jitter denominator configuration
  * @topology:        supported topology for the mode
- * @comp_info:       compression info supported
  */
 struct msm_mode_info {
 	uint32_t frame_rate;
@@ -361,7 +346,6 @@ struct msm_mode_info {
 	uint32_t jitter_numer;
 	uint32_t jitter_denom;
 	struct msm_display_topology topology;
-	struct msm_compression_info comp_info;
 };
 
 /**

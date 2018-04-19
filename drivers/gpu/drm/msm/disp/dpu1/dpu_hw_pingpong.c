@@ -36,9 +36,6 @@
 #define PP_FBC_MODE                     0x034
 #define PP_FBC_BUDGET_CTL               0x038
 #define PP_FBC_LOSSY_MODE               0x03C
-#define PP_DSC_MODE                     0x0a0
-#define PP_DCE_DATA_IN_SWAP             0x0ac
-#define PP_DCE_DATA_OUT_SWAP            0x0c8
 
 #define DITHER_DEPTH_MAP_INDEX 9
 static u32 dither_depth_map[DITHER_DEPTH_MAP_INDEX] = {
@@ -149,48 +146,6 @@ static int dpu_hw_pp_poll_timeout_wr_ptr(struct dpu_hw_pingpong *pp,
 			val, (val & 0xffff) >= 1, 10, timeout_us);
 
 	return rc;
-}
-
-static void dpu_hw_pp_dsc_enable(struct dpu_hw_pingpong *pp)
-{
-	struct dpu_hw_blk_reg_map *c;
-
-	if (!pp)
-		return;
-	c = &pp->hw;
-
-	DPU_REG_WRITE(c, PP_DSC_MODE, 1);
-}
-
-static void dpu_hw_pp_dsc_disable(struct dpu_hw_pingpong *pp)
-{
-	struct dpu_hw_blk_reg_map *c;
-	u32 data;
-
-	if (!pp)
-		return;
-	c = &pp->hw;
-
-	data = DPU_REG_READ(c, PP_DCE_DATA_OUT_SWAP);
-	data &= ~BIT(18); /* disable endian flip */
-	DPU_REG_WRITE(c, PP_DCE_DATA_OUT_SWAP, data);
-
-	DPU_REG_WRITE(c, PP_DSC_MODE, 0);
-}
-
-static int dpu_hw_pp_setup_dsc(struct dpu_hw_pingpong *pp)
-{
-	struct dpu_hw_blk_reg_map *c;
-	int data;
-
-	if (!pp)
-		return -EINVAL;
-	c = &pp->hw;
-
-	data = DPU_REG_READ(c, PP_DCE_DATA_OUT_SWAP);
-	data |= BIT(18); /* endian flip */
-	DPU_REG_WRITE(c, PP_DCE_DATA_OUT_SWAP, data);
-	return 0;
 }
 
 static int dpu_hw_pp_setup_dither_v1(struct dpu_hw_pingpong *pp,
@@ -339,9 +294,6 @@ static void _setup_pingpong_ops(struct dpu_hw_pingpong_ops *ops,
 	ops->connect_external_te = dpu_hw_pp_connect_external_te;
 	ops->get_vsync_info = dpu_hw_pp_get_vsync_info;
 	ops->setup_autorefresh = dpu_hw_pp_setup_autorefresh_config;
-	ops->setup_dsc = dpu_hw_pp_setup_dsc;
-	ops->enable_dsc = dpu_hw_pp_dsc_enable;
-	ops->disable_dsc = dpu_hw_pp_dsc_disable;
 	ops->get_autorefresh = dpu_hw_pp_get_autorefresh_config;
 	ops->poll_timeout_wr_ptr = dpu_hw_pp_poll_timeout_wr_ptr;
 	ops->get_line_count = dpu_hw_pp_get_line_count;

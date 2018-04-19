@@ -77,9 +77,6 @@ static void drm_mode_to_intf_timing_params(
 	 * <---------------------------- [hv]total ------------->
 	 */
 	timing->width = mode->hdisplay;	/* active width */
-	if (vid_enc->base.comp_type == MSM_DISPLAY_COMPRESSION_DSC)
-		timing->width = DIV_ROUND_UP(timing->width, 3);
-
 	timing->height = mode->vdisplay;	/* active height */
 	timing->xres = timing->width;
 	timing->yres = timing->height;
@@ -379,8 +376,7 @@ static bool _dpu_encoder_phys_is_dual_ctl(struct dpu_encoder_phys *phys_enc)
 		return false;
 
 	topology = dpu_connector_get_topology_name(phys_enc->connector);
-	if ((topology == DPU_RM_TOPOLOGY_DUALPIPE_DSC) ||
-		(topology == DPU_RM_TOPOLOGY_DUALPIPE))
+	if (topology == DPU_RM_TOPOLOGY_DUALPIPE)
 		return true;
 
 	return false;
@@ -915,7 +911,6 @@ struct dpu_encoder_phys *dpu_encoder_phys_vid_init(
 	phys_enc->split_role = p->split_role;
 	phys_enc->intf_mode = INTF_MODE_VIDEO;
 	phys_enc->enc_spinlock = p->enc_spinlock;
-	phys_enc->comp_type = p->comp_type;
 	for (i = 0; i < INTR_IDX_MAX; i++) {
 		irq = &phys_enc->irq[i];
 		INIT_LIST_HEAD(&irq->cb.list);

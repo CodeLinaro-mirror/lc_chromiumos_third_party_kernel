@@ -48,10 +48,6 @@ struct dpu_hw_pp_vsync_info {
 	u32 wr_ptr_line_count;	/* current line within pp fifo (wr ptr) */
 };
 
-struct dpu_hw_dsc_cfg {
-	u8 enable;
-};
-
 /**
  *
  * struct dpu_hw_pingpong_ops : Interface to the pingpong Hw driver functions
@@ -60,9 +56,6 @@ struct dpu_hw_dsc_cfg {
  *  @enable_tearcheck : enables tear check
  *  @get_vsync_info : retries timing info of the panel
  *  @setup_autorefresh : program auto refresh
- *  @setup_dsc : program DSC block with encoding details
- *  @enable_dsc : enables DSC encoder
- *  @disable_dsc : disables DSC encoder
  *  @setup_dither : function to program the dither hw block
  *  @get_line_count: obtain current vertical line counter
  */
@@ -111,21 +104,6 @@ struct dpu_hw_pingpong_ops {
 	 * @Return: 0 on success, -ETIMEDOUT on timeout
 	 */
 	int (*poll_timeout_wr_ptr)(struct dpu_hw_pingpong *pp, u32 timeout_us);
-
-	/**
-	 * Program the dsc compression block
-	 */
-	int (*setup_dsc)(struct dpu_hw_pingpong *pp);
-
-	/**
-	 * Enables DSC encoder
-	 */
-	void (*enable_dsc)(struct dpu_hw_pingpong *pp);
-
-	/**
-	 * Disables DSC encoder
-	 */
-	void (*disable_dsc)(struct dpu_hw_pingpong *pp);
 
 	/**
 	 * Program the dither hw block

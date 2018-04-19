@@ -145,20 +145,6 @@ enum dpu_intf_mode dpu_encoder_get_intf_mode(struct drm_encoder *encoder);
 void dpu_encoder_virt_restore(struct drm_encoder *encoder);
 
 /**
- * dpu_encoder_is_dsc_enabled - check if encoder is in DSC mode
- * @drm_enc: Pointer to drm encoder object
- * @Return: true if encoder is in DSC mode
- */
-bool dpu_encoder_is_dsc_enabled(struct drm_encoder *drm_enc);
-
-/**
- * dpu_encoder_is_dsc_merge - check if encoder is in DSC merge mode
- * @drm_enc: Pointer to drm encoder object
- * @Return: true if encoder is in DSC merge mode
- */
-bool dpu_encoder_is_dsc_merge(struct drm_encoder *drm_enc);
-
-/**
  * dpu_encoder_check_mode - check if given mode is supported or not
  * @drm_enc: Pointer to drm encoder object
  * @mode: Mode to be checked

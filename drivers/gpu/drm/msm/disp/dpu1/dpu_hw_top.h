@@ -143,13 +143,6 @@ struct dpu_hw_mdp_ops {
 			enum dpu_clk_ctrl_type clk_ctrl, bool enable);
 
 	/**
-	 * setup_dce - set DCE mux for DSC ctrl path
-	 * @mdp: mdp top context driver
-	 * @dce_sel: dce_mux value
-	 */
-	void (*setup_dce)(struct dpu_hw_mdp *mdp, u32 dce_sel);
-
-	/**
 	 * get_danger_status - get danger status
 	 * @mdp: mdp top context driver
 	 * @status: Pointer to danger safe status

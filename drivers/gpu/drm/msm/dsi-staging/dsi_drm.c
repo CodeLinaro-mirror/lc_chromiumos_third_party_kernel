@@ -322,13 +322,6 @@ int dsi_conn_get_mode_info(const struct drm_display_mode *drm_mode,
 	memcpy(&mode_info->topology, &dsi_mode.priv_info->topology,
 			sizeof(struct msm_display_topology));
 
-	mode_info->comp_info.comp_type = MSM_DISPLAY_COMPRESSION_NONE;
-	if (dsi_mode.priv_info->dsc_enabled) {
-		mode_info->comp_info.comp_type = MSM_DISPLAY_COMPRESSION_DSC;
-		memcpy(&mode_info->comp_info.dsc_info, &dsi_mode.priv_info->dsc,
-			sizeof(dsi_mode.priv_info->dsc));
-	}
-
 	return 0;
 }
 

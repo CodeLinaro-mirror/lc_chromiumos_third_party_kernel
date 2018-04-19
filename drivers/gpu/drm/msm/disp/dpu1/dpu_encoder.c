@@ -32,7 +32,6 @@
 #include "dpu_formats.h"
 #include "dpu_encoder_phys.h"
 #include "dpu_power_handle.h"
-#include "dpu_hw_dsc.h"
 #include "dpu_crtc.h"
 #include "dpu_trace.h"
 #include "dpu_core_irq.h"
@@ -152,7 +151,6 @@ enum dpu_enc_rc_states {
  *			Only valid after enable. Cleared as disable.
  * @hw_pp		Handle to the pingpong blocks used for the display. No.
  *			pingpong blocks can be different than num_phys_encs.
- * @hw_dsc:		Array of DSC block handles used for the display.
  * @intfs_swapped	Whether or not the phys_enc interfaces have been swapped
  *			for partial update right-only cases, such as pingpong
  *			split where virtual pingpong does not generate IRQs
@@ -199,7 +197,6 @@ struct dpu_encoder_virt {
 	struct dpu_encoder_phys *phys_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct dpu_encoder_phys *cur_master;
 	struct dpu_hw_pingpong *hw_pp[MAX_CHANNELS_PER_ENC];
-	struct dpu_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC];
 
 	bool intfs_swapped;
 
@@ -234,21 +231,6 @@ struct dpu_encoder_virt {
 
 #define to_dpu_encoder_virt(x) container_of(x, struct dpu_encoder_virt, base)
 
-bool dpu_encoder_is_dsc_enabled(struct drm_encoder *drm_enc)
-
-{
-	struct dpu_encoder_virt *dpu_enc;
-	struct msm_compression_info *comp_info;
-
-	if (!drm_enc)
-		return false;
-
-	dpu_enc = to_dpu_encoder_virt(drm_enc);
-	comp_info = &dpu_enc->mode_info.comp_info;
-
-	return (comp_info->comp_type == MSM_DISPLAY_COMPRESSION_DSC);
-}
-
 void dpu_encoder_set_idle_timeout(struct drm_encoder *drm_enc, u32 idle_timeout)
 {
 	struct dpu_encoder_virt *dpu_enc;
@@ -258,30 +240,6 @@ void dpu_encoder_set_idle_timeout(struct drm_encoder *drm_enc, u32 idle_timeout)
 
 	dpu_enc = to_dpu_encoder_virt(drm_enc);
 	dpu_enc->idle_timeout = idle_timeout;
-}
-
-bool dpu_encoder_is_dsc_merge(struct drm_encoder *drm_enc)
-{
-	enum dpu_rm_topology_name topology;
-	struct dpu_encoder_virt *dpu_enc;
-	struct drm_connector *drm_conn;
-
-	if (!drm_enc)
-		return false;
-
-	dpu_enc = to_dpu_encoder_virt(drm_enc);
-	if (!dpu_enc->cur_master)
-		return false;
-
-	drm_conn = dpu_enc->cur_master->connector;
-	if (!drm_conn)
-		return false;
-
-	topology = dpu_connector_get_topology_name(drm_conn);
-	if (topology == DPU_RM_TOPOLOGY_DUALPIPE_DSCMERGE)
-		return true;
-
-	return false;
 }
 
 static inline int _dpu_encoder_power_enable(struct dpu_encoder_virt *dpu_enc,
@@ -745,312 +703,6 @@ static int dpu_encoder_virt_atomic_check(
 	return ret;
 }
 
-static int _dpu_encoder_dsc_update_pic_dim(struct msm_display_dsc_info *dsc,
-		int pic_width, int pic_height)
-{
-	if (!dsc || !pic_width || !pic_height) {
-		DPU_ERROR("invalid input: pic_width=%d pic_height=%d\n",
-			pic_width, pic_height);
-		return -EINVAL;
-	}
-
-	if ((pic_width % dsc->slice_width) ||
-	    (pic_height % dsc->slice_height)) {
-		DPU_ERROR("pic_dim=%dx%d has to be multiple of slice=%dx%d\n",
-			pic_width, pic_height,
-			dsc->slice_width, dsc->slice_height);
-		return -EINVAL;
-	}
-
-	dsc->pic_width = pic_width;
-	dsc->pic_height = pic_height;
-
-	return 0;
-}
-
-static void _dpu_encoder_dsc_pclk_param_calc(struct msm_display_dsc_info *dsc,
-		int intf_width)
-{
-	int slice_per_pkt, slice_per_intf;
-	int bytes_in_slice, total_bytes_per_intf;
-
-	if (!dsc || !dsc->slice_width || !dsc->slice_per_pkt ||
-	    (intf_width < dsc->slice_width)) {
-		DPU_ERROR("invalid input: intf_width=%d slice_width=%d\n",
-			intf_width, dsc ? dsc->slice_width : -1);
-		return;
-	}
-
-	slice_per_pkt = dsc->slice_per_pkt;
-	slice_per_intf = DIV_ROUND_UP(intf_width, dsc->slice_width);
-
-	/*
-	 * If slice_per_pkt is greater than slice_per_intf then default to 1.
-	 * This can happen during partial update.
-	 */
-	if (slice_per_pkt > slice_per_intf)
-		slice_per_pkt = 1;
-
-	bytes_in_slice = DIV_ROUND_UP(dsc->slice_width * dsc->bpp, 8);
-	total_bytes_per_intf = bytes_in_slice * slice_per_intf;
-
-	dsc->eol_byte_num = total_bytes_per_intf % 3;
-	dsc->pclk_per_line =  DIV_ROUND_UP(total_bytes_per_intf, 3);
-	dsc->bytes_in_slice = bytes_in_slice;
-	dsc->bytes_per_pkt = bytes_in_slice * slice_per_pkt;
-	dsc->pkt_per_line = slice_per_intf / slice_per_pkt;
-}
-
-static int _dpu_encoder_dsc_initial_line_calc(struct msm_display_dsc_info *dsc,
-		int enc_ip_width)
-{
-	int ssm_delay, total_pixels, soft_slice_per_enc;
-
-	soft_slice_per_enc = enc_ip_width / dsc->slice_width;
-
-	/*
-	 * minimum number of initial line pixels is a sum of:
-	 * 1. sub-stream multiplexer delay (83 groups for 8bpc,
-	 *    91 for 10 bpc) * 3
-	 * 2. for two soft slice cases, add extra sub-stream multiplexer * 3
-	 * 3. the initial xmit delay
-	 * 4. total pipeline delay through the "lock step" of encoder (47)
-	 * 5. 6 additional pixels as the output of the rate buffer is
-	 *    48 bits wide
-	 */
-	ssm_delay = ((dsc->bpc < 10) ? 84 : 92);
-	total_pixels = ssm_delay * 3 + dsc->initial_xmit_delay + 47;
-	if (soft_slice_per_enc > 1)
-		total_pixels += (ssm_delay * 3);
-	dsc->initial_lines = DIV_ROUND_UP(total_pixels, dsc->slice_width);
-	return 0;
-}
-
-static bool _dpu_encoder_dsc_ich_reset_override_needed(bool pu_en,
-		struct msm_display_dsc_info *dsc)
-{
-	/*
-	 * As per the DSC spec, ICH_RESET can be either end of the slice line
-	 * or at the end of the slice. HW internally generates ich_reset at
-	 * end of the slice line if DSC_MERGE is used or encoder has two
-	 * soft slices. However, if encoder has only 1 soft slice and DSC_MERGE
-	 * is not used then it will generate ich_reset at the end of slice.
-	 *
-	 * Now as per the spec, during one PPS session, position where
-	 * ich_reset is generated should not change. Now if full-screen frame
-	 * has more than 1 soft slice then HW will automatically generate
-	 * ich_reset at the end of slice_line. But for the same panel, if
-	 * partial frame is enabled and only 1 encoder is used with 1 slice,
-	 * then HW will generate ich_reset at end of the slice. This is a
-	 * mismatch. Prevent this by overriding HW's decision.
-	 */
-	return pu_en && dsc && (dsc->full_frame_slices > 1) &&
-		(dsc->slice_width == dsc->pic_width);
-}
-
-static void _dpu_encoder_dsc_pipe_cfg(struct dpu_hw_dsc *hw_dsc,
-		struct dpu_hw_pingpong *hw_pp, struct msm_display_dsc_info *dsc,
-		u32 common_mode, bool ich_reset)
-{
-	if (hw_dsc->ops.dsc_config)
-		hw_dsc->ops.dsc_config(hw_dsc, dsc, common_mode, ich_reset);
-
-	if (hw_dsc->ops.dsc_config_thresh)
-		hw_dsc->ops.dsc_config_thresh(hw_dsc, dsc);
-
-	if (hw_pp->ops.setup_dsc)
-		hw_pp->ops.setup_dsc(hw_pp);
-
-	if (hw_pp->ops.enable_dsc)
-		hw_pp->ops.enable_dsc(hw_pp);
-}
-
-static int _dpu_encoder_dsc_n_lm_1_enc_1_intf(struct dpu_encoder_virt *dpu_enc)
-{
-	int this_frame_slices;
-	int intf_ip_w, enc_ip_w;
-	int ich_res, dsc_common_mode = 0;
-	int rc = 0;
-
-	struct dpu_hw_pingpong *hw_pp = dpu_enc->hw_pp[0];
-	struct dpu_hw_dsc *hw_dsc = dpu_enc->hw_dsc[0];
-	struct dpu_encoder_phys *enc_master = dpu_enc->cur_master;
-	struct msm_display_dsc_info *dsc =
-		&dpu_enc->mode_info.comp_info.dsc_info;
-
-	rc = _dpu_encoder_dsc_update_pic_dim(dsc, dsc->pic_width,
-			dsc->pic_height);
-	if (rc) {
-		DPU_ERROR_ENC(dpu_enc, "failed to update DSC pic dim\n");
-		return rc;
-	}
-
-	this_frame_slices = dsc->pic_width / dsc->slice_width;
-	intf_ip_w = this_frame_slices * dsc->slice_width;
-	_dpu_encoder_dsc_pclk_param_calc(dsc, intf_ip_w);
-
-	enc_ip_w = intf_ip_w;
-	_dpu_encoder_dsc_initial_line_calc(dsc, enc_ip_w);
-
-	ich_res = _dpu_encoder_dsc_ich_reset_override_needed(false, dsc);
-
-	if (enc_master->intf_mode == INTF_MODE_VIDEO)
-		dsc_common_mode = DSC_MODE_VIDEO;
-
-	DPU_DEBUG_ENC(dpu_enc, "pic_w: %d pic_h: %d mode:%d\n",
-		dsc->pic_width, dsc->pic_height, dsc_common_mode);
-	DPU_EVT32(DRMID(&dpu_enc->base), dsc->pic_width, dsc->pic_height,
-			dsc_common_mode);
-
-	_dpu_encoder_dsc_pipe_cfg(hw_dsc, hw_pp, dsc, dsc_common_mode,
-			ich_res);
-
-	return 0;
-}
-static int _dpu_encoder_dsc_2_lm_2_enc_2_intf(struct dpu_encoder_virt *dpu_enc)
-{
-	int this_frame_slices;
-	int intf_ip_w, enc_ip_w;
-	int ich_res, dsc_common_mode;
-	int rc = 0;
-
-	struct dpu_encoder_phys *enc_master = dpu_enc->cur_master;
-	struct dpu_hw_dsc *l_hw_dsc = dpu_enc->hw_dsc[0];
-	struct dpu_hw_dsc *r_hw_dsc = dpu_enc->hw_dsc[1];
-	struct dpu_hw_pingpong *l_hw_pp = dpu_enc->hw_pp[0];
-	struct dpu_hw_pingpong *r_hw_pp = dpu_enc->hw_pp[1];
-	struct msm_display_dsc_info *dsc =
-		&dpu_enc->mode_info.comp_info.dsc_info;
-
-	rc = _dpu_encoder_dsc_update_pic_dim(dsc,
-			dsc->pic_width * dpu_enc->display_num_of_h_tiles,
-			dsc->pic_height);
-	if (rc) {
-		DPU_ERROR_ENC(dpu_enc, "failed to update DSC pic dim\n");
-		return rc;
-	}
-
-
-	this_frame_slices = dsc->pic_width / dsc->slice_width;
-	intf_ip_w = this_frame_slices * dsc->slice_width;
-
-	intf_ip_w /= 2;
-	_dpu_encoder_dsc_pclk_param_calc(dsc, intf_ip_w);
-
-	enc_ip_w = intf_ip_w;
-	_dpu_encoder_dsc_initial_line_calc(dsc, enc_ip_w);
-
-	ich_res = _dpu_encoder_dsc_ich_reset_override_needed(false, dsc);
-
-	dsc_common_mode = DSC_MODE_SPLIT_PANEL;
-	if (enc_master->intf_mode == INTF_MODE_VIDEO)
-		dsc_common_mode |= DSC_MODE_VIDEO;
-
-	DPU_DEBUG_ENC(dpu_enc, "pic_w: %d pic_h: %d mode:%d\n",
-		dsc->pic_width, dsc->pic_height, dsc_common_mode);
-	DPU_EVT32(DRMID(&dpu_enc->base), dsc->pic_width, dsc->pic_height,
-			dsc_common_mode);
-
-	_dpu_encoder_dsc_pipe_cfg(l_hw_dsc, l_hw_pp, dsc, dsc_common_mode,
-			ich_res);
-	_dpu_encoder_dsc_pipe_cfg(r_hw_dsc, r_hw_pp, dsc, dsc_common_mode,
-			ich_res);
-
-	return 0;
-}
-
-static int _dpu_encoder_dsc_2_lm_2_enc_1_intf(struct dpu_encoder_virt *dpu_enc)
-{
-	int this_frame_slices;
-	int intf_ip_w, enc_ip_w;
-	int ich_res, dsc_common_mode;
-	int rc = 0;
-
-	struct dpu_encoder_phys *enc_master = dpu_enc->cur_master;
-	struct dpu_hw_dsc *l_hw_dsc = dpu_enc->hw_dsc[0];
-	struct dpu_hw_dsc *r_hw_dsc = dpu_enc->hw_dsc[1];
-	struct dpu_hw_pingpong *l_hw_pp = dpu_enc->hw_pp[0];
-	struct dpu_hw_pingpong *r_hw_pp = dpu_enc->hw_pp[1];
-	struct msm_display_dsc_info *dsc =
-		&dpu_enc->mode_info.comp_info.dsc_info;
-
-	rc = _dpu_encoder_dsc_update_pic_dim(dsc, dsc->pic_width,
-			dsc->pic_height);
-	if (rc) {
-		DPU_ERROR_ENC(dpu_enc, "failed to update DSC pic dim\n");
-		return rc;
-	}
-
-	this_frame_slices = dsc->pic_width / dsc->slice_width;
-	intf_ip_w = this_frame_slices * dsc->slice_width;
-	_dpu_encoder_dsc_pclk_param_calc(dsc, intf_ip_w);
-
-	/*
-	 * when using 2 encoders for the same stream, no. of slices
-	 * need to be same on both the encoders.
-	 */
-	enc_ip_w = intf_ip_w / 2;
-	_dpu_encoder_dsc_initial_line_calc(dsc, enc_ip_w);
-
-	ich_res = _dpu_encoder_dsc_ich_reset_override_needed(false, dsc);
-
-	dsc_common_mode = DSC_MODE_MULTIPLEX | DSC_MODE_SPLIT_PANEL;
-	if (enc_master->intf_mode == INTF_MODE_VIDEO)
-		dsc_common_mode |= DSC_MODE_VIDEO;
-
-	DPU_DEBUG_ENC(dpu_enc, "pic_w: %d pic_h: %d mode:%d\n",
-		dsc->pic_width, dsc->pic_height, dsc_common_mode);
-	DPU_EVT32(DRMID(&dpu_enc->base), dsc->pic_width, dsc->pic_height,
-			dsc_common_mode);
-
-	_dpu_encoder_dsc_pipe_cfg(l_hw_dsc, l_hw_pp, dsc, dsc_common_mode,
-			ich_res);
-	_dpu_encoder_dsc_pipe_cfg(r_hw_dsc, r_hw_pp, dsc, dsc_common_mode,
-			ich_res);
-
-	return 0;
-}
-
-static int _dpu_encoder_dsc_setup(struct dpu_encoder_virt *dpu_enc)
-{
-	enum dpu_rm_topology_name topology;
-	struct drm_connector *drm_conn;
-	int ret = 0;
-
-	if (!dpu_enc)
-		return -EINVAL;
-
-	drm_conn = dpu_enc->phys_encs[0]->connector;
-
-	topology = dpu_connector_get_topology_name(drm_conn);
-	if (topology == DPU_RM_TOPOLOGY_NONE) {
-		DPU_ERROR_ENC(dpu_enc, "topology not set yet\n");
-		return -EINVAL;
-	}
-
-	DPU_DEBUG_ENC(dpu_enc, "topology:%d\n", topology);
-	DPU_EVT32(DRMID(&dpu_enc->base));
-
-	switch (topology) {
-	case DPU_RM_TOPOLOGY_SINGLEPIPE_DSC:
-	case DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC:
-		ret = _dpu_encoder_dsc_n_lm_1_enc_1_intf(dpu_enc);
-		break;
-	case DPU_RM_TOPOLOGY_DUALPIPE_DSCMERGE:
-		ret = _dpu_encoder_dsc_2_lm_2_enc_1_intf(dpu_enc);
-		break;
-	case DPU_RM_TOPOLOGY_DUALPIPE_DSC:
-		ret = _dpu_encoder_dsc_2_lm_2_enc_2_intf(dpu_enc);
-		break;
-	default:
-		DPU_ERROR_ENC(dpu_enc, "No DSC support for topology %d",
-				topology);
-		return -EINVAL;
-	};
-
-	return ret;
-}
-
 static void _dpu_encoder_update_vsync_source(struct dpu_encoder_virt *dpu_enc,
 			struct msm_display_info *disp_info)
 {
@@ -1109,102 +761,6 @@ static void _dpu_encoder_update_vsync_source(struct dpu_encoder_virt *dpu_enc,
 
 		hw_mdptop->ops.setup_vsync_source(hw_mdptop, &vsync_cfg);
 	}
-}
-
-static int _dpu_encoder_dsc_disable(struct dpu_encoder_virt *dpu_enc)
-{
-	enum dpu_rm_topology_name topology;
-	struct drm_connector *drm_conn;
-	int i, ret = 0;
-	struct dpu_hw_pingpong *hw_pp[MAX_CHANNELS_PER_ENC];
-	struct dpu_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC] = {NULL};
-	int pp_count = 0;
-	int dsc_count = 0;
-
-	if (!dpu_enc || !dpu_enc->phys_encs[0] ||
-			!dpu_enc->phys_encs[0]->connector) {
-		DPU_ERROR("invalid params %d %d\n",
-			!dpu_enc, dpu_enc ? !dpu_enc->phys_encs[0] : -1);
-		return -EINVAL;
-	}
-
-	drm_conn = dpu_enc->phys_encs[0]->connector;
-
-	topology = dpu_connector_get_topology_name(drm_conn);
-	if (topology == DPU_RM_TOPOLOGY_NONE) {
-		DPU_ERROR_ENC(dpu_enc, "topology not set yet\n");
-		return -EINVAL;
-	}
-
-	switch (topology) {
-	case DPU_RM_TOPOLOGY_SINGLEPIPE:
-	case DPU_RM_TOPOLOGY_SINGLEPIPE_DSC:
-		/* single PP */
-		hw_pp[0] = dpu_enc->hw_pp[0];
-		hw_dsc[0] = dpu_enc->hw_dsc[0];
-		pp_count = 1;
-		dsc_count = 1;
-		break;
-	case DPU_RM_TOPOLOGY_DUALPIPE_DSC:
-	case DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC:
-	case DPU_RM_TOPOLOGY_DUALPIPE_DSCMERGE:
-		/* dual dsc */
-		for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
-			hw_dsc[i] = dpu_enc->hw_dsc[i];
-			if (hw_dsc[i])
-				dsc_count++;
-		}
-		/* fall through */
-	case DPU_RM_TOPOLOGY_DUALPIPE:
-	case DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE:
-		/* dual pp */
-		for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
-			hw_pp[i] = dpu_enc->hw_pp[i];
-			if (hw_pp[i])
-				pp_count++;
-		}
-		break;
-	default:
-		DPU_DEBUG_ENC(dpu_enc, "Unexpected topology:%d\n", topology);
-		return -EINVAL;
-	};
-
-	DPU_EVT32(DRMID(&dpu_enc->base), topology, pp_count, dsc_count);
-
-	if (pp_count > MAX_CHANNELS_PER_ENC ||
-		dsc_count > MAX_CHANNELS_PER_ENC) {
-		DPU_ERROR_ENC(dpu_enc, "Wrong count pp:%d dsc:%d top:%d\n",
-				pp_count, dsc_count, topology);
-		return -EINVAL;
-	}
-
-	/* Disable DSC for all the pp's present in this topology */
-	for (i = 0; i < pp_count; i++) {
-
-		if (!hw_pp[i]) {
-			DPU_ERROR_ENC(dpu_enc, "null pp:%d top:%d cnt:%d\n",
-					i, topology, pp_count);
-			return -EINVAL;
-		}
-
-		if (hw_pp[i]->ops.disable_dsc)
-			hw_pp[i]->ops.disable_dsc(hw_pp[i]);
-	}
-
-	/* Disable DSC HW */
-	for (i = 0; i < dsc_count; i++) {
-
-		if (!hw_dsc[i]) {
-			DPU_ERROR_ENC(dpu_enc, "null dsc:%d top:%d cnt:%d\n",
-					i, topology, dsc_count);
-			return -EINVAL;
-		}
-
-		if (hw_dsc[i]->ops.dsc_disable)
-			hw_dsc[i]->ops.dsc_disable(hw_dsc[i]);
-	}
-
-	return ret;
 }
 
 static void _dpu_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
@@ -1607,7 +1163,7 @@ static void dpu_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	struct list_head *connector_list;
 	struct drm_connector *conn = NULL, *conn_iter;
 	struct dpu_connector *dpu_conn = NULL;
-	struct dpu_rm_hw_iter dsc_iter, pp_iter;
+	struct dpu_rm_hw_iter pp_iter;
 	int i = 0, ret;
 
 	if (!drm_enc) {
@@ -1658,12 +1214,6 @@ static void dpu_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 					ret);
 			return;
 		}
-
-		/*
-		 * Disable dsc before switch the mode and after pre_modeset,
-		 * to guarantee that previous kickoff finished.
-		 */
-		_dpu_encoder_dsc_disable(dpu_enc);
 	}
 
 	/* Reserve dynamic resources now. Indicating non-AtomicTest phase */
@@ -1681,14 +1231,6 @@ static void dpu_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		if (!dpu_rm_get_hw(&dpu_kms->rm, &pp_iter))
 			break;
 		dpu_enc->hw_pp[i] = (struct dpu_hw_pingpong *) pp_iter.hw;
-	}
-
-	dpu_rm_init_hw_iter(&dsc_iter, drm_enc->base.id, DPU_HW_BLK_DSC);
-	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
-		dpu_enc->hw_dsc[i] = NULL;
-		if (!dpu_rm_get_hw(&dpu_kms->rm, &dsc_iter))
-			break;
-		dpu_enc->hw_dsc[i] = (struct dpu_hw_dsc *) dsc_iter.hw;
 	}
 
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
@@ -1782,7 +1324,6 @@ static void dpu_encoder_virt_enable(struct drm_encoder *drm_enc)
 {
 	struct dpu_encoder_virt *dpu_enc = NULL;
 	int i, ret = 0;
-	struct msm_compression_info *comp_info = NULL;
 	struct drm_display_mode *cur_mode = NULL;
 
 	if (!drm_enc) {
@@ -1790,7 +1331,6 @@ static void dpu_encoder_virt_enable(struct drm_encoder *drm_enc)
 		return;
 	}
 	dpu_enc = to_dpu_encoder_virt(drm_enc);
-	comp_info = &dpu_enc->mode_info.comp_info;
 	cur_mode = &dpu_enc->base.crtc->state->adjusted_mode;
 
 	DPU_DEBUG_ENC(dpu_enc, "\n");
@@ -1825,7 +1365,6 @@ static void dpu_encoder_virt_enable(struct drm_encoder *drm_enc)
 		if (!phys)
 			continue;
 
-		phys->comp_type = comp_info->comp_type;
 		if (phys != dpu_enc->cur_master) {
 			/**
 			 * on DMS request, the encoder will be enabled
@@ -1899,13 +1438,6 @@ static void dpu_encoder_virt_disable(struct drm_encoder *drm_enc)
 		if (phys && phys->ops.disable)
 			phys->ops.disable(phys);
 	}
-
-	/*
-	 * disable dsc after the transfer is complete (for command mode)
-	 * and after physical encoder is disabled, to make sure timing
-	 * engine is already disabled (for video mode).
-	 */
-	_dpu_encoder_dsc_disable(dpu_enc);
 
 	/* after phys waits for frame-done, should be no more frames pending */
 	if (atomic_xchg(&dpu_enc->frame_done_timeout, 0)) {
@@ -2741,12 +2273,6 @@ void dpu_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 			DPU_ERROR_ENC(dpu_enc, "kickoff conn%d failed rc %d\n",
 					dpu_enc->cur_master->connector->base.id,
 					rc);
-	}
-
-	if (dpu_encoder_is_dsc_enabled(drm_enc)) {
-		rc = _dpu_encoder_dsc_setup(dpu_enc);
-		if (rc)
-			DPU_ERROR_ENC(dpu_enc, "failed to setup DSC: %d\n", rc);
 	}
 }
 

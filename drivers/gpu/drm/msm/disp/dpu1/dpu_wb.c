@@ -307,8 +307,6 @@ int dpu_wb_get_mode_info(const struct drm_display_mode *drm_mode,
 	topology->num_enc = no_enc;
 	topology->num_intf = single_intf;
 
-	mode_info->comp_info.comp_type = MSM_DISPLAY_COMPRESSION_NONE;
-
 	return 0;
 }
 
