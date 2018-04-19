@@ -1521,8 +1521,6 @@ static int _dpu_kms_mmu_init(struct dpu_kms *dpu_kms)
 		goto fail;
 	}
 
-	dpu_kms->aspace[0] = aspace;
-
 	ret = aspace->mmu->funcs->attach(aspace->mmu,
 				(const char **)iommu_ports,
 				ARRAY_SIZE(iommu_ports));
@@ -1531,7 +1529,9 @@ static int _dpu_kms_mmu_init(struct dpu_kms *dpu_kms)
 		msm_gem_address_space_put(aspace);
 		goto fail;
 	}
+
 	aspace->domain_attached = true;
+	dpu_kms->aspace[0] = aspace;
 #endif
 	return 0;
 fail:
@@ -1689,6 +1689,9 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		DPU_ERROR("dpu_kms_mmu_init failed: %d\n", rc);
 		goto power_error;
 	}
+
+	if (dpu_kms->aspace[0])
+		kms->aspace = dpu_kms->aspace[0];
 
 #ifdef CONFIG_CHROME_REGDMA
 	/* Initialize reg dma block which is a singleton */
