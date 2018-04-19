@@ -124,8 +124,6 @@ struct dpu_encoder_virt_ops {
  * @prepare_idle_pc:		phys encoder can update the vsync_enable status
  *                              on idle power collapse prepare
  * @restore:			Restore all the encoder configs.
- * @is_autorefresh_enabled:	provides the autorefresh current
- *                              enable/disable state.
  * @get_line_count:		Obtain current vertical line count
  */
 
@@ -166,7 +164,6 @@ struct dpu_encoder_phys_ops {
 	void (*irq_control)(struct dpu_encoder_phys *phys, bool enable);
 	void (*prepare_idle_pc)(struct dpu_encoder_phys *phys_enc);
 	void (*restore)(struct dpu_encoder_phys *phys);
-	bool (*is_autorefresh_enabled)(struct dpu_encoder_phys *phys);
 	int (*get_line_count)(struct dpu_encoder_phys *phys);
 };
 
@@ -176,8 +173,6 @@ struct dpu_encoder_phys_ops {
  * @INTR_IDX_PINGPONG: Pingpong done unterrupt for cmd mode panel
  * @INTR_IDX_UNDERRUN: Underrun unterrupt for video and cmd mode panel
  * @INTR_IDX_RDPTR:    Readpointer done unterrupt for cmd mode panel
- * @INTR_IDX_AUTOREFRESH_DONE:  Autorefresh done for cmd mode panel meaning
- *                              autorefresh has triggered a double buffer flip
  */
 enum dpu_intr_idx {
 	INTR_IDX_VSYNC,
@@ -185,7 +180,6 @@ enum dpu_intr_idx {
 	INTR_IDX_UNDERRUN,
 	INTR_IDX_CTL_START,
 	INTR_IDX_RDPTR,
-	INTR_IDX_AUTOREFRESH_DONE,
 	INTR_IDX_MAX,
 };
 
@@ -287,18 +281,6 @@ struct dpu_encoder_phys_vid {
 };
 
 /**
- * struct dpu_encoder_phys_cmd_autorefresh - autorefresh state tracking
- * @cfg: current active autorefresh configuration
- * @kickoff_cnt: atomic count tracking autorefresh done irq kickoffs pending
- * @kickoff_wq:	wait queue for waiting on autorefresh done irq
- */
-struct dpu_encoder_phys_cmd_autorefresh {
-	struct dpu_hw_autorefresh cfg;
-	atomic_t kickoff_cnt;
-	wait_queue_head_t kickoff_wq;
-};
-
-/**
  * struct dpu_encoder_phys_cmd - sub-class of dpu_encoder_phys to handle command
  *	mode specific operations
  * @base:	Baseclass physical encoder structure
@@ -307,7 +289,6 @@ struct dpu_encoder_phys_cmd_autorefresh {
  * @serialize_wait4pp:	serialize wait4pp feature waits for pp_done interrupt
  *			after ctl_start instead of before next frame kickoff
  * @pp_timeout_report_cnt: number of pingpong done irq timeout errors
- * @autorefresh: autorefresh feature state
  * @pending_vblank_cnt: Atomic counter tracking pending wait for VBLANK
  * @pending_vblank_wq: Wait queue for blocking until VBLANK received
  */
@@ -316,7 +297,6 @@ struct dpu_encoder_phys_cmd {
 	int stream_sel;
 	bool serialize_wait4pp;
 	int pp_timeout_report_cnt;
-	struct dpu_encoder_phys_cmd_autorefresh autorefresh;
 	atomic_t pending_vblank_cnt;
 	wait_queue_head_t pending_vblank_wq;
 };

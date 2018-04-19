@@ -24,9 +24,6 @@
 
 #define BL_NODE_NAME_SIZE 32
 
-/* Autorefresh will occur after FRAME_CNT frames. Large values are unlikely */
-#define AUTOREFRESH_MAX_FRAME_CNT 6
-
 #define DPU_DEBUG_CONN(c, fmt, ...) DPU_DEBUG("conn%d " fmt,\
 		(c) ? (c)->base.base.id : -1, ##__VA_ARGS__)
 
@@ -1126,10 +1123,6 @@ struct drm_connector *dpu_connector_init(struct drm_device *dev,
 		0x0, 0, MAX_AD_BL_SCALE_LEVEL, MAX_AD_BL_SCALE_LEVEL,
 		CONNECTOR_PROP_AD_BL_SCALE);
 #endif
-
-	msm_property_install_range(&c_conn->property_info, "autorefresh",
-			0x0, 0, AUTOREFRESH_MAX_FRAME_CNT, 0,
-			CONNECTOR_PROP_AUTOREFRESH);
 
 	/* enum/bitmask properties */
 	msm_property_install_enum(&c_conn->property_info, "topology_name",

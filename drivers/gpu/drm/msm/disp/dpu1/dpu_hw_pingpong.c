@@ -31,7 +31,6 @@
 #define PP_WR_PTR_IRQ                   0x024
 #define PP_OUT_LINE_COUNT               0x028
 #define PP_LINE_COUNT                   0x02C
-#define PP_AUTOREFRESH_CONFIG           0x030
 
 #define PP_FBC_MODE                     0x034
 #define PP_FBC_BUDGET_CTL               0x038
@@ -89,44 +88,6 @@ static int dpu_hw_pp_setup_te_config(struct dpu_hw_pingpong *pp,
 			 te->sync_threshold_start));
 	DPU_REG_WRITE(c, PP_SYNC_WRCOUNT,
 			(te->start_pos + te->sync_threshold_start + 1));
-
-	return 0;
-}
-
-static int dpu_hw_pp_setup_autorefresh_config(struct dpu_hw_pingpong *pp,
-		struct dpu_hw_autorefresh *cfg)
-{
-	struct dpu_hw_blk_reg_map *c;
-	u32 refresh_cfg;
-
-	if (!pp || !cfg)
-		return -EINVAL;
-	c = &pp->hw;
-
-	if (cfg->enable)
-		refresh_cfg = BIT(31) | cfg->frame_count;
-	else
-		refresh_cfg = 0;
-
-	DPU_REG_WRITE(c, PP_AUTOREFRESH_CONFIG, refresh_cfg);
-	DPU_EVT32(pp->idx - PINGPONG_0, refresh_cfg);
-
-	return 0;
-}
-
-static int dpu_hw_pp_get_autorefresh_config(struct dpu_hw_pingpong *pp,
-		struct dpu_hw_autorefresh *cfg)
-{
-	struct dpu_hw_blk_reg_map *c;
-	u32 val;
-
-	if (!pp || !cfg)
-		return -EINVAL;
-
-	c = &pp->hw;
-	val = DPU_REG_READ(c, PP_AUTOREFRESH_CONFIG);
-	cfg->enable = (val & BIT(31)) >> 31;
-	cfg->frame_count = val & 0xffff;
 
 	return 0;
 }
@@ -293,8 +254,6 @@ static void _setup_pingpong_ops(struct dpu_hw_pingpong_ops *ops,
 	ops->enable_tearcheck = dpu_hw_pp_enable_te;
 	ops->connect_external_te = dpu_hw_pp_connect_external_te;
 	ops->get_vsync_info = dpu_hw_pp_get_vsync_info;
-	ops->setup_autorefresh = dpu_hw_pp_setup_autorefresh_config;
-	ops->get_autorefresh = dpu_hw_pp_get_autorefresh_config;
 	ops->poll_timeout_wr_ptr = dpu_hw_pp_poll_timeout_wr_ptr;
 	ops->get_line_count = dpu_hw_pp_get_line_count;
 

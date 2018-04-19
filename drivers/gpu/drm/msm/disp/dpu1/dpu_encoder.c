@@ -813,7 +813,6 @@ static void _dpu_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 static int dpu_encoder_resource_control(struct drm_encoder *drm_enc,
 		u32 sw_event)
 {
-	bool autorefresh_enabled = false;
 	unsigned int lp, idle_timeout;
 	struct dpu_encoder_virt *dpu_enc;
 	struct msm_drm_private *priv;
@@ -920,13 +919,6 @@ static int dpu_encoder_resource_control(struct drm_encoder *drm_enc,
 			return 0;
 		}
 
-		/* schedule delayed off work if autorefresh is disabled */
-		if (dpu_enc->cur_master &&
-			dpu_enc->cur_master->ops.is_autorefresh_enabled)
-			autorefresh_enabled =
-				dpu_enc->cur_master->ops.is_autorefresh_enabled(
-							dpu_enc->cur_master);
-
 		/* set idle timeout based on master connector's lp value */
 		if (dpu_enc->cur_master)
 			lp = dpu_connector_get_lp(
@@ -939,13 +931,12 @@ static int dpu_encoder_resource_control(struct drm_encoder *drm_enc,
 		else
 			idle_timeout = dpu_enc->idle_timeout;
 
-		if (!autorefresh_enabled)
-			kthread_queue_delayed_work(
-				&disp_thread->worker,
-				&dpu_enc->delayed_off_work,
-				msecs_to_jiffies(idle_timeout));
+		kthread_queue_delayed_work(
+			&disp_thread->worker,
+			&dpu_enc->delayed_off_work,
+			msecs_to_jiffies(idle_timeout));
+
 		DPU_EVT32(DRMID(drm_enc), sw_event, dpu_enc->rc_state,
-				autorefresh_enabled,
 				idle_timeout, DPU_EVTLOG_FUNC_CASE2);
 		DPU_DEBUG_ENC(dpu_enc, "sw_event:%d, work scheduled\n",
 				sw_event);
@@ -1988,7 +1979,6 @@ static void dpu_encoder_vsync_event_handler(struct timer_list *t)
 	struct drm_encoder *drm_enc = &dpu_enc->base;
 	struct msm_drm_private *priv;
 	struct msm_drm_thread *event_thread;
-	bool autorefresh_enabled = false;
 
 	if (!drm_enc->dev || !drm_enc->dev->dev_private ||
 			!drm_enc->crtc) {
@@ -2009,22 +1999,7 @@ static void dpu_encoder_vsync_event_handler(struct timer_list *t)
 		return;
 	}
 
-	if (dpu_enc->cur_master &&
-		dpu_enc->cur_master->ops.is_autorefresh_enabled)
-		autorefresh_enabled =
-			dpu_enc->cur_master->ops.is_autorefresh_enabled(
-						dpu_enc->cur_master);
-
-	/*
-	 * Queue work to update the vsync event timer
-	 * if autorefresh is enabled.
-	 */
-	DPU_EVT32_VERBOSE(autorefresh_enabled);
-	if (autorefresh_enabled)
-		kthread_queue_work(&event_thread->worker,
-				&dpu_enc->vsync_event_work);
-	else
-		del_timer(&dpu_enc->vsync_event_timer);
+	del_timer(&dpu_enc->vsync_event_timer);
 }
 
 static void dpu_encoder_vsync_event_work_handler(struct kthread_work *work)

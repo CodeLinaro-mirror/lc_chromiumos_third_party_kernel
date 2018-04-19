@@ -36,11 +36,6 @@ struct dpu_hw_tear_check {
 	u8 hw_vsync_mode;
 };
 
-struct dpu_hw_autorefresh {
-	bool  enable;
-	u32 frame_count;
-};
-
 struct dpu_hw_pp_vsync_info {
 	u32 rd_ptr_init_val;	/* value of rd pointer at vsync edge */
 	u32 rd_ptr_frame_count;	/* num frames sent since enabling interface */
@@ -55,7 +50,6 @@ struct dpu_hw_pp_vsync_info {
  *  @setup_tearcheck : program tear check values
  *  @enable_tearcheck : enables tear check
  *  @get_vsync_info : retries timing info of the panel
- *  @setup_autorefresh : program auto refresh
  *  @setup_dither : function to program the dither hw block
  *  @get_line_count: obtain current vertical line counter
  */
@@ -86,18 +80,6 @@ struct dpu_hw_pingpong_ops {
 	 */
 	int (*get_vsync_info)(struct dpu_hw_pingpong *pp,
 			struct dpu_hw_pp_vsync_info  *info);
-
-	/**
-	 * configure and enable the autorefresh config
-	 */
-	int (*setup_autorefresh)(struct dpu_hw_pingpong *pp,
-			struct dpu_hw_autorefresh *cfg);
-
-	/**
-	 * retrieve autorefresh config from hardware
-	 */
-	int (*get_autorefresh)(struct dpu_hw_pingpong *pp,
-			struct dpu_hw_autorefresh *cfg);
 
 	/**
 	 * poll until write pointer transmission starts
