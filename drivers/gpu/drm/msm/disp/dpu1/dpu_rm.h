@@ -128,6 +128,7 @@ int dpu_rm_destroy(struct dpu_rm *rm);
  * @drm_enc: DRM Encoder handle
  * @crtc_state: Proposed Atomic DRM CRTC State handle
  * @conn_state: Proposed Atomic DRM Connector State handle
+ * @topology: Pointer to topology info for the display
  * @test_only: Atomic-Test phase, discard results (unless property overrides)
  * @Return: 0 on Success otherwise -ERROR
  */
@@ -135,6 +136,7 @@ int dpu_rm_reserve(struct dpu_rm *rm,
 		struct drm_encoder *drm_enc,
 		struct drm_crtc_state *crtc_state,
 		struct drm_connector_state *conn_state,
+		struct msm_display_topology topology,
 		bool test_only);
 
 /**
@@ -186,5 +188,14 @@ bool dpu_rm_get_hw(struct dpu_rm *rm, struct dpu_rm_hw_iter *iter);
  * @Return: 0 on success or error
  */
 int dpu_rm_check_property_topctl(uint64_t val);
+
+/**
+ * dpu_rm_get_topology_name - returns the name of the the given topology
+ *                            definition
+ * @topology: topology definition
+ * @Return: name of the topology
+ */
+enum dpu_rm_topology_name
+dpu_rm_get_topology_name(struct msm_display_topology topology);
 
 #endif /* __DPU_RM_H__ */

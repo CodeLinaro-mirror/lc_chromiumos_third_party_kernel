@@ -27,18 +27,6 @@
 #include "msm_mmu.h"
 #include "msm_gem.h"
 
-#ifdef CONFIG_DRM_MSM_DSI_STAGING
-#include "dsi_display.h"
-#include "dsi_drm.h"
-#endif
-#ifdef CONFIG_DRM_MSM_WRITEBACK
-#include "dpu_wb.h"
-#endif
-#ifdef CONFIG_DRM_MSM_DISPLAYPORT
-#include "dp/dp_display.h"
-#include "dp_drm.h"
-#endif
-#include "dpu_connector.h"
 #include "dpu_kms.h"
 #include "dpu_core_irq.h"
 #include "dpu_formats.h"
@@ -473,9 +461,7 @@ static void dpu_kms_complete_commit(struct msm_kms *kms,
 	struct msm_drm_private *priv;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *old_crtc_state;
-	struct drm_connector *conn;
-	struct drm_connector_state *old_conn_state;
-	int i, rc = 0;
+	int i;
 
 	if (!kms || !old_state)
 		return;
@@ -487,19 +473,6 @@ static void dpu_kms_complete_commit(struct msm_kms *kms,
 
 	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i)
 		dpu_crtc_complete_commit(crtc, old_crtc_state);
-
-	for_each_old_connector_in_state(old_state, conn, old_conn_state, i) {
-		struct dpu_connector *c_conn;
-
-		c_conn = to_dpu_connector(conn);
-		if (!c_conn->ops.post_kickoff)
-			continue;
-		rc = c_conn->ops.post_kickoff(conn);
-		if (rc) {
-			pr_err("Connector Post kickoff failed rc=%d\n",
-					 rc);
-		}
-	}
 
 	dpu_power_resource_enable(&priv->phandle, dpu_kms->core_client, false);
 	pm_runtime_put_sync(dpu_kms->dev->dev);
@@ -553,317 +526,36 @@ static void dpu_kms_wait_for_commit_done(struct msm_kms *kms,
 	drm_crtc_vblank_put(crtc);
 }
 
-/**
- * _dpu_kms_get_displays - query for underlying display handles and cache them
- * @dpu_kms:    Pointer to dpu kms structure
- * Returns:     Zero on success
- */
-static int _dpu_kms_get_displays(struct dpu_kms *dpu_kms)
+static void _dpu_kms_initialize_dsi(struct drm_device *dev,
+				    struct msm_drm_private *priv,
+				    struct dpu_kms *dpu_kms)
 {
-	int rc = -ENOMEM;
+	struct drm_encoder *encoder = NULL;
+	int i, rc;
 
-	if (!dpu_kms) {
-		DPU_ERROR("invalid dpu kms\n");
-		return -EINVAL;
-	}
-
-#ifdef CONFIG_DRM_MSM_DSI_STAGING
-	/* dsi */
-	dpu_kms->dsi_displays = NULL;
-	dpu_kms->dsi_display_count = dsi_display_get_num_of_displays();
-	if (dpu_kms->dsi_display_count) {
-		dpu_kms->dsi_displays = kcalloc(dpu_kms->dsi_display_count,
-				sizeof(void *),
-				GFP_KERNEL);
-		if (!dpu_kms->dsi_displays) {
-			DPU_ERROR("failed to allocate dsi displays\n");
-			goto exit_deinit_dsi;
-		}
-		dpu_kms->dsi_display_count =
-			dsi_display_get_active_displays(dpu_kms->dsi_displays,
-					dpu_kms->dsi_display_count);
-	}
-#endif
-
-#ifdef CONFIG_DRM_MSM_WRITEBACK
-	/* wb */
-	dpu_kms->wb_displays = NULL;
-	dpu_kms->wb_display_count = dpu_wb_get_num_of_displays();
-	if (dpu_kms->wb_display_count) {
-		dpu_kms->wb_displays = kcalloc(dpu_kms->wb_display_count,
-				sizeof(void *),
-				GFP_KERNEL);
-		if (!dpu_kms->wb_displays) {
-			DPU_ERROR("failed to allocate wb displays\n");
-			goto exit_deinit_wb;
-		}
-		dpu_kms->wb_display_count =
-			wb_display_get_displays(dpu_kms->wb_displays,
-					dpu_kms->wb_display_count);
-	}
-#endif
-
-#ifdef CONFIG_DRM_MSM_DISPLAYPORT
-	/* dp */
-	dpu_kms->dp_displays = NULL;
-	dpu_kms->dp_display_count = dp_display_get_num_of_displays();
-	if (dpu_kms->dp_display_count) {
-		dpu_kms->dp_displays = kcalloc(dpu_kms->dp_display_count,
-				sizeof(void *), GFP_KERNEL);
-		if (!dpu_kms->dp_displays) {
-			DPU_ERROR("failed to allocate dp displays\n");
-			goto exit_deinit_dp;
-		}
-		dpu_kms->dp_display_count =
-			dp_display_get_displays(dpu_kms->dp_displays,
-					dpu_kms->dp_display_count);
-	}
-#endif
-
-	return 0;
-
-#ifdef CONFIG_DRM_MSM_DISPLAYPORT
-exit_deinit_dp:
-	kfree(dpu_kms->dp_displays);
-	dpu_kms->dp_display_count = 0;
-	dpu_kms->dp_displays = NULL;
-#endif
-#ifdef CONFIG_DRM_MSM_WRITEBACK
-exit_deinit_wb:
-	kfree(dpu_kms->wb_displays);
-	dpu_kms->wb_display_count = 0;
-	dpu_kms->wb_displays = NULL;
-#endif
-#ifdef CONFIG_DRM_MSM_DSI_STAGING
-exit_deinit_dsi:
-	kfree(dpu_kms->dsi_displays);
-	dpu_kms->dsi_display_count = 0;
-	dpu_kms->dsi_displays = NULL;
-	return rc;
-#else
-	return rc;
-#endif
-}
-
-/**
- * _dpu_kms_release_displays - release cache of underlying display handles
- * @dpu_kms:    Pointer to dpu kms structure
- */
-static void _dpu_kms_release_displays(struct dpu_kms *dpu_kms)
-{
-	if (!dpu_kms) {
-		DPU_ERROR("invalid dpu kms\n");
+	/*TODO: Support two independent DSI connectors */
+	encoder = dpu_encoder_init(dev, DRM_MODE_CONNECTOR_DSI);
+	if (IS_ERR_OR_NULL(encoder)) {
+		DPU_ERROR("encoder init failed for dsi display\n");
 		return;
 	}
 
-	kfree(dpu_kms->wb_displays);
-	dpu_kms->wb_displays = NULL;
-	dpu_kms->wb_display_count = 0;
+	priv->encoders[priv->num_encoders++] = encoder;
 
-	kfree(dpu_kms->dsi_displays);
-	dpu_kms->dsi_displays = NULL;
-	dpu_kms->dsi_display_count = 0;
-}
+	for (i = 0; i < ARRAY_SIZE(priv->dsi); i++) {
+		if (!priv->dsi[i]) {
+			DPU_DEBUG("invalid msm_dsi for ctrl %d\n", i);
+			return;
+		}
 
-#ifdef CONFIG_DRM_MSM_DSI_STAGING
-static void _dpu_kms_initialize_dsi(struct drm_device *dev,
-				    struct msm_drm_private *priv,
-				    struct dpu_kms *dpu_kms,
-				    unsigned int max_encoders)
-{
-	static const struct dpu_connector_ops dsi_ops = {
-		.post_init =  dsi_conn_post_init,
-		.detect =     dsi_conn_detect,
-		.get_modes =  dsi_connector_get_modes,
-		.put_modes =  dsi_connector_put_modes,
-		.mode_valid = dsi_conn_mode_valid,
-		.get_info =   dsi_display_get_info,
-		.set_backlight = dsi_display_set_backlight,
-		.soft_reset   = dsi_display_soft_reset,
-		.pre_kickoff  = dsi_conn_pre_kickoff,
-		.clk_ctrl = dsi_display_clk_ctrl,
-		.set_power = dsi_display_set_power,
-		.get_mode_info = dsi_conn_get_mode_info,
-		.get_dst_format = dsi_display_get_dst_format,
-		.post_kickoff = dsi_conn_post_kickoff
-	};
-	struct msm_display_info info;
-	struct drm_encoder *encoder;
-	void *display, *connector;
-	int i, rc;
-
-	/* dsi */
-	for (i = 0; i < dpu_kms->dsi_display_count &&
-		priv->num_encoders < max_encoders; ++i) {
-		display = dpu_kms->dsi_displays[i];
-		encoder = NULL;
-
-		memset(&info, 0x0, sizeof(info));
-		rc = dsi_display_get_info(&info, display);
+		rc = msm_dsi_modeset_init(priv->dsi[i], dev, encoder);
 		if (rc) {
-			DPU_ERROR("dsi get_info %d failed\n", i);
+			DPU_ERROR("modeset_init failed for dsi[%d], rc = %d\n",
+				i, rc);
 			continue;
-		}
-
-		encoder = dpu_encoder_init(dev, &info);
-		if (IS_ERR_OR_NULL(encoder)) {
-			DPU_ERROR("encoder init failed for dsi %d\n", i);
-			continue;
-		}
-
-		rc = dsi_display_drm_bridge_init(display, encoder);
-		if (rc) {
-			DPU_ERROR("dsi bridge %d init failed, %d\n", i, rc);
-			dpu_encoder_destroy(encoder);
-			continue;
-		}
-
-		connector = dpu_connector_init(dev,
-					encoder,
-					0,
-					display,
-					&dsi_ops,
-					DRM_CONNECTOR_POLL_HPD,
-					DRM_MODE_CONNECTOR_DSI);
-		if (connector) {
-			priv->encoders[priv->num_encoders++] = encoder;
-		} else {
-			DPU_ERROR("dsi %d connector init failed\n", i);
-			dsi_display_drm_bridge_deinit(display);
-			dpu_encoder_destroy(encoder);
 		}
 	}
 }
-#endif
-
-#ifdef CONFIG_DRM_MSM_WRITEBACK
-static void _dpu_kms_initialize_wb(struct drm_device *dev,
-				   struct msm_drm_private *priv,
-				   struct dpu_kms *dpu_kms,
-				   unsigned int max_encoders)
-{
-	static const struct dpu_connector_ops wb_ops = {
-		.post_init =    dpu_wb_connector_post_init,
-		.detect =       dpu_wb_connector_detect,
-		.get_modes =    dpu_wb_connector_get_modes,
-		.set_property = dpu_wb_connector_set_property,
-		.get_info =     dpu_wb_get_info,
-		.soft_reset =   NULL,
-		.get_mode_info = dpu_wb_get_mode_info,
-		.get_dst_format = NULL
-	};
-	struct msm_display_info info;
-	struct drm_encoder *encoder;
-	void *display, *connector;
-	int i, rc;
-
-	/* wb */
-	for (i = 0; i < dpu_kms->wb_display_count &&
-		priv->num_encoders < max_encoders; ++i) {
-		display = dpu_kms->wb_displays[i];
-		encoder = NULL;
-
-		memset(&info, 0x0, sizeof(info));
-		rc = dpu_wb_get_info(&info, display);
-		if (rc) {
-			DPU_ERROR("wb get_info %d failed\n", i);
-			continue;
-		}
-
-		encoder = dpu_encoder_init(dev, &info);
-		if (IS_ERR_OR_NULL(encoder)) {
-			DPU_ERROR("encoder init failed for wb %d\n", i);
-			continue;
-		}
-
-		rc = dpu_wb_drm_init(display, encoder);
-		if (rc) {
-			DPU_ERROR("wb bridge %d init failed, %d\n", i, rc);
-			dpu_encoder_destroy(encoder);
-			continue;
-		}
-
-		connector = dpu_connector_init(dev,
-				encoder,
-				0,
-				display,
-				&wb_ops,
-				DRM_CONNECTOR_POLL_HPD,
-				DRM_MODE_CONNECTOR_VIRTUAL);
-		if (connector) {
-			priv->encoders[priv->num_encoders++] = encoder;
-		} else {
-			DPU_ERROR("wb %d connector init failed\n", i);
-			dpu_wb_drm_deinit(display);
-			dpu_encoder_destroy(encoder);
-		}
-	}
-}
-#endif
-
-#ifdef CONFIG_DRM_MSM_DISPLAYPORT
-static void _dpu_kms_initialize_dp(struct drm_device *dev,
-				   struct msm_drm_private *priv,
-				   struct dpu_kms *dpu_kms,
-				   unsigned int max_encoders)
-{
-	static const struct dpu_connector_ops dp_ops = {
-		.post_init  = dp_connector_post_init,
-		.detect     = dp_connector_detect,
-		.get_modes  = dp_connector_get_modes,
-		.mode_valid = dp_connector_mode_valid,
-		.get_info   = dp_connector_get_info,
-		.get_mode_info  = dp_connector_get_mode_info,
-		.send_hpd_event = dp_connector_send_hpd_event,
-	};
-	struct msm_display_info info;
-	struct drm_encoder *encoder;
-	void *display, *connector;
-	int i, rc;
-
-	/* dp */
-	for (i = 0; i < dpu_kms->dp_display_count &&
-			priv->num_encoders < max_encoders; ++i) {
-		display = dpu_kms->dp_displays[i];
-		encoder = NULL;
-
-		memset(&info, 0x0, sizeof(info));
-		rc = dp_connector_get_info(&info, display);
-		if (rc) {
-			DPU_ERROR("dp get_info %d failed\n", i);
-			continue;
-		}
-
-		encoder = dpu_encoder_init(dev, &info);
-		if (IS_ERR_OR_NULL(encoder)) {
-			DPU_ERROR("dp encoder init failed %d\n", i);
-			continue;
-		}
-
-		rc = dp_drm_bridge_init(display, encoder);
-		if (rc) {
-			DPU_ERROR("dp bridge %d init failed, %d\n", i, rc);
-			dpu_encoder_destroy(encoder);
-			continue;
-		}
-
-		connector = dpu_connector_init(dev,
-					encoder,
-					NULL,
-					display,
-					&dp_ops,
-					DRM_CONNECTOR_POLL_HPD,
-					DRM_MODE_CONNECTOR_DisplayPort);
-		if (connector) {
-			priv->encoders[priv->num_encoders++] = encoder;
-		} else {
-			DPU_ERROR("dp %d connector init failed\n", i);
-			dp_drm_bridge_deinit(display);
-			dpu_encoder_destroy(encoder);
-		}
-	}
-}
-#endif
 
 /**
  * _dpu_kms_setup_displays - create encoders, bridges and connectors
@@ -877,26 +569,12 @@ static void _dpu_kms_setup_displays(struct drm_device *dev,
 				    struct msm_drm_private *priv,
 				    struct dpu_kms *dpu_kms)
 {
-	unsigned int max_encoders;
+	_dpu_kms_initialize_dsi(dev, priv, dpu_kms);
 
-	max_encoders = dpu_kms->dsi_display_count + dpu_kms->wb_display_count +
-				dpu_kms->dp_display_count;
-	if (max_encoders > ARRAY_SIZE(priv->encoders)) {
-		max_encoders = ARRAY_SIZE(priv->encoders);
-		DPU_ERROR("capping number of displays to %d", max_encoders);
-	}
-
-#ifdef CONFIG_DRM_MSM_DSI_STAGING
-	_dpu_kms_initialize_dsi(dev, priv, dpu_kms, max_encoders);
-#endif
-
-#ifdef CONFIG_DRM_MSM_WRITEBACK
-	_dpu_kms_initialize_wb(dev, priv, dpu_kms, max_encoders);
-#endif
-
-#ifdef CONFIG_DRM_MSM_DISPLAYPORT
-	_dpu_kms_initialize_dp(dev, priv, dpu_kms, max_encoders);
-#endif
+	/**
+	 * Extend this function to initialize other
+	 * types of displays
+	 */
 }
 
 static void _dpu_kms_drm_obj_destroy(struct dpu_kms *dpu_kms)
@@ -931,8 +609,6 @@ static void _dpu_kms_drm_obj_destroy(struct dpu_kms *dpu_kms)
 	for (i = 0; i < priv->num_encoders; i++)
 		priv->encoders[i]->funcs->destroy(priv->encoders[i]);
 	priv->num_encoders = 0;
-
-	_dpu_kms_release_displays(dpu_kms);
 }
 
 static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
@@ -963,12 +639,12 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 	ret = dpu_core_irq_domain_add(dpu_kms);
 	if (ret)
 		goto fail_irq;
+
 	/*
-	 * Query for underlying display drivers, and create connectors,
-	 * bridges and encoders for them.
+	 * Create encoder and query display drivers to create
+	 * bridges and connectors
 	 */
-	if (!_dpu_kms_get_displays(dpu_kms))
-		(void)_dpu_kms_setup_displays(dev, priv, dpu_kms);
+	_dpu_kms_setup_displays(dev, priv, dpu_kms);
 
 	max_crtc_count = min(catalog->mixer_count, priv->num_encoders);
 
@@ -1386,8 +1062,6 @@ static void _dpu_kms_hw_destroy(struct dpu_kms *dpu_kms,
 		dpu_power_handle_unregister_event(
 				&priv->phandle, dpu_kms->power_event);
 
-	_dpu_kms_release_displays(dpu_kms);
-
 	/* safe to call these more than once during shutdown */
 	_dpu_debugfs_destroy(dpu_kms);
 	_dpu_kms_mmu_destroy(dpu_kms);
@@ -1590,53 +1264,10 @@ _dpu_kms_get_address_space(struct msm_kms *kms,
 		dpu_kms->aspace[domain] : NULL;
 }
 
-static void _dpu_kms_post_open(struct msm_kms *kms, struct drm_file *file)
-{
-	struct drm_device *dev = NULL;
-	struct dpu_kms *dpu_kms = NULL;
-	struct drm_connector *connector = NULL;
-	struct drm_connector_list_iter conn_iter;
-	struct dpu_connector *dpu_conn = NULL;
-
-	if (!kms) {
-		DPU_ERROR("invalid kms\n");
-		return;
-	}
-
-	dpu_kms = to_dpu_kms(kms);
-	dev = dpu_kms->dev;
-
-	if (!dev) {
-		DPU_ERROR("invalid device\n");
-		return;
-	}
-
-	if (!dev->mode_config.poll_enabled)
-		return;
-
-	mutex_lock(&dev->mode_config.mutex);
-	drm_connector_list_iter_begin(dev, &conn_iter);
-	drm_for_each_connector_iter(connector, &conn_iter) {
-		/* Only handle HPD capable connectors. */
-		if (!(connector->polled & DRM_CONNECTOR_POLL_HPD))
-			continue;
-
-		dpu_conn = to_dpu_connector(connector);
-
-		if (dpu_conn->ops.send_hpd_event)
-			dpu_conn->ops.send_hpd_event(dpu_conn->display);
-	}
-	drm_connector_list_iter_end(&conn_iter);
-	mutex_unlock(&dev->mode_config.mutex);
-
-}
-
 static int dpu_kms_pm_suspend(struct device *dev)
 {
 	struct drm_device *ddev;
 	struct drm_modeset_acquire_ctx ctx;
-	struct drm_connector *conn;
-	struct drm_connector_list_iter conn_iter;
 	struct drm_atomic_state *state;
 	struct dpu_kms *dpu_kms;
 	int ret = 0, num_crtcs = 0;
@@ -1680,45 +1311,6 @@ retry:
 	}
 
 	state->acquire_ctx = &ctx;
-	drm_connector_list_iter_begin(ddev, &conn_iter);
-	drm_for_each_connector_iter(conn, &conn_iter) {
-		struct drm_crtc_state *crtc_state;
-		uint64_t lp;
-
-		if (!conn->state || !conn->state->crtc ||
-				conn->dpms != DRM_MODE_DPMS_ON)
-			continue;
-
-		lp = dpu_connector_get_lp(conn);
-		if (lp == DPU_MODE_DPMS_LP1) {
-			/* transition LP1->LP2 on pm suspend */
-			ret = dpu_connector_set_property_for_commit(conn, state,
-					CONNECTOR_PROP_LP, DPU_MODE_DPMS_LP2);
-			if (ret) {
-				DRM_ERROR("failed to set lp2 for conn %d\n",
-						conn->base.id);
-				drm_atomic_state_put(state);
-				goto unlock;
-			}
-		}
-
-		if (lp != DPU_MODE_DPMS_LP2) {
-			/* force CRTC to be inactive */
-			crtc_state = drm_atomic_get_crtc_state(state,
-					conn->state->crtc);
-			if (IS_ERR_OR_NULL(crtc_state)) {
-				DRM_ERROR("failed to get crtc %d state\n",
-						conn->state->crtc->base.id);
-				drm_atomic_state_put(state);
-				goto unlock;
-			}
-
-			if (lp != DPU_MODE_DPMS_LP1)
-				crtc_state->active = false;
-			++num_crtcs;
-		}
-	}
-	drm_connector_list_iter_end(&conn_iter);
 
 	/* check for nothing to do */
 	if (num_crtcs == 0) {
@@ -1790,6 +1382,34 @@ static int dpu_kms_pm_resume(struct device *dev)
 	return 0;
 }
 
+void _dpu_kms_set_encoder_mode(struct msm_kms *kms,
+				 struct drm_encoder *encoder,
+				 bool cmd_mode)
+{
+	struct msm_display_info info;
+	struct msm_drm_private *priv = encoder->dev->dev_private;
+	int i, rc = 0;
+
+	memset(&info, 0, sizeof(info));
+
+	info.intf_type = encoder->encoder_type;
+	info.capabilities = cmd_mode ? MSM_DISPLAY_CAP_CMD_MODE :
+			MSM_DISPLAY_CAP_VID_MODE;
+
+	/* TODO: No support for DSI swap */
+	for (i = 0; i < ARRAY_SIZE(priv->dsi); i++) {
+		if (priv->dsi[i]) {
+			info.h_tile_instance[info.num_of_h_tiles] = i;
+			info.num_of_h_tiles++;
+		}
+	}
+
+	rc = dpu_encoder_setup(encoder->dev, encoder, &info);
+	if (rc)
+		DPU_ERROR("failed to setup DPU encoder %d: rc:%d\n",
+			encoder->base.id, rc);
+}
+
 static const struct msm_kms_funcs kms_funcs = {
 	.hw_init         = dpu_kms_hw_init,
 	.postinit        = dpu_kms_postinit,
@@ -1813,7 +1433,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.pm_resume       = dpu_kms_pm_resume,
 	.destroy         = dpu_kms_destroy,
 	.get_address_space = _dpu_kms_get_address_space,
-	.postopen = _dpu_kms_post_open,
+	.set_encoder_mode = _dpu_kms_set_encoder_mode,
 };
 
 /* the caller api needs to turn on clock before calling it */

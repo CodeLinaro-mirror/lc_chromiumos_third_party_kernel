@@ -33,7 +33,6 @@
 #include "dpu_plane.h"
 #include "dpu_color_processing.h"
 #include "dpu_encoder.h"
-#include "dpu_connector.h"
 #include "dpu_vbif.h"
 #include "dpu_power_handle.h"
 #include "dpu_core_perf.h"
@@ -3347,7 +3346,6 @@ static int dpu_crtc_atomic_get_property(struct drm_crtc *crtc,
 	struct dpu_crtc_state *cstate;
 	struct drm_encoder *encoder;
 	int i, ret = -EINVAL;
-	bool conn_offset = 0;
 	bool is_cmd = true;
 
 	if (!crtc || !state) {
@@ -3355,13 +3353,6 @@ static int dpu_crtc_atomic_get_property(struct drm_crtc *crtc,
 	} else {
 		dpu_crtc = to_dpu_crtc(crtc);
 		cstate = to_dpu_crtc_state(state);
-
-		for (i = 0; i < cstate->num_connectors; ++i) {
-			conn_offset = dpu_connector_needs_offset(
-						cstate->connectors[i]);
-			if (conn_offset)
-				break;
-		}
 
 		/**
 		 * set the cmd flag only when all the encoders attached

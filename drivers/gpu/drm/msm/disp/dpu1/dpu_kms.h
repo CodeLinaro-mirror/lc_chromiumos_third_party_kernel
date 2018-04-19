@@ -200,12 +200,6 @@ struct dpu_kms {
 
 	struct dpu_hw_vbif *hw_vbif[VBIF_MAX];
 	struct dpu_hw_mdp *hw_mdp;
-	int dsi_display_count;
-	void **dsi_displays;
-	int wb_display_count;
-	void **wb_displays;
-	int dp_display_count;
-	void **dp_displays;
 
 	bool has_danger_ctrl;
 };

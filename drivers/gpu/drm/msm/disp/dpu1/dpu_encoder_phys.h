@@ -25,7 +25,6 @@
 #include "dpu_hw_wb.h"
 #include "dpu_hw_cdm.h"
 #include "dpu_encoder.h"
-#include "dpu_connector.h"
 
 #define DPU_ENCODER_NAME_MAX	16
 
@@ -221,6 +220,7 @@ struct dpu_encoder_irq {
  * @split_role:		Role to play in a split-panel configuration
  * @intf_mode:		Interface mode
  * @intf_idx:		Interface index on dpu hardware
+ * @topology_name:	topology selected for the display
  * @enc_spinlock:	Virtual-Encoder-Wide Spin Lock for IRQ purposes
  * @enable_state:	Enable state tracking
  * @vblank_refcount:	Reference count of vblank request
@@ -250,6 +250,7 @@ struct dpu_encoder_phys {
 	enum dpu_enc_split_role split_role;
 	enum dpu_intf_mode intf_mode;
 	enum dpu_intf intf_idx;
+	enum dpu_rm_topology_name topology_name;
 	spinlock_t *enc_spinlock;
 	enum dpu_enc_enable_state enable_state;
 	atomic_t vblank_refcount;
@@ -443,14 +444,11 @@ void dpu_encoder_helper_hw_reset(struct dpu_encoder_phys *phys_enc);
 static inline enum dpu_3d_blend_mode dpu_encoder_helper_get_3d_blend_mode(
 		struct dpu_encoder_phys *phys_enc)
 {
-	enum dpu_rm_topology_name topology;
-
 	if (!phys_enc || phys_enc->enable_state == DPU_ENC_DISABLING)
 		return BLEND_3D_NONE;
 
-	topology = dpu_connector_get_topology_name(phys_enc->connector);
 	if (phys_enc->split_role == ENC_ROLE_SOLO &&
-	    topology == DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE)
+	    phys_enc->topology_name == DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE)
 		return BLEND_3D_H_ROW_INT;
 
 	return BLEND_3D_NONE;

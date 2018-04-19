@@ -70,6 +70,8 @@
 
 #define IDLE_SHORT_TIMEOUT	1
 
+#define MAX_VDISPLAY_SPLIT 1080
+
 /**
  * enum dpu_enc_rc_events - events for resource control state machine
  * @DPU_ENC_RC_EVENT_KICKOFF:
@@ -172,7 +174,6 @@ enum dpu_enc_rc_states {
  * @frame_done_timer:		watchdog timer for frame done event
  * @vsync_event_timer:		vsync timer
  * @disp_info:			local copy of msm_display_info struct
- * @mode_info:			local copy of msm_mode_info struct
  * @misr_enable:		misr enable/disable status
  * @misr_frame_count:		misr frame count before start capturing the data
  * @idle_pc_supported:		indicate if idle power collaps is supported
@@ -214,7 +215,6 @@ struct dpu_encoder_virt {
 	struct timer_list vsync_event_timer;
 
 	struct msm_display_info disp_info;
-	struct msm_mode_info mode_info;
 	bool misr_enable;
 	u32 misr_frame_count;
 
@@ -497,8 +497,6 @@ void dpu_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 		if (phys && phys->ops.get_hw_resources)
 			phys->ops.get_hw_resources(phys, hw_res, conn_state);
 	}
-
-	hw_res->topology = dpu_enc->mode_info.topology;
 }
 
 void dpu_encoder_destroy(struct drm_encoder *drm_enc)
@@ -605,6 +603,25 @@ static void _dpu_encoder_adjust_mode(struct drm_connector *connector,
 	}
 }
 
+static struct msm_display_topology dpu_encoder_get_topology(
+			struct dpu_encoder_virt *dpu_enc,
+			struct dpu_kms *dpu_kms,
+			struct drm_display_mode *mode)
+{
+	struct msm_display_topology topology;
+	int i, intf_count = 0;
+
+	for (i = 0; i < MAX_PHYS_ENCODERS_PER_VIRTUAL; i++)
+		if (dpu_enc->phys_encs[i])
+			intf_count++;
+
+	/* User split topology for width > 1080 */
+	topology.num_lm = (mode->vdisplay > MAX_VDISPLAY_SPLIT) ? 2 : 1;
+	topology.num_enc = 0;
+	topology.num_intf = intf_count;
+
+	return topology;
+}
 static int dpu_encoder_virt_atomic_check(
 		struct drm_encoder *drm_enc,
 		struct drm_crtc_state *crtc_state,
@@ -615,6 +632,7 @@ static int dpu_encoder_virt_atomic_check(
 	struct dpu_kms *dpu_kms;
 	const struct drm_display_mode *mode;
 	struct drm_display_mode *adj_mode;
+	struct msm_display_topology topology;
 	int i = 0;
 	int ret = 0;
 
@@ -660,6 +678,8 @@ static int dpu_encoder_virt_atomic_check(
 		}
 	}
 
+	topology = dpu_encoder_get_topology(dpu_enc, dpu_kms, adj_mode);
+
 	/* Reserve dynamic resources now. Indicating AtomicTest phase */
 	if (!ret) {
 		/*
@@ -669,7 +689,7 @@ static int dpu_encoder_virt_atomic_check(
 		if (drm_atomic_crtc_needs_modeset(crtc_state)
 				&& dpu_enc->mode_set_complete) {
 			ret = dpu_rm_reserve(&dpu_kms->rm, drm_enc, crtc_state,
-				conn_state, true);
+				conn_state, topology, true);
 			dpu_enc->mode_set_complete = false;
 		}
 	}
@@ -690,7 +710,6 @@ static void _dpu_encoder_update_vsync_source(struct dpu_encoder_virt *dpu_enc,
 	struct dpu_kms *dpu_kms;
 	struct dpu_hw_mdp *hw_mdptop;
 	struct drm_encoder *drm_enc;
-	struct msm_mode_info *mode_info;
 	int i;
 
 	if (!dpu_enc || !disp_info) {
@@ -720,19 +739,12 @@ static void _dpu_encoder_update_vsync_source(struct dpu_encoder_virt *dpu_enc,
 		return;
 	}
 
-	mode_info = &dpu_enc->mode_info;
-	if (!mode_info) {
-		DPU_ERROR("invalid mode info\n");
-		return;
-	}
-
 	if (hw_mdptop->ops.setup_vsync_source &&
 			disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE) {
 		for (i = 0; i < dpu_enc->num_phys_encs; i++)
 			vsync_cfg.ppnumber[i] = dpu_enc->hw_pp[i]->idx;
 
 		vsync_cfg.pp_count = dpu_enc->num_phys_encs;
-		vsync_cfg.frame_rate = mode_info->frame_rate;
 		if (disp_info->is_te_using_watchdog_timer)
 			vsync_cfg.vsync_source = DPU_VSYNC_SOURCE_WD_TIMER_0;
 		else
@@ -789,18 +801,12 @@ static void _dpu_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 		dpu_power_resource_enable(&priv->phandle,
 				dpu_kms->core_client, true);
 
-		/* enable DSI clks */
-		dpu_connector_clk_ctrl(dpu_enc->cur_master->connector, true);
-
 		/* enable all the irq */
 		_dpu_encoder_irq_control(drm_enc, true);
 
 	} else {
 		/* disable all the irq */
 		_dpu_encoder_irq_control(drm_enc, false);
-
-		/* disable DSI clks */
-		dpu_connector_clk_ctrl(dpu_enc->cur_master->connector, false);
 
 		/* disable DPU core clks */
 		dpu_power_resource_enable(&priv->phandle,
@@ -813,7 +819,6 @@ static void _dpu_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 static int dpu_encoder_resource_control(struct drm_encoder *drm_enc,
 		u32 sw_event)
 {
-	unsigned int lp, idle_timeout;
 	struct dpu_encoder_virt *dpu_enc;
 	struct msm_drm_private *priv;
 	struct msm_drm_thread *disp_thread;
@@ -919,25 +924,13 @@ static int dpu_encoder_resource_control(struct drm_encoder *drm_enc,
 			return 0;
 		}
 
-		/* set idle timeout based on master connector's lp value */
-		if (dpu_enc->cur_master)
-			lp = dpu_connector_get_lp(
-					dpu_enc->cur_master->connector);
-		else
-			lp = DPU_MODE_DPMS_ON;
-
-		if (lp == DPU_MODE_DPMS_LP2)
-			idle_timeout = IDLE_SHORT_TIMEOUT;
-		else
-			idle_timeout = dpu_enc->idle_timeout;
-
 		kthread_queue_delayed_work(
 			&disp_thread->worker,
 			&dpu_enc->delayed_off_work,
-			msecs_to_jiffies(idle_timeout));
+			msecs_to_jiffies(dpu_enc->idle_timeout));
 
 		DPU_EVT32(DRMID(drm_enc), sw_event, dpu_enc->rc_state,
-				idle_timeout, DPU_EVTLOG_FUNC_CASE2);
+				dpu_enc->idle_timeout, DPU_EVTLOG_FUNC_CASE2);
 		DPU_DEBUG_ENC(dpu_enc, "sw_event:%d, work scheduled\n",
 				sw_event);
 		break;
@@ -1132,8 +1125,9 @@ static void dpu_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	struct dpu_kms *dpu_kms;
 	struct list_head *connector_list;
 	struct drm_connector *conn = NULL, *conn_iter;
-	struct dpu_connector *dpu_conn = NULL;
 	struct dpu_rm_hw_iter pp_iter;
+	struct msm_display_topology topology;
+	enum dpu_rm_topology_name topology_name;
 	int i = 0, ret;
 
 	if (!drm_enc) {
@@ -1162,33 +1156,11 @@ static void dpu_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		return;
 	}
 
-	dpu_conn = to_dpu_connector(conn);
-	if (dpu_conn) {
-		ret = dpu_conn->ops.get_mode_info(adj_mode, &dpu_enc->mode_info,
-				dpu_kms->catalog->caps->max_mixer_width);
-		if (ret) {
-			DPU_ERROR_ENC(dpu_enc,
-				"invalid topology for the mode\n");
-			return;
-		}
-	}
-
-	/* release resources before seamless mode change */
-	if (msm_is_mode_seamless_dms(adj_mode)) {
-		/* restore resource state before releasing them */
-		ret = dpu_encoder_resource_control(drm_enc,
-				DPU_ENC_RC_EVENT_PRE_MODESET);
-		if (ret) {
-			DPU_ERROR_ENC(dpu_enc,
-					"dpu resource control failed: %d\n",
-					ret);
-			return;
-		}
-	}
+	topology = dpu_encoder_get_topology(dpu_enc, dpu_kms, adj_mode);
 
 	/* Reserve dynamic resources now. Indicating non-AtomicTest phase */
 	ret = dpu_rm_reserve(&dpu_kms->rm, drm_enc, drm_enc->crtc->state,
-			conn->state, false);
+			conn->state, topology, false);
 	if (ret) {
 		DPU_ERROR_ENC(dpu_enc,
 				"failed to reserve hw resources, %d\n", ret);
@@ -1203,6 +1175,7 @@ static void dpu_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		dpu_enc->hw_pp[i] = (struct dpu_hw_pingpong *) pp_iter.hw;
 	}
 
+	topology_name = dpu_rm_get_topology_name(topology);
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
 		struct dpu_encoder_phys *phys = dpu_enc->phys_encs[i];
 
@@ -1214,6 +1187,7 @@ static void dpu_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 			}
 			phys->hw_pp = dpu_enc->hw_pp[i];
 			phys->connector = conn->state->connector;
+			phys->topology_name = topology_name;
 			if (phys->ops.mode_set)
 				phys->ops.mode_set(phys, mode, adj_mode);
 		}
@@ -1711,8 +1685,6 @@ int dpu_encoder_helper_wait_event_timeout(
 void dpu_encoder_helper_hw_reset(struct dpu_encoder_phys *phys_enc)
 {
 	struct dpu_encoder_virt *dpu_enc;
-	struct dpu_connector *dpu_con;
-	void *dpu_con_disp;
 	struct dpu_hw_ctl *ctl;
 	int rc;
 
@@ -1728,22 +1700,6 @@ void dpu_encoder_helper_hw_reset(struct dpu_encoder_phys *phys_enc)
 
 	DPU_DEBUG_ENC(dpu_enc, "ctl %d reset\n",  ctl->idx);
 	DPU_EVT32(DRMID(phys_enc->parent), ctl->idx);
-
-	if (phys_enc->ops.is_master && phys_enc->ops.is_master(phys_enc) &&
-			phys_enc->connector) {
-		dpu_con = to_dpu_connector(phys_enc->connector);
-		dpu_con_disp = dpu_connector_get_display(phys_enc->connector);
-
-		if (dpu_con->ops.soft_reset) {
-			rc = dpu_con->ops.soft_reset(dpu_con_disp);
-			if (rc) {
-				DPU_ERROR_ENC(dpu_enc,
-						"connector soft reset failure\n");
-				DPU_DBG_DUMP("all", "dbg_bus", "vbif_dbg_bus",
-								"panic");
-			}
-		}
-	}
 
 	rc = ctl->ops.reset(ctl);
 	if (rc) {
@@ -1860,22 +1816,6 @@ void dpu_encoder_trigger_kickoff_pending(struct drm_encoder *drm_enc)
 				ctl->ops.trigger_pending(ctl);
 		}
 	}
-}
-
-static void _dpu_encoder_setup_dither(struct dpu_encoder_phys *phys)
-{
-	void *dither_cfg;
-	int ret = 0;
-	size_t len = 0;
-
-	if (!phys || !phys->connector || !phys->hw_pp ||
-			!phys->hw_pp->ops.setup_dither)
-		return;
-
-	ret = dpu_connector_get_dither_cfg(phys->connector,
-				phys->connector->state, &dither_cfg, &len);
-	if (!ret)
-		phys->hw_pp->ops.setup_dither(phys->hw_pp, dither_cfg, len);
 }
 
 static u32 _dpu_encoder_calculate_linetime(struct dpu_encoder_virt *dpu_enc,
@@ -2028,7 +1968,6 @@ void dpu_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 	struct dpu_encoder_phys *phys;
 	bool needs_hw_reset = false;
 	unsigned int i;
-	int rc;
 
 	if (!drm_enc || !params) {
 		DPU_ERROR("invalid args\n");
@@ -2048,7 +1987,6 @@ void dpu_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 				phys->ops.prepare_for_kickoff(phys, params);
 			if (phys->enable_state == DPU_ENC_ERR_NEEDS_HW_RESET)
 				needs_hw_reset = true;
-			_dpu_encoder_setup_dither(phys);
 		}
 	}
 	DPU_ATRACE_END("enc_prepare_for_kickoff");
@@ -2063,14 +2001,6 @@ void dpu_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 			if (phys && phys->ops.hw_reset)
 				phys->ops.hw_reset(phys);
 		}
-	}
-
-	if (dpu_enc->cur_master && dpu_enc->cur_master->connector) {
-		rc = dpu_connector_pre_kickoff(dpu_enc->cur_master->connector);
-		if (rc)
-			DPU_ERROR_ENC(dpu_enc, "kickoff conn%d failed rc %d\n",
-					dpu_enc->cur_master->connector->base.id,
-					rc);
 	}
 }
 
@@ -2704,8 +2634,7 @@ static const struct drm_encoder_funcs dpu_encoder_funcs = {
 		.early_unregister = dpu_encoder_early_unregister,
 };
 
-struct drm_encoder *dpu_encoder_init(
-		struct drm_device *dev,
+int dpu_encoder_setup(struct drm_device *dev, struct drm_encoder *enc,
 		struct msm_display_info *disp_info)
 {
 	struct msm_drm_private *priv = dev->dev_private;
@@ -2715,11 +2644,7 @@ struct drm_encoder *dpu_encoder_init(
 	int drm_enc_mode = DRM_MODE_ENCODER_NONE;
 	int ret = 0;
 
-	dpu_enc = kzalloc(sizeof(*dpu_enc), GFP_KERNEL);
-	if (!dpu_enc) {
-		ret = -ENOMEM;
-		goto fail;
-	}
+	dpu_enc = to_dpu_encoder_virt(enc);
 
 	mutex_init(&dpu_enc->enc_lock);
 	ret = dpu_encoder_setup_display(dpu_enc, dpu_kms, disp_info,
@@ -2729,16 +2654,12 @@ struct drm_encoder *dpu_encoder_init(
 
 	dpu_enc->cur_master = NULL;
 	spin_lock_init(&dpu_enc->enc_spinlock);
-	drm_enc = &dpu_enc->base;
-	drm_encoder_init(dev, drm_enc, &dpu_encoder_funcs, drm_enc_mode, NULL);
-	drm_encoder_helper_add(drm_enc, &dpu_encoder_helper_funcs);
 
 	atomic_set(&dpu_enc->frame_done_timeout, 0);
 	timer_setup(&dpu_enc->frame_done_timer,
 			dpu_encoder_frame_done_timeout, 0);
 
-	if ((disp_info->intf_type == DRM_MODE_CONNECTOR_DSI) &&
-			disp_info->is_primary)
+	if (disp_info->intf_type == DRM_MODE_CONNECTOR_DSI)
 		timer_setup(&dpu_enc->vsync_event_timer,
 				dpu_encoder_vsync_event_handler,
 				0);
@@ -2756,14 +2677,38 @@ struct drm_encoder *dpu_encoder_init(
 
 	DPU_DEBUG_ENC(dpu_enc, "created\n");
 
-	return drm_enc;
+	return ret;
 
 fail:
 	DPU_ERROR("failed to create encoder\n");
 	if (drm_enc)
 		dpu_encoder_destroy(drm_enc);
 
-	return ERR_PTR(ret);
+	return ret;
+
+
+}
+
+struct drm_encoder *dpu_encoder_init(struct drm_device *dev,
+		int drm_enc_mode)
+{
+	struct dpu_encoder_virt *dpu_enc = NULL;
+	int rc = 0;
+
+	dpu_enc = devm_kzalloc(dev->dev, sizeof(*dpu_enc), GFP_KERNEL);
+	if (!dpu_enc)
+		return ERR_PTR(ENOMEM);
+
+	rc = drm_encoder_init(dev, &dpu_enc->base, &dpu_encoder_funcs,
+			drm_enc_mode, NULL);
+	if (rc) {
+		devm_kfree(dev->dev, dpu_enc);
+		return ERR_PTR(rc);
+	}
+
+	drm_encoder_helper_add(&dpu_enc->base, &dpu_encoder_helper_funcs);
+
+	return &dpu_enc->base;
 }
 
 int dpu_encoder_wait_for_event(struct drm_encoder *drm_enc,

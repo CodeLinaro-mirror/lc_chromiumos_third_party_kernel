@@ -45,7 +45,6 @@ struct dpu_encoder_hw_resources {
 	enum dpu_intf_mode wbs[WB_MAX];
 	bool needs_cdm;
 	u32 display_num_of_h_tiles;
-	struct msm_display_topology topology;
 };
 
 /**
@@ -160,6 +159,15 @@ bool dpu_encoder_check_mode(struct drm_encoder *drm_enc, u32 mode);
  */
 struct drm_encoder *dpu_encoder_init(
 		struct drm_device *dev,
+		int drm_enc_mode);
+
+/**
+ * dpu_encoder_setup - setup dpu_encoder for the display probed
+ * @dev:		Pointer to drm device structure
+ * @enc:		Pointer to the drm_encoder
+ * @disp_info:	Pointer to the display info
+ */
+int dpu_encoder_setup(struct drm_device *dev, struct drm_encoder *enc,
 		struct msm_display_info *disp_info);
 
 /**

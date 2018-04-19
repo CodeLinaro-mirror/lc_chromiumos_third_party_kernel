@@ -2547,9 +2547,6 @@ static void _dpu_dump_array(struct dpu_dbg_reg_base *blk_arr[],
 	if (dump_dbgbus_vbif_rt)
 		_dpu_dbg_dump_vbif_dbg_bus(&dpu_dbg_base.dbgbus_vbif_rt);
 
-	if (dpu_dbg_base.dsi_dbg_bus || dump_all)
-		dsi_ctrl_debug_dump();
-
 	if (do_panic && dpu_dbg_base.panic_on_err)
 		panic(name);
 }

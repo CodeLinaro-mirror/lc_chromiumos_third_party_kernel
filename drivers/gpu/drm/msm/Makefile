@@ -51,7 +51,6 @@ msm-y := \
 	disp/mdp5/mdp5_plane.o \
 	disp/mdp5/mdp5_smp.o \
 	disp/dpu1/dpu_color_processing.o \
-	disp/dpu1/dpu_connector.o \
 	disp/dpu1/dpu_core_irq.o \
 	disp/dpu1/dpu_core_perf.o \
 	disp/dpu1/dpu_crtc.o \

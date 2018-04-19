@@ -47,12 +47,6 @@
 #include "msm_fence.h"
 #include "msm_gpu.h"
 #include "msm_kms.h"
-#ifdef CONFIG_DRM_MSM_WRITEBACK
-#include "dpu_wb.h"
-#endif
-#ifdef CONFIG_DRM_MSM_DSI_STAGING
-#include "dsi_display.h"
-#endif
 #ifdef CONFIG_DRM_MSM_DPU
 #include "dpu_dbg.h"
 #endif
@@ -1297,9 +1291,6 @@ static const struct drm_ioctl_desc msm_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(MSM_GEM_MADVISE,  msm_ioctl_gem_madvise,  DRM_AUTH|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MSM_SUBMITQUEUE_NEW,   msm_ioctl_submitqueue_new,   DRM_AUTH|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MSM_SUBMITQUEUE_CLOSE, msm_ioctl_submitqueue_close, DRM_AUTH|DRM_RENDER_ALLOW),
-#ifdef CONFIG_DRM_MSM_WRITEBACK
-	DRM_IOCTL_DEF_DRV(DPU_WB_CONFIG, dpu_wb_config, DRM_UNLOCKED|DRM_AUTH),
-#endif
 	DRM_IOCTL_DEF_DRV(MSM_RMFB2, msm_ioctl_rmfb2,
 			  DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 };
@@ -1541,42 +1532,6 @@ static int add_display_components(struct device *dev,
 	struct device *mdp_dev = NULL;
 	int ret;
 
-#ifdef CONFIG_DRM_MSM_DPU
-	struct device_node *node;
-	const char *name;
-
-	if (of_device_is_compatible(dev->of_node, "qcom,dpu-kms")) {
-		struct device_node *np = dev->of_node;
-		unsigned int i;
-		bool found = false;
-
-#ifdef CONFIG_DRM_MSM_DSI_STAGING
-		for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
-			node = dsi_display_get_boot_display(i);
-
-			if (node != NULL) {
-				name = of_get_property(node, "label", NULL);
-				component_match_add(dev, matchptr, compare_of,
-						node);
-				pr_debug("Added component = %s\n", name);
-				found = true;
-			}
-		}
-		if (!found)
-			return -EPROBE_DEFER;
-#endif
-
-		for (i = 0; ; i++) {
-			node = of_parse_phandle(np, "connectors", i);
-			if (!node)
-				break;
-
-			component_match_add(dev, matchptr, compare_of, node);
-		}
-		return 0;
-	}
-#endif
-
 	/*
 	 * MDP5 based devices don't have a flat hierarchy. There is a top level
 	 * parent: MDSS, and children: MDP5, DSI, HDMI, eDP etc. Populate the
@@ -1600,7 +1555,7 @@ static int add_display_components(struct device *dev,
 		put_device(mdp_dev);
 
 		/* add the MDP component itself */
-		component_match_add(dev, matchptr, compare_of,
+		drm_of_component_match_add(dev, matchptr, compare_of,
 				   mdp_dev->of_node);
 	} else {
 		/* MDP4 */

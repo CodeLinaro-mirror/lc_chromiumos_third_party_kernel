@@ -23,7 +23,6 @@
 #include "dpu_hw_intf.h"
 #include "dpu_hw_wb.h"
 #include "dpu_encoder.h"
-#include "dpu_connector.h"
 
 #define RESERVED_BY_OTHER(h, r) \
 	((h)->rsvp && ((h)->rsvp->enc_id != (r)->enc_id))
@@ -156,6 +155,18 @@ static void _dpu_rm_print_rsvps(
 struct dpu_hw_mdp *dpu_rm_get_mdp(struct dpu_rm *rm)
 {
 	return rm->hw_mdp;
+}
+
+enum dpu_rm_topology_name
+dpu_rm_get_topology_name(struct msm_display_topology topology)
+{
+	int i;
+
+	for (i = 0; i < DPU_RM_TOPOLOGY_MAX; i++)
+		if (RM_IS_TOPOLOGY_MATCH(g_top_table[i], topology))
+			return g_top_table[i].top_name;
+
+	return DPU_RM_TOPOLOGY_NONE;
 }
 
 void dpu_rm_init_hw_iter(
@@ -954,20 +965,19 @@ static int _dpu_rm_populate_requirements(
 		struct drm_encoder *enc,
 		struct drm_crtc_state *crtc_state,
 		struct drm_connector_state *conn_state,
-		struct dpu_rm_requirements *reqs)
+		struct dpu_rm_requirements *reqs,
+		struct msm_display_topology req_topology)
 {
 	const struct drm_display_mode *mode = &crtc_state->mode;
 	int i;
 
 	memset(reqs, 0, sizeof(*reqs));
 
-	reqs->top_ctrl = dpu_connector_get_property(conn_state,
-			CONNECTOR_PROP_TOPOLOGY_CONTROL);
 	dpu_encoder_get_hw_resources(enc, &reqs->hw_res, conn_state);
 
 	for (i = 0; i < DPU_RM_TOPOLOGY_MAX; i++) {
 		if (RM_IS_TOPOLOGY_MATCH(g_top_table[i],
-					reqs->hw_res.topology)) {
+					req_topology)) {
 			reqs->topology = &g_top_table[i];
 			break;
 		}
@@ -977,10 +987,6 @@ static int _dpu_rm_populate_requirements(
 		DPU_ERROR("invalid topology for the display\n");
 		return -EINVAL;
 	}
-
-	/* DSC blocks are hardwired for control path 0 and 1 */
-	if (reqs->topology->num_comp_enc)
-		reqs->top_ctrl |= BIT(DPU_RM_TOPCTL_DSPP);
 
 	/**
 	 * Set the requirement based on caps if not set from user space
@@ -1110,9 +1116,6 @@ void dpu_rm_release(struct dpu_rm *rm, struct drm_encoder *enc)
 		goto end;
 	}
 
-	top_ctrl = dpu_connector_get_property(conn->state,
-			CONNECTOR_PROP_TOPOLOGY_CONTROL);
-
 	if (top_ctrl & BIT(DPU_RM_TOPCTL_RESERVE_LOCK)) {
 		DPU_DEBUG("rsvp[s%de%d] not releasing locked resources\n",
 				rsvp->seq, rsvp->enc_id);
@@ -1120,12 +1123,6 @@ void dpu_rm_release(struct dpu_rm *rm, struct drm_encoder *enc)
 		DPU_DEBUG("release rsvp[s%de%d]\n", rsvp->seq,
 				rsvp->enc_id);
 		_dpu_rm_release_rsvp(rm, rsvp, conn);
-
-		(void) msm_property_set_property(
-				dpu_connector_get_propinfo(conn),
-				dpu_connector_get_property_state(conn->state),
-				CONNECTOR_PROP_TOPOLOGY_NAME,
-				DPU_RM_TOPOLOGY_NONE);
 	}
 
 end:
@@ -1140,18 +1137,6 @@ static int _dpu_rm_commit_rsvp(
 	struct dpu_rm_hw_blk *blk;
 	enum dpu_hw_blk_type type;
 	int ret = 0;
-
-	ret = msm_property_set_property(
-			dpu_connector_get_propinfo(conn_state->connector),
-			dpu_connector_get_property_state(conn_state),
-			CONNECTOR_PROP_TOPOLOGY_NAME,
-			rsvp->topology);
-	if (ret) {
-		DPU_ERROR("failed to set topology name property, ret %d\n",
-				ret);
-		_dpu_rm_release_rsvp(rm, rsvp, conn_state->connector);
-		return ret;
-	}
 
 	/* Swap next rsvp to be the active */
 	for (type = 0; type < DPU_HW_BLK_MAX; type++) {
@@ -1177,6 +1162,7 @@ int dpu_rm_reserve(
 		struct drm_encoder *enc,
 		struct drm_crtc_state *crtc_state,
 		struct drm_connector_state *conn_state,
+		struct msm_display_topology topology,
 		bool test_only)
 {
 	struct dpu_rm_rsvp *rsvp_cur, *rsvp_nxt;
@@ -1202,7 +1188,7 @@ int dpu_rm_reserve(
 	_dpu_rm_print_rsvps(rm, DPU_RM_STAGE_BEGIN);
 
 	ret = _dpu_rm_populate_requirements(rm, enc, crtc_state,
-			conn_state, &reqs);
+			conn_state, &reqs, topology);
 	if (ret) {
 		DPU_ERROR("failed to populate hw requirements\n");
 		goto end;
@@ -1237,12 +1223,6 @@ int dpu_rm_reserve(
 		_dpu_rm_release_rsvp(rm, rsvp_cur, conn_state->connector);
 		rsvp_cur = NULL;
 		_dpu_rm_print_rsvps(rm, DPU_RM_STAGE_AFTER_CLEAR);
-		(void) msm_property_set_property(
-				dpu_connector_get_propinfo(
-						conn_state->connector),
-				dpu_connector_get_property_state(conn_state),
-				CONNECTOR_PROP_TOPOLOGY_NAME,
-				DPU_RM_TOPOLOGY_NONE);
 	}
 
 	/* Check the proposed reservation, store it in hw's "next" field */

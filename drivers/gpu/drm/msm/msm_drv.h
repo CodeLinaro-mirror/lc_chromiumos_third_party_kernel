@@ -159,8 +159,6 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_AD_BL_SCALE,
 
 	/* enum/bitmask properties */
-	CONNECTOR_PROP_TOPOLOGY_NAME,
-	CONNECTOR_PROP_TOPOLOGY_CONTROL,
 	CONNECTOR_PROP_AUTOREFRESH,
 	CONNECTOR_PROP_LP,
 
@@ -331,57 +329,20 @@ struct msm_display_topology {
 };
 
 /**
- * struct msm_mode_info - defines all msm custom mode info
- * @frame_rate:      frame_rate of the mode
- * @vtotal:          vtotal calculated for the mode
- * @prefill_lines:   prefill lines based on porches.
- * @jitter_numer:	display panel jitter numerator configuration
- * @jitter_denom:	display panel jitter denominator configuration
- * @topology:        supported topology for the mode
- */
-struct msm_mode_info {
-	uint32_t frame_rate;
-	uint32_t vtotal;
-	uint32_t prefill_lines;
-	uint32_t jitter_numer;
-	uint32_t jitter_denom;
-	struct msm_display_topology topology;
-};
-
-/**
  * struct msm_display_info - defines display properties
  * @intf_type:          DRM_MODE_CONNECTOR_ display type
  * @capabilities:       Bitmask of display flags
  * @num_of_h_tiles:     Number of horizontal tiles in case of split interface
  * @h_tile_instance:    Controller instance used per tile. Number of elements is
  *                      based on num_of_h_tiles
- * @is_connected:       Set to true if display is connected
- * @width_mm:           Physical width
- * @height_mm:          Physical height
- * @max_width:          Max width of display. In case of hot pluggable display
- *                      this is max width supported by controller
- * @max_height:         Max height of display. In case of hot pluggable display
- *                      this is max height supported by controller
- * @is_primary:         Set to true if display is primary display
  * @is_te_using_watchdog_timer:  Boolean to indicate watchdog TE is
  *				 used instead of panel TE in cmd mode panels
  */
 struct msm_display_info {
 	int intf_type;
 	uint32_t capabilities;
-
 	uint32_t num_of_h_tiles;
 	uint32_t h_tile_instance[MAX_H_TILES_PER_DISPLAY];
-
-	bool is_connected;
-
-	unsigned int width_mm;
-	unsigned int height_mm;
-
-	uint32_t max_width;
-	uint32_t max_height;
-
-	bool is_primary;
 	bool is_te_using_watchdog_timer;
 };
 

@@ -15,7 +15,6 @@
 #include "dpu_hw_interrupts.h"
 #include "dpu_core_irq.h"
 #include "dpu_formats.h"
-#include "dsi_display.h"
 #include "dpu_trace.h"
 
 #define DPU_DEBUG_VIDENC(e, fmt, ...) DPU_DEBUG("enc%d intf%d " fmt, \
@@ -356,13 +355,10 @@ static void dpu_encoder_phys_vid_underrun_irq(void *arg, int irq_idx)
 
 static bool _dpu_encoder_phys_is_dual_ctl(struct dpu_encoder_phys *phys_enc)
 {
-	enum dpu_rm_topology_name topology;
-
 	if (!phys_enc)
 		return false;
 
-	topology = dpu_connector_get_topology_name(phys_enc->connector);
-	if (topology == DPU_RM_TOPOLOGY_DUALPIPE)
+	if (phys_enc->topology_name == DPU_RM_TOPOLOGY_DUALPIPE)
 		return true;
 
 	return false;
