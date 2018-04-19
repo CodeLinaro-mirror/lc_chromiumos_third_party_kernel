@@ -36,10 +36,6 @@
 #define DSPP_IGC_COLOR0_RAM_LUTN        0x300
 #define DSPP_IGC_COLOR1_RAM_LUTN        0x304
 #define DSPP_IGC_COLOR2_RAM_LUTN        0x308
-#define PPB0_CNTL                       0x330
-#define PPB0_CONFIG                     0x334
-#define PPB1_CNTL                       0x338
-#define PPB1_CONFIG                     0x33C
 #define HW_EVENTS_CTL                   0x37C
 #define CLK_CTRL3                       0x3A8
 #define CLK_STATUS3                     0x3AC

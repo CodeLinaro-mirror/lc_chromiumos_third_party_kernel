@@ -50,7 +50,6 @@ static const struct dpu_rm_topology_def g_top_table[] = {
 	{   DPU_RM_TOPOLOGY_SINGLEPIPE,           1, 0, 1, 1, false },
 	{   DPU_RM_TOPOLOGY_DUALPIPE,             2, 0, 2, 2, true  },
 	{   DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE,     2, 0, 1, 1, false },
-	{   DPU_RM_TOPOLOGY_PPSPLIT,              1, 0, 2, 1, true  },
 };
 
 /**
@@ -531,7 +530,6 @@ static bool _dpu_rm_check_lm_and_get_connected_blks(
 		struct dpu_rm_hw_blk *primary_lm)
 {
 	const struct dpu_lm_cfg *lm_cfg = to_dpu_hw_mixer(lm->hw)->cap;
-	const struct dpu_pingpong_cfg *pp_cfg;
 	struct dpu_rm_hw_iter iter;
 	bool is_valid_dspp, is_valid_ds, ret;
 
@@ -650,15 +648,6 @@ static bool _dpu_rm_check_lm_and_get_connected_blks(
 		return false;
 	}
 
-	pp_cfg = to_dpu_hw_pingpong((*pp)->hw)->caps;
-	if ((reqs->topology->top_name == DPU_RM_TOPOLOGY_PPSPLIT) &&
-			!(test_bit(DPU_PINGPONG_SPLIT, &pp_cfg->features))) {
-		DPU_DEBUG("pp %d doesn't support ppsplit\n", pp_cfg->id);
-		*dspp = NULL;
-		*ds = NULL;
-		return false;
-	}
-
 	return true;
 }
 
@@ -742,26 +731,6 @@ static int _dpu_rm_reserve_lms(
 				ds[i] ? ds[i]->id : 0);
 	}
 
-	if (reqs->topology->top_name == DPU_RM_TOPOLOGY_PPSPLIT) {
-		/* reserve a free PINGPONG_SLAVE block */
-		rc = -ENAVAIL;
-		dpu_rm_init_hw_iter(&iter_i, 0, DPU_HW_BLK_PINGPONG);
-		while (_dpu_rm_get_hw_locked(rm, &iter_i)) {
-			const struct dpu_hw_pingpong *pp =
-					to_dpu_hw_pingpong(iter_i.blk->hw);
-			const struct dpu_pingpong_cfg *pp_cfg = pp->caps;
-
-			if (!(test_bit(DPU_PINGPONG_SLAVE, &pp_cfg->features)))
-				continue;
-			if (RESERVED_BY_OTHER(iter_i.blk, rsvp))
-				continue;
-
-			iter_i.blk->rsvp_nxt = rsvp;
-			rc = 0;
-			break;
-		}
-	}
-
 	return rc;
 }
 
@@ -780,20 +749,16 @@ static int _dpu_rm_reserve_ctls(
 	while (_dpu_rm_get_hw_locked(rm, &iter)) {
 		const struct dpu_hw_ctl *ctl = to_dpu_hw_ctl(iter.blk->hw);
 		unsigned long features = ctl->caps->features;
-		bool has_split_display, has_ppsplit;
+		bool has_split_display;
 
 		if (RESERVED_BY_OTHER(iter.blk, rsvp))
 			continue;
 
 		has_split_display = BIT(DPU_CTL_SPLIT_DISPLAY) & features;
-		has_ppsplit = BIT(DPU_CTL_PINGPONG_SPLIT) & features;
 
 		DPU_DEBUG("ctl %d caps 0x%lX\n", iter.blk->id, features);
 
 		if (top->needs_split_display != has_split_display)
-			continue;
-
-		if (top->top_name == DPU_RM_TOPOLOGY_PPSPLIT && !has_ppsplit)
 			continue;
 
 		ctls[i] = iter.blk;

@@ -214,12 +214,10 @@ enum {
 /**
  * CTL sub-blocks
  * @DPU_CTL_SPLIT_DISPLAY       CTL supports video mode split display
- * @DPU_CTL_PINGPONG_SPLIT      CTL supports pingpong split
  * @DPU_CTL_MAX
  */
 enum {
 	DPU_CTL_SPLIT_DISPLAY = 0x1,
-	DPU_CTL_PINGPONG_SPLIT,
 	DPU_CTL_MAX
 };
 

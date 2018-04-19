@@ -40,13 +40,11 @@
  * @ENC_ROLE_SOLO:	This is the one and only panel. This encoder is master.
  * @ENC_ROLE_MASTER:	This encoder is the master of a split panel config.
  * @ENC_ROLE_SLAVE:	This encoder is not the master of a split panel config.
- * @ENC_ROLE_SKIP:	This encoder is not participating in kickoffs
  */
 enum dpu_enc_split_role {
 	ENC_ROLE_SOLO,
 	ENC_ROLE_MASTER,
 	ENC_ROLE_SLAVE,
-	ENC_ROLE_SKIP
 };
 
 /**
@@ -123,7 +121,6 @@ struct dpu_encoder_virt_ops {
  * @hw_reset:			Issue HW recovery such as CTL reset and clear
  *				DPU_ENC_ERR_NEEDS_HW_RESET state
  * @irq_control:		Handler to enable/disable all the encoder IRQs
- * @update_split_role:		Update the split role of the phys enc
  * @prepare_idle_pc:		phys encoder can update the vsync_enable status
  *                              on idle power collapse prepare
  * @restore:			Restore all the encoder configs.
@@ -167,8 +164,6 @@ struct dpu_encoder_phys_ops {
 	u32 (*collect_misr)(struct dpu_encoder_phys *phys_enc);
 	void (*hw_reset)(struct dpu_encoder_phys *phys_enc);
 	void (*irq_control)(struct dpu_encoder_phys *phys, bool enable);
-	void (*update_split_role)(struct dpu_encoder_phys *phys_enc,
-			enum dpu_enc_split_role role);
 	void (*prepare_idle_pc)(struct dpu_encoder_phys *phys_enc);
 	void (*restore)(struct dpu_encoder_phys *phys);
 	bool (*is_autorefresh_enabled)(struct dpu_encoder_phys *phys);

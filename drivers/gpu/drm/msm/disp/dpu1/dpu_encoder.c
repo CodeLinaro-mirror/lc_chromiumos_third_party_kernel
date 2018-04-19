@@ -545,7 +545,6 @@ void dpu_encoder_helper_split_config(
 	struct dpu_encoder_virt *dpu_enc;
 	struct split_pipe_cfg cfg = { 0 };
 	struct dpu_hw_mdp *hw_mdptop;
-	enum dpu_rm_topology_name topology;
 	struct msm_display_info *disp_info;
 
 	if (!phys_enc || !phys_enc->hw_mdptop || !phys_enc->parent) {
@@ -569,8 +568,6 @@ void dpu_encoder_helper_split_config(
 	if (phys_enc->split_role == ENC_ROLE_SOLO) {
 		if (hw_mdptop->ops.setup_split_pipe)
 			hw_mdptop->ops.setup_split_pipe(hw_mdptop, &cfg);
-		if (hw_mdptop->ops.setup_pp_split)
-			hw_mdptop->ops.setup_pp_split(hw_mdptop, &cfg);
 		return;
 	}
 
@@ -582,29 +579,11 @@ void dpu_encoder_helper_split_config(
 			phys_enc->ops.needs_single_flush(phys_enc))
 		cfg.split_flush_en = true;
 
-	topology = dpu_connector_get_topology_name(phys_enc->connector);
-	if (topology == DPU_RM_TOPOLOGY_PPSPLIT)
-		cfg.pp_split_slave = cfg.intf;
-	else
-		cfg.pp_split_slave = INTF_MAX;
-
 	if (phys_enc->split_role == ENC_ROLE_MASTER) {
 		DPU_DEBUG_ENC(dpu_enc, "enable %d\n", cfg.en);
 
 		if (hw_mdptop->ops.setup_split_pipe)
 			hw_mdptop->ops.setup_split_pipe(hw_mdptop, &cfg);
-	} else if (dpu_enc->hw_pp[0]) {
-		/*
-		 * slave encoder
-		 * - determine split index from master index,
-		 *   assume master is first pp
-		 */
-		cfg.pp_split_index = dpu_enc->hw_pp[0]->idx - PINGPONG_0;
-		DPU_DEBUG_ENC(dpu_enc, "master using pp%d\n",
-				cfg.pp_split_index);
-
-		if (hw_mdptop->ops.setup_pp_split)
-			hw_mdptop->ops.setup_pp_split(hw_mdptop, &cfg);
 	}
 }
 
@@ -1663,14 +1642,6 @@ static inline void _dpu_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		return;
 	}
 
-	if (phys->split_role == ENC_ROLE_SKIP) {
-		DPU_DEBUG_ENC(to_dpu_encoder_virt(phys->parent),
-				"skip flush pp%d ctl%d\n",
-				phys->hw_pp->idx - PINGPONG_0,
-				ctl->idx - CTL_0);
-		return;
-	}
-
 	pending_kickoff_cnt = dpu_encoder_phys_inc_pending(phys);
 
 	if (extra_flush_bits && ctl->ops.update_pending_flush)
@@ -1692,8 +1663,6 @@ static inline void _dpu_encoder_trigger_flush(struct drm_encoder *drm_enc,
  */
 static inline void _dpu_encoder_trigger_start(struct dpu_encoder_phys *phys)
 {
-	struct dpu_hw_ctl *ctl;
-
 	if (!phys) {
 		DPU_ERROR("invalid argument(s)\n");
 		return;
@@ -1704,14 +1673,6 @@ static inline void _dpu_encoder_trigger_start(struct dpu_encoder_phys *phys)
 		return;
 	}
 
-	ctl = phys->hw_ctl;
-	if (phys->split_role == ENC_ROLE_SKIP) {
-		DPU_DEBUG_ENC(to_dpu_encoder_virt(phys->parent),
-				"skip start pp%d ctl%d\n",
-				phys->hw_pp->idx - PINGPONG_0,
-				ctl->idx - CTL_0);
-		return;
-	}
 	if (phys->ops.trigger_start && phys->enable_state != DPU_ENC_DISABLED)
 		phys->ops.trigger_start(phys);
 }
@@ -1830,7 +1791,6 @@ static void _dpu_encoder_kickoff_phys(struct dpu_encoder_virt *dpu_enc)
 	/* don't perform flush/start operations for slave encoders */
 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
 		struct dpu_encoder_phys *phys = dpu_enc->phys_encs[i];
-		enum dpu_rm_topology_name topology = DPU_RM_TOPOLOGY_NONE;
 
 		if (!phys || phys->enable_state == DPU_ENC_DISABLED)
 			continue;
@@ -1839,17 +1799,7 @@ static void _dpu_encoder_kickoff_phys(struct dpu_encoder_virt *dpu_enc)
 		if (!ctl)
 			continue;
 
-		if (phys->connector)
-			topology = dpu_connector_get_topology_name(
-					phys->connector);
-
-		/*
-		 * don't wait on ppsplit slaves or skipped encoders because
-		 * they dont receive irqs
-		 */
-		if (!(topology == DPU_RM_TOPOLOGY_PPSPLIT &&
-				phys->split_role == ENC_ROLE_SLAVE) &&
-				phys->split_role != ENC_ROLE_SKIP)
+		if (phys->split_role != ENC_ROLE_SLAVE)
 			set_bit(i, dpu_enc->frame_busy_mask);
 		if (phys->hw_ctl->ops.reg_dma_flush)
 			phys->hw_ctl->ops.reg_dma_flush(phys->hw_ctl);
@@ -1871,126 +1821,6 @@ static void _dpu_encoder_kickoff_phys(struct dpu_encoder_virt *dpu_enc)
 	_dpu_encoder_trigger_start(dpu_enc->cur_master);
 
 	spin_unlock_irqrestore(&dpu_enc->enc_spinlock, lock_flags);
-}
-
-static void _dpu_encoder_ppsplit_swap_intf_for_right_only_update(
-		struct drm_encoder *drm_enc,
-		unsigned long *affected_displays,
-		int num_active_phys)
-{
-	struct dpu_encoder_virt *dpu_enc;
-	struct dpu_encoder_phys *master;
-	enum dpu_rm_topology_name topology;
-	bool is_right_only;
-
-	if (!drm_enc || !affected_displays)
-		return;
-
-	dpu_enc = to_dpu_encoder_virt(drm_enc);
-	master = dpu_enc->cur_master;
-	if (!master || !master->connector)
-		return;
-
-	topology = dpu_connector_get_topology_name(master->connector);
-	if (topology != DPU_RM_TOPOLOGY_PPSPLIT)
-		return;
-
-	/*
-	 * For pingpong split, the slave pingpong won't generate IRQs. For
-	 * right-only updates, we can't swap pingpongs, or simply swap the
-	 * master/slave assignment, we actually have to swap the interfaces
-	 * so that the master physical encoder will use a pingpong/interface
-	 * that generates irqs on which to wait.
-	 */
-	is_right_only = !test_bit(0, affected_displays) &&
-			test_bit(1, affected_displays);
-
-	if (is_right_only && !dpu_enc->intfs_swapped) {
-		/* right-only update swap interfaces */
-		swap(dpu_enc->phys_encs[0]->intf_idx,
-				dpu_enc->phys_encs[1]->intf_idx);
-		dpu_enc->intfs_swapped = true;
-	} else if (!is_right_only && dpu_enc->intfs_swapped) {
-		/* left-only or full update, swap back */
-		swap(dpu_enc->phys_encs[0]->intf_idx,
-				dpu_enc->phys_encs[1]->intf_idx);
-		dpu_enc->intfs_swapped = false;
-	}
-
-	DPU_DEBUG_ENC(dpu_enc,
-			"right_only %d swapped %d phys0->intf%d, phys1->intf%d\n",
-			is_right_only, dpu_enc->intfs_swapped,
-			dpu_enc->phys_encs[0]->intf_idx - INTF_0,
-			dpu_enc->phys_encs[1]->intf_idx - INTF_0);
-	DPU_EVT32(DRMID(drm_enc), is_right_only, dpu_enc->intfs_swapped,
-			dpu_enc->phys_encs[0]->intf_idx - INTF_0,
-			dpu_enc->phys_encs[1]->intf_idx - INTF_0,
-			*affected_displays);
-
-	/* ppsplit always uses master since ppslave invalid for irqs*/
-	if (num_active_phys == 1)
-		*affected_displays = BIT(0);
-}
-
-static void _dpu_encoder_update_master(struct drm_encoder *drm_enc,
-		struct dpu_encoder_kickoff_params *params)
-{
-	struct dpu_encoder_virt *dpu_enc;
-	struct dpu_encoder_phys *phys;
-	int i, num_active_phys;
-	bool master_assigned = false;
-
-	if (!drm_enc || !params)
-		return;
-
-	dpu_enc = to_dpu_encoder_virt(drm_enc);
-
-	if (dpu_enc->num_phys_encs <= 1)
-		return;
-
-	/* count bits set */
-	num_active_phys = hweight_long(params->affected_displays);
-
-	DPU_DEBUG_ENC(dpu_enc, "affected_displays 0x%lx num_active_phys %d\n",
-			params->affected_displays, num_active_phys);
-
-	/* for left/right only update, ppsplit master switches interface */
-	_dpu_encoder_ppsplit_swap_intf_for_right_only_update(drm_enc,
-			&params->affected_displays, num_active_phys);
-
-	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
-		enum dpu_enc_split_role prv_role, new_role;
-		bool active;
-
-		phys = dpu_enc->phys_encs[i];
-		if (!phys || !phys->ops.update_split_role || !phys->hw_pp)
-			continue;
-
-		active = test_bit(i, &params->affected_displays);
-		prv_role = phys->split_role;
-
-		if (active && num_active_phys == 1)
-			new_role = ENC_ROLE_SOLO;
-		else if (active && !master_assigned)
-			new_role = ENC_ROLE_MASTER;
-		else if (active)
-			new_role = ENC_ROLE_SLAVE;
-		else
-			new_role = ENC_ROLE_SKIP;
-
-		phys->ops.update_split_role(phys, new_role);
-		if (new_role == ENC_ROLE_SOLO || new_role == ENC_ROLE_MASTER) {
-			dpu_enc->cur_master = phys;
-			master_assigned = true;
-		}
-
-		DPU_DEBUG_ENC(dpu_enc, "pp %d role prv %d new %d active %d\n",
-				phys->hw_pp->idx - PINGPONG_0, prv_role,
-				phys->split_role, active);
-		DPU_EVT32(DRMID(drm_enc), params->affected_displays,
-				phys->hw_pp->idx - PINGPONG_0, prv_role,
-				phys->split_role, active, num_active_phys);
-	}
 }
 
 bool dpu_encoder_check_mode(struct drm_encoder *drm_enc, u32 mode)
@@ -2046,14 +1876,9 @@ static void _dpu_encoder_setup_dither(struct dpu_encoder_phys *phys)
 	void *dither_cfg;
 	int ret = 0;
 	size_t len = 0;
-	enum dpu_rm_topology_name topology;
 
 	if (!phys || !phys->connector || !phys->hw_pp ||
 			!phys->hw_pp->ops.setup_dither)
-		return;
-	topology = dpu_connector_get_topology_name(phys->connector);
-	if ((topology == DPU_RM_TOPOLOGY_PPSPLIT) &&
-			(phys->split_role == ENC_ROLE_SLAVE))
 		return;
 
 	ret = dpu_connector_get_dither_cfg(phys->connector,
@@ -2264,8 +2089,6 @@ void dpu_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 				phys->ops.hw_reset(phys);
 		}
 	}
-
-	_dpu_encoder_update_master(drm_enc, params);
 
 	if (dpu_enc->cur_master && dpu_enc->cur_master->connector) {
 		rc = dpu_connector_pre_kickoff(dpu_enc->cur_master->connector);

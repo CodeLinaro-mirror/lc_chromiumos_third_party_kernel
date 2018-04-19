@@ -38,8 +38,8 @@ static const struct drm_prop_enum_list e_topology_name[] = {
 	{DPU_RM_TOPOLOGY_SINGLEPIPE,	"dpu_singlepipe"},
 	{DPU_RM_TOPOLOGY_DUALPIPE,	"dpu_dualpipe"},
 	{DPU_RM_TOPOLOGY_DUALPIPE_3DMERGE,	"dpu_dualpipemerge"},
-	{DPU_RM_TOPOLOGY_PPSPLIT,	"dpu_ppsplit"},
 };
+
 static const struct drm_prop_enum_list e_topology_control[] = {
 	{DPU_RM_TOPCTL_RESERVE_LOCK,	"reserve_lock"},
 	{DPU_RM_TOPCTL_RESERVE_CLEAR,	"reserve_clear"},

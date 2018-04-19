@@ -43,7 +43,7 @@
 #define PINGPONG_SDM845_MASK BIT(DPU_PINGPONG_DITHER)
 
 #define PINGPONG_SDM845_SPLIT_MASK \
-	(PINGPONG_SDM845_MASK | BIT(DPU_PINGPONG_SPLIT) | BIT(DPU_PINGPONG_TE2))
+	(PINGPONG_SDM845_MASK | BIT(DPU_PINGPONG_TE2))
 
 #define WB2_SDM845_MASK \
 	(BIT(DPU_WB_LINE_MODE) | BIT(DPU_WB_TRAFFIC_SHAPER) | BIT(DPU_WB_CDP) |\
@@ -119,8 +119,7 @@ static struct dpu_ctl_cfg sdm845_ctl[] = {
 	{
 	.name = "ctl_0", .id = CTL_0,
 	.base = 0x2000, .len = 0xE4,
-	.features = BIT(DPU_CTL_SPLIT_DISPLAY) |
-		BIT(DPU_CTL_PINGPONG_SPLIT)
+	.features = BIT(DPU_CTL_SPLIT_DISPLAY)
 	},
 	{
 	.name = "ctl_1", .id = CTL_1,

@@ -1914,23 +1914,6 @@ static void _dpu_crtc_setup_mixers(struct drm_crtc *crtc)
 	mutex_unlock(&dpu_crtc->crtc_lock);
 }
 
-static void _dpu_crtc_setup_is_ppsplit(struct drm_crtc_state *state)
-{
-	int i;
-	struct dpu_crtc_state *cstate;
-
-	cstate = to_dpu_crtc_state(state);
-
-	cstate->is_ppsplit = false;
-	for (i = 0; i < cstate->num_connectors; i++) {
-		struct drm_connector *conn = cstate->connectors[i];
-
-		if (dpu_connector_get_topology_name(conn) ==
-				DPU_RM_TOPOLOGY_PPSPLIT)
-			cstate->is_ppsplit = true;
-	}
-}
-
 static void _dpu_crtc_setup_lm_bounds(struct drm_crtc *crtc,
 		struct drm_crtc_state *state)
 {
@@ -1993,7 +1976,6 @@ static void dpu_crtc_atomic_begin(struct drm_crtc *crtc,
 
 	if (!dpu_crtc->num_mixers) {
 		_dpu_crtc_setup_mixers(crtc);
-		_dpu_crtc_setup_is_ppsplit(crtc->state);
 		_dpu_crtc_setup_lm_bounds(crtc, crtc->state);
 	}
 
@@ -2899,7 +2881,6 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 
 	mixer_width = dpu_crtc_get_mixer_width(dpu_crtc, cstate, mode);
 
-	_dpu_crtc_setup_is_ppsplit(state);
 	_dpu_crtc_setup_lm_bounds(crtc, state);
 
 	 /* get plane state for all drm planes associated with crtc state */

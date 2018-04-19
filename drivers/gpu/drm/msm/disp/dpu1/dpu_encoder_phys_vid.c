@@ -354,20 +354,6 @@ static void dpu_encoder_phys_vid_underrun_irq(void *arg, int irq_idx)
 			phys_enc);
 }
 
-static bool _dpu_encoder_phys_is_ppsplit(struct dpu_encoder_phys *phys_enc)
-{
-	enum dpu_rm_topology_name topology;
-
-	if (!phys_enc)
-		return false;
-
-	topology = dpu_connector_get_topology_name(phys_enc->connector);
-	if (topology == DPU_RM_TOPOLOGY_PPSPLIT)
-		return true;
-
-	return false;
-}
-
 static bool _dpu_encoder_phys_is_dual_ctl(struct dpu_encoder_phys *phys_enc)
 {
 	enum dpu_rm_topology_name topology;
@@ -385,8 +371,7 @@ static bool _dpu_encoder_phys_is_dual_ctl(struct dpu_encoder_phys *phys_enc)
 static bool dpu_encoder_phys_vid_needs_single_flush(
 		struct dpu_encoder_phys *phys_enc)
 {
-	return phys_enc && (_dpu_encoder_phys_is_ppsplit(phys_enc) ||
-		_dpu_encoder_phys_is_dual_ctl(phys_enc));
+	return (phys_enc && _dpu_encoder_phys_is_dual_ctl(phys_enc));
 }
 
 static void _dpu_encoder_phys_vid_setup_irq_hw_idx(
@@ -609,9 +594,7 @@ static int _dpu_encoder_phys_vid_wait_for_vblank(
 	wait_info.timeout_ms = KICKOFF_TIMEOUT_MS;
 
 	if (!dpu_encoder_phys_vid_is_master(phys_enc)) {
-		/* signal done for slave video encoder, unless it is pp-split */
-		if (!_dpu_encoder_phys_is_ppsplit(phys_enc) &&
-			notify && phys_enc->parent_ops.handle_frame_done)
+		if (notify && phys_enc->parent_ops.handle_frame_done)
 			phys_enc->parent_ops.handle_frame_done(
 					phys_enc->parent, phys_enc,
 					DPU_ENCODER_FRAME_EVENT_DONE);

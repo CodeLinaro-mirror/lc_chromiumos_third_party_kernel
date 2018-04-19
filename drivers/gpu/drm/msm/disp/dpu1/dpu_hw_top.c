@@ -80,11 +80,6 @@ static void dpu_hw_setup_split_pipe(struct dpu_hw_mdp *mdp,
 				lower_pipe |= FLD_INTF_1_SW_TRG_MUX;
 			else
 				lower_pipe |= FLD_INTF_2_SW_TRG_MUX;
-
-			/* free run */
-			if (cfg->pp_split_slave != INTF_MAX)
-				lower_pipe = FLD_SMART_PANEL_FREE_RUN;
-
 			upper_pipe = lower_pipe;
 		} else {
 			if (cfg->intf == INTF_2) {
@@ -101,33 +96,6 @@ static void dpu_hw_setup_split_pipe(struct dpu_hw_mdp *mdp,
 	DPU_REG_WRITE(c, SPLIT_DISPLAY_LOWER_PIPE_CTRL, lower_pipe);
 	DPU_REG_WRITE(c, SPLIT_DISPLAY_UPPER_PIPE_CTRL, upper_pipe);
 	DPU_REG_WRITE(c, SPLIT_DISPLAY_EN, cfg->en & 0x1);
-}
-
-static void dpu_hw_setup_pp_split(struct dpu_hw_mdp *mdp,
-		struct split_pipe_cfg *cfg)
-{
-	u32 ppb_config = 0x0;
-	u32 ppb_control = 0x0;
-
-	if (!mdp || !cfg)
-		return;
-
-	if (cfg->en && cfg->pp_split_slave != INTF_MAX) {
-		ppb_config |= (cfg->pp_split_slave - INTF_0 + 1) << 20;
-		ppb_config |= BIT(16); /* split enable */
-		ppb_control = BIT(5); /* horz split*/
-	}
-	if (cfg->pp_split_index) {
-		DPU_REG_WRITE(&mdp->hw, PPB0_CONFIG, 0x0);
-		DPU_REG_WRITE(&mdp->hw, PPB0_CNTL, 0x0);
-		DPU_REG_WRITE(&mdp->hw, PPB1_CONFIG, ppb_config);
-		DPU_REG_WRITE(&mdp->hw, PPB1_CNTL, ppb_control);
-	} else {
-		DPU_REG_WRITE(&mdp->hw, PPB0_CONFIG, ppb_config);
-		DPU_REG_WRITE(&mdp->hw, PPB0_CNTL, ppb_control);
-		DPU_REG_WRITE(&mdp->hw, PPB1_CONFIG, 0x0);
-		DPU_REG_WRITE(&mdp->hw, PPB1_CNTL, 0x0);
-	}
 }
 
 static void dpu_hw_setup_cdm_output(struct dpu_hw_mdp *mdp,
@@ -349,7 +317,6 @@ static void _setup_mdp_ops(struct dpu_hw_mdp_ops *ops,
 		unsigned long cap)
 {
 	ops->setup_split_pipe = dpu_hw_setup_split_pipe;
-	ops->setup_pp_split = dpu_hw_setup_pp_split;
 	ops->setup_cdm_output = dpu_hw_setup_cdm_output;
 	ops->setup_clk_force_ctrl = dpu_hw_setup_clk_force_ctrl;
 	ops->get_danger_status = dpu_hw_get_danger_status;

@@ -114,29 +114,6 @@ static void _dpu_encoder_phys_cmd_config_autorefresh(
 		hw_pp->ops.setup_autorefresh(hw_pp, cfg_cur);
 }
 
-static void _dpu_encoder_phys_cmd_update_flush_mask(
-		struct dpu_encoder_phys *phys_enc)
-{
-	struct dpu_encoder_phys_cmd *cmd_enc =
-			to_dpu_encoder_phys_cmd(phys_enc);
-	struct dpu_hw_ctl *ctl;
-	u32 flush_mask = 0;
-
-	if (!phys_enc)
-		return;
-
-	ctl = phys_enc->hw_ctl;
-	if (!ctl || !ctl->ops.get_bitmask_intf ||
-			!ctl->ops.update_pending_flush)
-		return;
-
-	ctl->ops.get_bitmask_intf(ctl, &flush_mask, phys_enc->intf_idx);
-	ctl->ops.update_pending_flush(ctl, flush_mask);
-
-	DPU_DEBUG_CMDENC(cmd_enc, "update pending flush ctl %d flush_mask %x\n",
-			ctl->idx - CTL_0, flush_mask);
-}
-
 static void _dpu_encoder_phys_cmd_update_intf_cfg(
 		struct dpu_encoder_phys *phys_enc)
 {
@@ -324,20 +301,6 @@ static void dpu_encoder_phys_cmd_mode_set(
 	_dpu_encoder_phys_cmd_setup_irq_hw_idx(phys_enc);
 }
 
-static bool _dpu_encoder_phys_is_ppsplit(struct dpu_encoder_phys *phys_enc)
-{
-	enum dpu_rm_topology_name topology;
-
-	if (!phys_enc)
-		return false;
-
-	topology = dpu_connector_get_topology_name(phys_enc->connector);
-	if (topology == DPU_RM_TOPOLOGY_PPSPLIT)
-		return true;
-
-	return false;
-}
-
 static int _dpu_encoder_phys_cmd_handle_ppdone_timeout(
 		struct dpu_encoder_phys *phys_enc)
 {
@@ -387,16 +350,6 @@ static int _dpu_encoder_phys_cmd_handle_ppdone_timeout(
 				phys_enc->parent, phys_enc, frame_event);
 
 	return -ETIMEDOUT;
-}
-
-static bool _dpu_encoder_phys_is_ppsplit_slave(
-		struct dpu_encoder_phys *phys_enc)
-{
-	if (!phys_enc)
-		return false;
-
-	return _dpu_encoder_phys_is_ppsplit(phys_enc) &&
-			phys_enc->split_role == ENC_ROLE_SLAVE;
 }
 
 static int _dpu_encoder_phys_cmd_poll_write_pointer_started(
@@ -482,10 +435,6 @@ static int _dpu_encoder_phys_cmd_wait_for_idle(
 	wait_info.wq = &phys_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &phys_enc->pending_kickoff_cnt;
 	wait_info.timeout_ms = KICKOFF_TIMEOUT_MS;
-
-	/* slave encoder doesn't enable for ppsplit */
-	if (_dpu_encoder_phys_is_ppsplit_slave(phys_enc))
-		return 0;
 
 	ret = dpu_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_PINGPONG,
 			&wait_info);
@@ -588,7 +537,7 @@ void dpu_encoder_phys_cmd_irq_control(struct dpu_encoder_phys *phys_enc,
 {
 	struct dpu_encoder_phys_cmd *cmd_enc;
 
-	if (!phys_enc || _dpu_encoder_phys_is_ppsplit_slave(phys_enc))
+	if (!phys_enc)
 		return;
 
 	cmd_enc = to_dpu_encoder_phys_cmd(phys_enc);
@@ -726,18 +675,18 @@ static void _dpu_encoder_phys_cmd_pingpong_config(
 			phys_enc->hw_pp->idx - PINGPONG_0);
 	drm_mode_debug_printmodeline(&phys_enc->cached_mode);
 
-	if (!_dpu_encoder_phys_is_ppsplit_slave(phys_enc))
-		_dpu_encoder_phys_cmd_update_intf_cfg(phys_enc);
+	_dpu_encoder_phys_cmd_update_intf_cfg(phys_enc);
 	dpu_encoder_phys_cmd_tearcheck_config(phys_enc);
 }
 
 static bool dpu_encoder_phys_cmd_needs_single_flush(
 		struct dpu_encoder_phys *phys_enc)
 {
-	if (!phys_enc)
-		return false;
-
-	return _dpu_encoder_phys_is_ppsplit(phys_enc);
+	/**
+	 * we do separate flush for each CTL and let
+	 * CTL_START synchronize them
+	 */
+	return false;
 }
 
 static void dpu_encoder_phys_cmd_enable_helper(
@@ -755,12 +704,7 @@ static void dpu_encoder_phys_cmd_enable_helper(
 
 	_dpu_encoder_phys_cmd_pingpong_config(phys_enc);
 
-	/*
-	 * For pp-split, skip setting the flush bit for the slave intf, since
-	 * both intfs use same ctl and HW will only flush the master.
-	 */
-	if (_dpu_encoder_phys_is_ppsplit(phys_enc) &&
-		!dpu_encoder_phys_cmd_is_master(phys_enc))
+	if (!dpu_encoder_phys_cmd_is_master(phys_enc))
 		goto skip_flush;
 
 	ctl = phys_enc->hw_ctl;
@@ -963,10 +907,6 @@ static int _dpu_encoder_phys_cmd_wait_for_ctl_start(
 	wait_info.atomic_cnt = &phys_enc->pending_ctlstart_cnt;
 	wait_info.timeout_ms = KICKOFF_TIMEOUT_MS;
 
-	/* slave encoder doesn't enable for ppsplit */
-	if (_dpu_encoder_phys_is_ppsplit_slave(phys_enc))
-		return 0;
-
 	ret = dpu_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_CTL_START,
 			&wait_info);
 	if (ret == -ETIMEDOUT) {
@@ -1051,39 +991,6 @@ static int dpu_encoder_phys_cmd_wait_for_vblank(
 			&wait_info);
 
 	return rc;
-}
-
-static void dpu_encoder_phys_cmd_update_split_role(
-		struct dpu_encoder_phys *phys_enc,
-		enum dpu_enc_split_role role)
-{
-	struct dpu_encoder_phys_cmd *cmd_enc;
-	enum dpu_enc_split_role old_role;
-	bool is_ppsplit;
-
-	if (!phys_enc)
-		return;
-
-	cmd_enc = to_dpu_encoder_phys_cmd(phys_enc);
-	old_role = phys_enc->split_role;
-	is_ppsplit = _dpu_encoder_phys_is_ppsplit(phys_enc);
-
-	phys_enc->split_role = role;
-
-	DPU_DEBUG_CMDENC(cmd_enc, "old role %d new role %d\n",
-			old_role, role);
-
-	/*
-	 * ppsplit solo needs to reprogram because intf may have swapped without
-	 * role changing on left-only, right-only back-to-back commits
-	 */
-	if (!(is_ppsplit && role == ENC_ROLE_SOLO) &&
-			(role == old_role || role == ENC_ROLE_SKIP))
-		return;
-
-	dpu_encoder_helper_split_config(phys_enc, phys_enc->intf_idx);
-	_dpu_encoder_phys_cmd_pingpong_config(phys_enc);
-	_dpu_encoder_phys_cmd_update_flush_mask(phys_enc);
 }
 
 static void dpu_encoder_phys_cmd_prepare_commit(
@@ -1191,7 +1098,6 @@ static void dpu_encoder_phys_cmd_init_ops(
 	ops->needs_single_flush = dpu_encoder_phys_cmd_needs_single_flush;
 	ops->hw_reset = dpu_encoder_helper_hw_reset;
 	ops->irq_control = dpu_encoder_phys_cmd_irq_control;
-	ops->update_split_role = dpu_encoder_phys_cmd_update_split_role;
 	ops->restore = dpu_encoder_phys_cmd_enable_helper;
 	ops->prepare_idle_pc = dpu_encoder_phys_cmd_prepare_idle_pc;
 	ops->is_autorefresh_enabled =
