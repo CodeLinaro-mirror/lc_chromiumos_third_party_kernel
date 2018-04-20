@@ -2641,19 +2641,20 @@ static int dpu_plane_atomic_set_property(struct drm_plane *plane,
 					property);
 			switch (idx) {
 			case PLANE_PROP_CSC_V1:
-				_dpu_plane_set_csc_v1(pdpu, (void *)val);
+				_dpu_plane_set_csc_v1(pdpu,
+						      u64_to_user_ptr(val));
 				break;
 			case PLANE_PROP_SCALER_V1:
 				_dpu_plane_set_scaler_v1(pdpu, pstate,
-						(void *)val);
+							 u64_to_user_ptr(val));
 				break;
 			case PLANE_PROP_SCALER_V2:
 				_dpu_plane_set_scaler_v2(pdpu, pstate,
-						(void *)val);
+							 u64_to_user_ptr(val));
 				break;
 			case PLANE_PROP_EXCL_RECT_V1:
 				_dpu_plane_set_excl_rect_v1(pdpu, pstate,
-						(void *)val);
+						u64_to_user_ptr(val));
 				break;
 			default:
 				/* nothing to do */

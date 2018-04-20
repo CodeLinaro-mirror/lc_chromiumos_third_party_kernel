@@ -311,7 +311,7 @@ static int dsi_mgr_connector_get_modes(struct drm_connector *connector)
 	int id = dsi_mgr_connector_get_id(connector);
 	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
 	struct drm_panel *panel = msm_dsi->panel;
-	int ret, num;
+	int num;
 
 	if (!panel)
 		return 0;

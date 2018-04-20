@@ -3367,11 +3367,11 @@ static int dpu_crtc_atomic_set_property(struct drm_crtc *crtc,
 			switch (idx) {
 			case CRTC_PROP_DIM_LAYER_V1:
 				_dpu_crtc_set_dim_layer_v1(cstate,
-							(void __user *)val);
+							u64_to_user_ptr(val));
 				break;
 			case CRTC_PROP_DEST_SCALER:
 				ret = _dpu_crtc_set_dest_scaler(dpu_crtc,
-						cstate, (void __user *)val);
+						cstate, u64_to_user_ptr(val));
 				break;
 			case CRTC_PROP_DEST_SCALER_LUT_ED:
 			case CRTC_PROP_DEST_SCALER_LUT_CIR:

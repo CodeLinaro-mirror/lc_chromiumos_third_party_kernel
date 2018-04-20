@@ -244,7 +244,8 @@ static int dpu_cp_handle_range_property(struct dpu_cp_node *prop_node,
 		return 0;
 	}
 
-	ret = copy_from_user(blob_ptr->data, (void *)val, blob_ptr->length);
+	ret = copy_from_user(blob_ptr->data, u64_to_user_ptr(val),
+			     blob_ptr->length);
 	if (ret) {
 		DRM_ERROR("failed to get the property info ret %d", ret);
 		ret = -EFAULT;
@@ -910,7 +911,7 @@ int dpu_cp_crtc_set_property(struct drm_crtc *crtc,
 	 */
 	if (!dpu_crtc->num_mixers ||
 	    dpu_crtc->num_mixers > ARRAY_SIZE(dpu_crtc->mixers)) {
-		DRM_ERROR("Invalid mixer config act cnt %d max cnt %ld\n",
+		DRM_ERROR("Invalid mixer config act cnt %d max cnt %zd\n",
 			dpu_crtc->num_mixers, ARRAY_SIZE(dpu_crtc->mixers));
 		return -EINVAL;
 	}
