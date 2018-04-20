@@ -57,12 +57,12 @@
 
 		mpss_mem: mpss@8cc00000 {
 			no-map;
-			reg = <0 0x8cc00000 0 0x7600000>;
+			reg = <0 0x8e000000 0 0x7800000>;
 		};
 
 		mba_mem: mba@94f00000 {
 			no-map;
-			reg = <0 0x94f00000 0 0x200000>;
+			reg = <0 0x96500000 0 0x200000>;
 		};
 
 		qcom,cmd-db@c3f000c {
