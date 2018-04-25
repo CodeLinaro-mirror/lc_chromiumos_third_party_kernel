@@ -52,9 +52,6 @@
 		qcom,dpu-dram-channels = <2>;
 		qcom,dpu-num-nrt-paths = <0>;
 
-		/* offsets are relative to "mdp_phys + qcom,dpu-off */
-		qcom,dpu-inline-rot-clk-ctrl = <0x2bc 0x8>, <0x2bc 0xc>;
-
 		qcom,platform-supply-entries {
 			#address-cells = <1>;
 			#size-cells = <0>;
