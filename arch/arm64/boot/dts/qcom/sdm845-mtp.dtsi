@@ -68,7 +68,6 @@
 };
 
 &dsi_nt35597_truly_dsc_cmd_display {
-	qcom,dsi-display-active;
 };
 
 &labibb {
