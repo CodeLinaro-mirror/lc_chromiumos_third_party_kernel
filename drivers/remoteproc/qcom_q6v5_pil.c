@@ -66,6 +66,7 @@
 
 /* QDSP6SS Register Offsets */
 #define QDSP6SS_RESET_REG		0x014
+#define QDSP6SS_DBG_CFG			0x018
 #define QDSP6SS_GFMUX_CTL_REG		0x020
 #define QDSP6SS_PWR_CTL_REG		0x030
 #define QDSP6SS_MEM_PWR_CTL		0x0B0
@@ -113,6 +114,9 @@
 #define QDSP6SS_BOOT_CMD                0x404
 #define SLEEP_CHECK_MAX_LOOPS           200
 #define BOOT_FSM_TIMEOUT                10000
+
+/* Debug Timeout Timeout */
+#define QDSP6SS_COMPLETION_TIMEOUT	((is_timeout_disabled()) ? -1 : 5000)
 
 struct reg_info {
 	struct regulator *reg;
@@ -358,6 +362,8 @@ static int q6v5_load(struct rproc *rproc, const struct firmware *fw)
 	struct q6v5 *qproc = rproc->priv;
 
 	memcpy(qproc->mba_region, fw->data, fw->size);
+	qcom_mdt_write_image_info(qproc->dev, NULL,
+			QCOM_MDT_IMAGE_ID_MODEM);
 
 	return 0;
 }
@@ -385,6 +391,9 @@ static int q6v5_sdm_reset_stop(struct q6v5 *qproc)
 static int q6v5_sdm_reset_start(struct q6v5 *qproc)
 {
 	int ret;
+	u32 debug_val = 0;
+
+	debug_val = readl(qproc->reg_base + QDSP6SS_DBG_CFG);
 
 	alt_reset_restart(qproc, 1);
 	/* Ensure alt reset is written before restart reg */
@@ -394,6 +403,8 @@ static int q6v5_sdm_reset_start(struct q6v5 *qproc)
 
 	udelay(100);
 	alt_reset_restart(qproc, 0);
+
+	writel(debug_val, qproc->reg_base + QDSP6SS_DBG_CFG);
 
 	return ret;
 }
@@ -419,7 +430,7 @@ static int q6v5_rmb_pbl_wait(struct q6v5 *qproc, int ms)
 		if (val)
 			break;
 
-		if (time_after(jiffies, timeout))
+		if (time_after(jiffies, timeout) && (!is_timeout_disabled()))
 			return -ETIMEDOUT;
 
 		msleep(1);
@@ -445,7 +456,7 @@ static int q6v5_rmb_mba_wait(struct q6v5 *qproc, u32 status, int ms)
 		else if (status && val == status)
 			break;
 
-		if (time_after(jiffies, timeout))
+		if (time_after(jiffies, timeout) && (!is_timeout_disabled()))
 			return -ETIMEDOUT;
 
 		msleep(1);
@@ -729,6 +740,8 @@ static int q6v5_mpss_load(struct q6v5 *qproc)
 	void *ptr;
 	int ret;
 	int i;
+	char mpss_dev_name[8] = "modem";
+	struct qcom_mdt_image_info mpss_info;
 
 	ret = request_firmware(&fw, "modem.mdt", qproc->dev);
 	if (ret < 0) {
@@ -820,6 +833,12 @@ static int q6v5_mpss_load(struct q6v5 *qproc)
 		dev_err(qproc->dev, "MPSS authentication timed out\n");
 	else if (ret < 0)
 		dev_err(qproc->dev, "MPSS authentication failed: %d\n", ret);
+
+	strcpy(mpss_info.name, mpss_dev_name);
+	mpss_info.start = qproc->mpss_phys;
+	mpss_info.size =  size;
+	qcom_mdt_write_image_info(qproc->dev, &mpss_info,
+			QCOM_MDT_IMAGE_ID_MODEM);
 
 release_firmware:
 	release_firmware(fw);
@@ -929,7 +948,7 @@ static int q6v5_start(struct rproc *rproc)
 	enable_irq(qproc->fatal_interrupt);
 
 	ret = wait_for_completion_timeout(&qproc->start_done,
-					  msecs_to_jiffies(5000));
+				msecs_to_jiffies(QDSP6SS_COMPLETION_TIMEOUT));
 	if (ret == 0) {
 		disable_irq(qproc->handover_interrupt);
 		disable_irq(qproc->wdog_interrupt);
