@@ -1030,15 +1030,9 @@ static int ath10k_wmi_tlv_op_pull_rdy_ev(struct ath10k *ar,
 {
 	const void **tb;
 	const struct wmi_tlv_rdy_ev *ev;
-	size_t len;
 	int ret;
 
-	if (QCA_REV_WCN3990(ar))
-		len = skb->len - 8;
-	else
-		len = skb->len;
-
-	tb = ath10k_wmi_tlv_parse_alloc(ar, skb->data, len,
+	tb = ath10k_wmi_tlv_parse_alloc(ar, skb->data, skb->len,
 					GFP_ATOMIC);
 	if (IS_ERR(tb)) {
 		ret = PTR_ERR(tb);
