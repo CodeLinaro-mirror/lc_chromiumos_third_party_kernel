@@ -119,7 +119,7 @@ enum arm_smmu_implementation {
 	GENERIC_SMMU,
 	ARM_MMU500,
 	CAVIUM_SMMUV2,
-	QCOM_MSM8996_SMMUV2,
+	QCOM_SMMUV2,
 };
 
 /* Until ACPICA headers cover IORT rev. C */
@@ -215,9 +215,8 @@ struct arm_smmu_device {
 	u32				num_global_irqs;
 	u32				num_context_irqs;
 	unsigned int			*irqs;
-	struct clk_bulk_data		*clocks;
+	struct clk_bulk_data		*clks;
 	int				num_clks;
-	const char * const		*clk_names;
 
 	u32				cavium_id_base; /* Specific to Cavium */
 
@@ -277,6 +276,20 @@ static struct arm_smmu_option_prop arm_smmu_options[] = {
 	{ ARM_SMMU_OPT_SECURE_CFG_ACCESS, "calxeda,smmu-secure-config-access" },
 	{ 0, NULL},
 };
+
+static inline int arm_smmu_rpm_get(struct arm_smmu_device *smmu)
+{
+	if (pm_runtime_enabled(smmu->dev))
+		return pm_runtime_get_sync(smmu->dev);
+
+	return 0;
+}
+
+static inline void arm_smmu_rpm_put(struct arm_smmu_device *smmu)
+{
+	if (pm_runtime_enabled(smmu->dev))
+		pm_runtime_put(smmu->dev);
+}
 
 static struct arm_smmu_domain *to_smmu_domain(struct iommu_domain *dom)
 {
@@ -928,7 +941,7 @@ static void arm_smmu_destroy_domain_context(struct iommu_domain *domain)
 	if (!smmu || domain->type == IOMMU_DOMAIN_IDENTITY)
 		return;
 
-	ret = pm_runtime_get_sync(smmu->dev);
+	ret = arm_smmu_rpm_get(smmu);
 	if (ret < 0)
 		return;
 
@@ -947,7 +960,7 @@ static void arm_smmu_destroy_domain_context(struct iommu_domain *domain)
 	free_io_pgtable_ops(smmu_domain->pgtbl_ops);
 	__arm_smmu_free_bitmap(smmu->context_map, cfg->cbndx);
 
-	pm_runtime_put_sync(smmu->dev);
+	arm_smmu_rpm_put(smmu);
 }
 
 static struct iommu_domain *arm_smmu_domain_alloc(unsigned type)
@@ -1230,7 +1243,7 @@ static int arm_smmu_attach_dev(struct iommu_domain *domain, struct device *dev)
 
 	smmu = fwspec_smmu(fwspec);
 
-	ret = pm_runtime_get_sync(smmu->dev);
+	ret = arm_smmu_rpm_get(smmu);
 	if (ret < 0)
 		return ret;
 
@@ -1255,7 +1268,7 @@ static int arm_smmu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	ret = arm_smmu_domain_add_master(smmu_domain, fwspec);
 
 rpm_put:
-	pm_runtime_put_sync(smmu->dev);
+	arm_smmu_rpm_put(smmu);
 	return ret;
 }
 
@@ -1269,9 +1282,9 @@ static int arm_smmu_map(struct iommu_domain *domain, unsigned long iova,
 	if (!ops)
 		return -ENODEV;
 
-	pm_runtime_get_sync(smmu->dev);
+	arm_smmu_rpm_get(smmu);
 	ret = ops->map(ops, iova, paddr, size, prot);
-	pm_runtime_put_sync(smmu->dev);
+	arm_smmu_rpm_put(smmu);
 
 	return ret;
 }
@@ -1286,9 +1299,9 @@ static size_t arm_smmu_unmap(struct iommu_domain *domain, unsigned long iova,
 	if (!ops)
 		return 0;
 
-	pm_runtime_get_sync(smmu->dev);
+	arm_smmu_rpm_get(smmu);
 	ret = ops->unmap(ops, iova, size);
-	pm_runtime_put_sync(smmu->dev);
+	arm_smmu_rpm_put(smmu);
 
 	return ret;
 }
@@ -1398,7 +1411,6 @@ static int arm_smmu_add_device(struct device *dev)
 	struct arm_smmu_device *smmu;
 	struct arm_smmu_master_cfg *cfg;
 	struct iommu_fwspec *fwspec = dev->iommu_fwspec;
-	struct device_link *link;
 	int i, ret;
 
 	if (using_legacy_binding) {
@@ -1446,26 +1458,23 @@ static int arm_smmu_add_device(struct device *dev)
 	while (i--)
 		cfg->smendx[i] = INVALID_SMENDX;
 
-	ret = pm_runtime_get_sync(smmu->dev);
+	ret = arm_smmu_rpm_get(smmu);
 	if (ret < 0)
 		goto out_cfg_free;
 
 	ret = arm_smmu_master_alloc_smes(dev);
-	pm_runtime_put_sync(smmu->dev);
+	arm_smmu_rpm_put(smmu);
+
 	if (ret)
 		goto out_cfg_free;
 
 	iommu_device_link(&smmu->iommu, dev);
 
-	/*
-	 * Establish the link between smmu and master, so that the
-	 * smmu gets runtime enabled/disabled as per the master's
-	 * needs.
-	 */
-	link = device_link_add(dev, smmu->dev, DL_FLAG_PM_RUNTIME);
-	if (!link) {
-		dev_warn(smmu->dev, "Unable to create device link between %s and %s\n",
-			 dev_name(smmu->dev), dev_name(dev));
+	if (pm_runtime_enabled(smmu->dev) &&
+	    !device_link_add(dev, smmu->dev,
+			     DL_FLAG_PM_RUNTIME | DL_FLAG_AUTOREMOVE)) {
+		dev_err(smmu->dev, "Unable to add link to the consumer %s\n",
+			dev_name(dev));
 		ret = -ENODEV;
 		goto out_unlink;
 	}
@@ -1495,20 +1504,14 @@ static void arm_smmu_remove_device(struct device *dev)
 	cfg  = fwspec->iommu_priv;
 	smmu = cfg->smmu;
 
-	/*
-	 * The device link between the master device and
-	 * smmu is already purged at this point.
-	 * So enable the power to smmu explicitly.
-	 */
-
-	ret = pm_runtime_get_sync(smmu->dev);
+	ret = arm_smmu_rpm_get(smmu);
 	if (ret < 0)
 		return;
 
 	iommu_device_unlink(&smmu->iommu, dev);
 	arm_smmu_master_free_smes(fwspec);
 
-	pm_runtime_put_sync(smmu->dev);
+	arm_smmu_rpm_put(smmu);
 
 	iommu_group_remove_device(dev);
 	kfree(fwspec->iommu_priv);
@@ -1761,30 +1764,6 @@ static int arm_smmu_id_size_to_bits(int size)
 	}
 }
 
-static int arm_smmu_init_clocks(struct arm_smmu_device *smmu)
-{
-	int i;
-	int err;
-	int num = smmu->num_clks;
-
-	if (num < 1)
-		return 0;
-
-	smmu->clocks = devm_kcalloc(smmu->dev, num,
-				    sizeof(*smmu->clocks), GFP_KERNEL);
-	if (!smmu->clocks)
-		return -ENOMEM;
-
-	for (i = 0; i < num; i++)
-		smmu->clocks->id = smmu->clk_names[i];
-
-	err = devm_clk_bulk_get(smmu->dev, num, smmu->clocks);
-	if (err)
-		return err;
-
-	return clk_bulk_prepare(smmu->num_clks, smmu->clocks);
-}
-
 static int arm_smmu_device_cfg_probe(struct arm_smmu_device *smmu)
 {
 	unsigned long size;
@@ -2007,29 +1986,18 @@ static const struct arm_smmu_match_data name = { .version = ver, .model = imp }
 ARM_SMMU_MATCH_DATA(smmu_generic_v1, ARM_SMMU_V1, GENERIC_SMMU);
 ARM_SMMU_MATCH_DATA(smmu_generic_v2, ARM_SMMU_V2, GENERIC_SMMU);
 ARM_SMMU_MATCH_DATA(arm_mmu401, ARM_SMMU_V1_64K, GENERIC_SMMU);
+ARM_SMMU_MATCH_DATA(arm_mmu500, ARM_SMMU_V2, ARM_MMU500);
 ARM_SMMU_MATCH_DATA(cavium_smmuv2, ARM_SMMU_V2, CAVIUM_SMMUV2);
-ARM_SMMU_MATCH_DATA(qcom_smmu500, ARM_SMMU_V2, ARM_MMU500);
 
-static const char * const arm_mmu500_clks[] = {
-	"tcu", "tbu", "iface",
-};
-
-static const struct arm_smmu_match_data arm_mmu500 = {
-	.version = ARM_SMMU_V2,
-	.model = ARM_MMU500,
-	.clks = arm_mmu500_clks,
-	.num_clks = ARRAY_SIZE(arm_mmu500_clks),
-};
-
-static const char * const qcom_msm8996_smmuv2_clks[] = {
+static const char * const qcom_smmuv2_clks[] = {
 	"bus", "iface",
 };
 
-static const struct arm_smmu_match_data qcom_msm8996_smmuv2 = {
+static const struct arm_smmu_match_data qcom_smmuv2 = {
 	.version = ARM_SMMU_V2,
-	.model = QCOM_MSM8996_SMMUV2,
-	.clks = qcom_msm8996_smmuv2_clks,
-	.num_clks = ARRAY_SIZE(qcom_msm8996_smmuv2_clks),
+	.model = QCOM_SMMUV2,
+	.clks = qcom_smmuv2_clks,
+	.num_clks = ARRAY_SIZE(qcom_smmuv2_clks),
 };
 
 static const struct of_device_id arm_smmu_of_match[] = {
@@ -2039,11 +2007,27 @@ static const struct of_device_id arm_smmu_of_match[] = {
 	{ .compatible = "arm,mmu-401", .data = &arm_mmu401 },
 	{ .compatible = "arm,mmu-500", .data = &arm_mmu500 },
 	{ .compatible = "cavium,smmu-v2", .data = &cavium_smmuv2 },
-	{ .compatible = "qcom,msm8996-smmu-v2", .data = &qcom_msm8996_smmuv2 },
-	{ .compatible = "qcom,smmu-500", .data = &qcom_smmu500 },
+	{ .compatible = "qcom,smmu-v2", .data = &qcom_smmuv2 },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, arm_smmu_of_match);
+
+static void arm_smmu_fill_clk_data(struct arm_smmu_device *smmu,
+				   const char * const *clks)
+{
+	int i;
+
+	if (smmu->num_clks < 1)
+		return;
+
+	smmu->clks = devm_kcalloc(smmu->dev, smmu->num_clks,
+				  sizeof(*smmu->clks), GFP_KERNEL);
+	if (!smmu->clks)
+		return;
+
+	for (i = 0; i < smmu->num_clks; i++)
+		smmu->clks[i].id = clks[i];
+}
 
 #ifdef CONFIG_ACPI
 static int acpi_smmu_get_data(u32 model, struct arm_smmu_device *smmu)
@@ -2127,8 +2111,9 @@ static int arm_smmu_device_dt_probe(struct platform_device *pdev,
 	data = of_device_get_match_data(dev);
 	smmu->version = data->version;
 	smmu->model = data->model;
-	smmu->clk_names = data->clks;
 	smmu->num_clks = data->num_clks;
+
+	arm_smmu_fill_clk_data(smmu, data->clks);
 
 	parse_driver_options(smmu);
 
@@ -2227,14 +2212,26 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 		smmu->irqs[i] = irq;
 	}
 
-	err = arm_smmu_init_clocks(smmu);
+	platform_set_drvdata(pdev, smmu);
+
+	err = devm_clk_bulk_get(smmu->dev, smmu->num_clks, smmu->clks);
 	if (err)
 		return err;
 
-	platform_set_drvdata(pdev, smmu);
-	pm_runtime_enable(dev);
+	err = clk_bulk_prepare(smmu->num_clks, smmu->clks);
+	if (err)
+		return err;
 
-	err = pm_runtime_get_sync(dev);
+	/*
+	 * We want to avoid touching dev->power.lock in fastpaths unless
+	 * it's really going to do something useful - pm_runtime_enabled()
+	 * can serve as an ideal proxy for that decision. So, conditionally
+	 * enable pm_runtime.
+	 */
+	if (dev->pm_domain)
+		pm_runtime_enable(dev);
+
+	err = arm_smmu_rpm_get(smmu);
 	if (err < 0)
 		return err;
 
@@ -2282,7 +2279,8 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 
 	arm_smmu_device_reset(smmu);
 	arm_smmu_test_smr_masks(smmu);
-	pm_runtime_put_sync(dev);
+
+	arm_smmu_rpm_put(smmu);
 
 	/*
 	 * For ACPI and generic DT bindings, an SMMU will be probed before
@@ -2319,13 +2317,15 @@ static int arm_smmu_device_remove(struct platform_device *pdev)
 	if (!bitmap_empty(smmu->context_map, ARM_SMMU_MAX_CBS))
 		dev_err(&pdev->dev, "removing device with active domains!\n");
 
-	pm_runtime_get_sync(smmu->dev);
+	arm_smmu_rpm_get(smmu);
 	/* Turn the thing off */
 	writel(sCR0_CLIENTPD, ARM_SMMU_GR0_NS(smmu) + ARM_SMMU_GR0_sCR0);
-	pm_runtime_put_sync(smmu->dev);
-	pm_runtime_disable(smmu->dev);
+	arm_smmu_rpm_put(smmu);
 
-	clk_bulk_unprepare(smmu->num_clks, smmu->clocks);
+	if (pm_runtime_enabled(smmu->dev))
+		pm_runtime_disable(smmu->dev);
+
+	clk_bulk_unprepare(smmu->num_clks, smmu->clks);
 
 	return 0;
 }
@@ -2343,25 +2343,26 @@ static int __maybe_unused arm_smmu_pm_resume(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused arm_smmu_resume(struct device *dev)
+static int __maybe_unused arm_smmu_runtime_resume(struct device *dev)
 {
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
-	return clk_bulk_enable(smmu->num_clks, smmu->clocks);
+	return clk_bulk_enable(smmu->num_clks, smmu->clks);
 }
 
-static int __maybe_unused arm_smmu_suspend(struct device *dev)
+static int __maybe_unused arm_smmu_runtime_suspend(struct device *dev)
 {
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
-	clk_bulk_disable(smmu->num_clks, smmu->clocks);
+	clk_bulk_disable(smmu->num_clks, smmu->clks);
 
 	return 0;
 }
 
 static const struct dev_pm_ops arm_smmu_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(NULL, arm_smmu_pm_resume)
-	SET_RUNTIME_PM_OPS(arm_smmu_suspend, arm_smmu_resume, NULL)
+	SET_RUNTIME_PM_OPS(arm_smmu_runtime_suspend,
+			   arm_smmu_runtime_resume, NULL)
 };
 
 static struct platform_driver arm_smmu_driver = {
@@ -2382,6 +2383,7 @@ IOMMU_OF_DECLARE(arm_mmu400, "arm,mmu-400");
 IOMMU_OF_DECLARE(arm_mmu401, "arm,mmu-401");
 IOMMU_OF_DECLARE(arm_mmu500, "arm,mmu-500");
 IOMMU_OF_DECLARE(cavium_smmuv2, "cavium,smmu-v2");
+IOMMU_OF_DECLARE(qcom_smmuv2, "qcom,smmu-v2");
 
 MODULE_DESCRIPTION("IOMMU API for ARM architected SMMU implementations");
 MODULE_AUTHOR("Will Deacon <will.deacon@arm.com>");

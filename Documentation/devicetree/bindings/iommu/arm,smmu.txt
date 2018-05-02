@@ -17,10 +17,18 @@ conditions.
                         "arm,mmu-401"
                         "arm,mmu-500"
                         "cavium,smmu-v2"
-                        "qcom,msm8996-smmu-v2"
+                        "qcom,<soc>-smmu-v2", "qcom,smmu-v2"
 
                   depending on the particular implementation and/or the
                   version of the architecture implemented.
+
+                  A number of Qcom SoCs use qcom,smmu-v2 version of the IP.
+                  "qcom,<soc>-smmu-v2" represents a soc specific compatible
+                  string that should be present along with the "qcom,smmu-v2"
+                  to facilitate SoC specific clocks/power connections and to
+                  address specific bug fixes.
+                  An example string would be -
+                  "qcom,msm8996-smmu-v2", "qcom,smmu-v2".
 
 - reg           : Base address and size of the SMMU.
 
@@ -72,31 +80,21 @@ conditions.
                   or using stream matching with #iommu-cells = <2>, and
                   may be ignored if present in such cases.
 
-- clock-names:    Should be "tcu", "tbu" and "iface" for "arm,mmu-400",
-                  "arm,mmu-401" and "arm,mmu-500"
+- clock-names:    List of the names of clocks input to the device. The
+                  required list depends on particular implementation and
+                  is as follows:
+                  - for "qcom,smmu-v2":
+                    - "bus": clock required for downstream bus access and
+                             for the smmu ptw,
+                    - "iface": clock required to access smmu's registers
+                               through the TCU's programming interface.
+                  - unspecified for other implementations.
 
-                  Should be "bus", and "iface" for "qcom,msm8996-smmu-v2"
-                  implementation.
+- clocks:         Specifiers for all clocks listed in the clock-names property,
+                  as per generic clock bindings.
 
-                  "tcu" clock is required for smmu's register access using the
-                  programming interface and ptw for downstream bus access.
-                  "tbu" clock is used for TBU accesses for any tlb operations.
-                  The TBU clock can either be in the same clock and power
-                  domain as the TCU clock, or in separate.
-
-                  "bus" clock for "qcom,msm8996-smmu-v2" is requierd for downstream
-                  bus access and for the smmu ptw.
-
-                  "iface" clock is required to access the TCU's programming
-                  interface, apart from the "tcu" clock.
-
-- clocks:         Phandles for respective clocks described by clock-names.
-
-- power-domains:  Phandles to SMMU's power domain specifier. This is
-                  required even if SMMU belongs to the master's power
-                  domain, as the SMMU will have to be enabled and
-                  accessed before master gets enabled and linked to its
-                  SMMU.
+- power-domains:  Specifiers for power domains required to be powered on for
+                  the SMMU to operate, as per generic power domain bindings.
 
 ** Deprecated properties:
 
@@ -171,9 +169,9 @@ conditions.
                 ...
         };
 
-	/* Qcom's arm,smmu-v2 implementation for msm8996 */
+	/* Qcom's arm,smmu-v2 implementation */
 	smmu4: iommu {
-		compatible = "qcom,msm8996-smmu-v2";
+		compatible = "qcom,msm8996-smmu-v2", "qcom,smmu-v2";
 		reg = <0xd00000 0x10000>;
 
 		#global-interrupts = <1>;
