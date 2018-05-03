@@ -37,6 +37,9 @@
 #define EDL_TAG_ID_HCI			(17)
 #define EDL_TAG_ID_DEEP_SLEEP		(27)
 
+#define CHEROKEE_POWERON_PULSE          (0xFC)
+#define CHEROKEE_POWEROFF_PULSE         (0xC0)
+
 enum qca_bardrate {
 	QCA_BAUDRATE_115200 	= 0,
 	QCA_BAUDRATE_57600,
@@ -123,6 +126,9 @@ struct tlv_type_hdr {
 	__le32 type_len;
 	__u8   data[0];
 } __packed;
+
+int btqca_power_setup(bool on);
+int qca_btsoc_cleanup(struct hci_dev *hdev);
 
 #if IS_ENABLED(CONFIG_BT_QCA)
 
