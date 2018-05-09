@@ -778,7 +778,7 @@
 		};
 
 		hsusb_phy0: phy@88e2000 {
-			compatible = "qcom,sdm845-1-qusb2-phy";
+			compatible = "qcom,sdm845-qusb2-phy";
 			reg = <0x88e2000 0x400>;
 			reg-names = "reg-base";
 			#phy-cells = <0>;
@@ -792,6 +792,11 @@
 			vdda-phy-dpdm-supply = <&pm8998_l24>;
 			resets = <&gcc GCC_QUSB2PHY_PRIM_BCR>;
 			nvmem-cells = <&qusb2p_hstx_trim>;
+
+			qcom,imp-res-offset-value = <8>;
+			qcom,hstx-trim-value = <QUSB2_V2_HSTX_TRIM_21_6_MA>;
+			qcom,preemphasis-level = <QUSB2_V2_PREEMPHASIS_5_PERCENT>;
+			qcom,preemphasis-width = <QUSB2_V2_PREEMPHASIS_WIDTH_HALF_BIT>;
 		};
 
 		usb3: usb@a600000 {
@@ -867,7 +872,7 @@
 		};
 
 		hsusb_phy1: phy@88e3000 {
-			compatible = "qcom,sdm845-2-qusb2-phy";
+			compatible = "qcom,sdm845-qusb2-phy";
 			reg = <0x88e3000 0x400>;
 			reg-names = "reg-base";
 			#phy-cells = <0>;
@@ -881,6 +886,9 @@
 			vdda-phy-dpdm-supply = <&pm8998_l24>;
 
 			resets = <&gcc GCC_QUSB2PHY_SEC_BCR>;
+
+			qcom,imp-res-offset-value = <8>;
+			qcom,hstx-trim-value = <QUSB2_V2_HSTX_TRIM_22_8_MA>;
 		};
 
 		/* USB3 Secondary controller with QMP UNI-PHY */
