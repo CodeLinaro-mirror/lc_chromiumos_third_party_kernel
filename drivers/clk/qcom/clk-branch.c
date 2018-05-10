@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013, 2018, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -77,8 +77,11 @@ static int clk_branch_wait(const struct clk_branch *br, bool enabling,
 	bool voted = br->halt_check & BRANCH_VOTED;
 	const char *name = clk_hw_get_name(&br->clkr.hw);
 
-	/* Skip checking halt bit if the clock is in hardware gated mode */
-	if (clk_branch_in_hwcg_mode(br))
+	/*
+	 * Skip checking halt bit if we're explicitly ignoring the bit or the
+	 * clock is in hardware gated mode
+	 */
+	if (br->halt_check == BRANCH_HALT_SKIP || clk_branch_in_hwcg_mode(br))
 		return 0;
 
 	if (br->halt_check == BRANCH_HALT_DELAY || (!enabling && voted)) {
