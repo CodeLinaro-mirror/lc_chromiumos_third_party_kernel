@@ -109,7 +109,6 @@ static int _sde_danger_signal_status(struct seq_file *s,
 	priv = kms->dev->dev_private;
 	memset(&status, 0, sizeof(struct sde_danger_safe_status));
 
-	pm_runtime_get_sync(kms->dev->dev);
 	sde_power_resource_enable(&priv->phandle, kms->core_client, true);
 	if (danger_status) {
 		seq_puts(s, "\nDanger signal status:\n");
@@ -123,7 +122,6 @@ static int _sde_danger_signal_status(struct seq_file *s,
 					&status);
 	}
 	sde_power_resource_enable(&priv->phandle, kms->core_client, false);
-	pm_runtime_put_sync(kms->dev->dev);
 
 	seq_printf(s, "MDP     :  0x%x\n", status.mdp);
 
@@ -350,9 +348,7 @@ static int sde_kms_enable_vblank(struct msm_kms *kms, struct drm_crtc *crtc)
 
 static void sde_kms_disable_vblank(struct msm_kms *kms, struct drm_crtc *crtc)
 {
-	pm_runtime_get_sync(crtc->dev->dev);
 	sde_crtc_vblank(crtc, false);
-	pm_runtime_put_sync(crtc->dev->dev);
 }
 
 static void sde_kms_wait_for_frame_transfer_complete(struct msm_kms *kms,
@@ -515,7 +511,7 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	if (!dev || !dev->dev_private)
 		return;
 	priv = dev->dev_private;
-	pm_runtime_get_sync(dev->dev);
+
 	sde_power_resource_enable(&priv->phandle, sde_kms->core_client, true);
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head)
@@ -582,7 +578,6 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 
 	sde_power_resource_enable(&priv->phandle, sde_kms->core_client, false);
 
-	pm_runtime_put_sync(sde_kms->dev->dev);
 	SDE_EVT32_VERBOSE(SDE_EVTLOG_FUNC_EXIT);
 }
 
@@ -690,7 +685,7 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			dsi_display_get_active_displays(sde_kms->dsi_displays,
 					sde_kms->dsi_display_count);
 	}
-#ifdef CONFIG_CHROME_SDE_WB
+
 	/* wb */
 	sde_kms->wb_displays = NULL;
 	sde_kms->wb_display_count = sde_wb_get_num_of_displays();
@@ -706,7 +701,7 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			wb_display_get_displays(sde_kms->wb_displays,
 					sde_kms->wb_display_count);
 	}
-#endif
+
 #ifdef CONFIG_CHROME_MSM_DP
 	/* dp */
 	sde_kms->dp_displays = NULL;
@@ -732,13 +727,12 @@ exit_deinit_dp:
 	sde_kms->dp_display_count = 0;
 	sde_kms->dp_displays = NULL;
 #endif
-#ifdef CONFIG_CHROME_SDE_WB
+
 exit_deinit_wb:
 	kfree(sde_kms->wb_displays);
 	sde_kms->wb_display_count = 0;
 	sde_kms->wb_displays = NULL;
 
-#endif
 exit_deinit_dsi:
 	kfree(sde_kms->dsi_displays);
 	sde_kms->dsi_display_count = 0;
@@ -1991,15 +1985,13 @@ static int _sde_kms_mmu_destroy(struct sde_kms *sde_kms)
 
 static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 {
-	int ret;
-
-#ifdef CONFIG_CHROME_MSM_SMMU
 	struct msm_mmu *mmu;
-	int i;
+	int i, ret;
 
 	for (i = 0; i < MSM_SMMU_DOMAIN_MAX; i++) {
 		struct msm_gem_address_space *aspace;
 
+#ifdef CONFIG_CHROME_MSM_SMMU
 		mmu = msm_smmu_new(sde_kms->dev->dev, i);
 		if (IS_ERR(mmu)) {
 			ret = PTR_ERR(mmu);
@@ -2007,6 +1999,7 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 								i, ret);
 			continue;
 		}
+#endif
 
 		aspace = msm_gem_smmu_address_space_create(sde_kms->dev,
 			mmu, "sde");
@@ -2027,38 +2020,7 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 		}
 		aspace->domain_attached = true;
 	}
-#else
-	struct iommu_domain *domain;
-	struct msm_gem_address_space *aspace;
 
-	domain = iommu_get_domain_for_dev(sde_kms->dev->dev);
-	if (!domain) {
-		SDE_ERROR("failed to get iommu domain for SDE\n");
-		return PTR_ERR(domain);
-	}
-
-	domain->geometry.aperture_start = 0x1000;
-	domain->geometry.aperture_end = 0xffffffff;
-
-	aspace = msm_gem_address_space_create(sde_kms->dev->dev,
-		domain, "sde");
-	if (IS_ERR(aspace)) {
-		ret = PTR_ERR(aspace);
-		goto fail;
-	}
-
-	sde_kms->aspace[0] = aspace;
-
-	ret = aspace->mmu->funcs->attach(aspace->mmu,
-				(const char **)iommu_ports,
-				ARRAY_SIZE(iommu_ports));
-	if (ret) {
-		SDE_ERROR("failed to attach iommu %d\n", ret);
-		msm_gem_address_space_put(aspace);
-		goto fail;
-	}
-	aspace->domain_attached = true;
-#endif
 	return 0;
 fail:
 	_sde_kms_mmu_destroy(sde_kms);
@@ -2181,7 +2143,6 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto error;
 	}
 
-	pm_runtime_get_sync(dev->dev);
 	rc = sde_power_resource_enable(&priv->phandle, sde_kms->core_client,
 		true);
 	if (rc) {
@@ -2215,7 +2176,6 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto power_error;
 	}
 
-#ifdef CONFIG_CHROME_REGDMA
 	/* Initialize reg dma block which is a singleton */
 	rc = sde_reg_dma_init(sde_kms->reg_dma, sde_kms->catalog,
 			sde_kms->dev);
@@ -2223,7 +2183,6 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		SDE_ERROR("failed: reg dma init failed\n");
 		goto power_error;
 	}
-#endif
 
 	rc = sde_rm_init(&sde_kms->rm, sde_kms->catalog, sde_kms->mmio,
 			sde_kms->dev);
@@ -2319,7 +2278,6 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 			sde_kms_handle_power_event, sde_kms, "kms");
 
 	sde_power_resource_enable(&priv->phandle, sde_kms->core_client, false);
-	pm_runtime_put_sync(dev->dev);
 
 	return 0;
 
@@ -2329,7 +2287,6 @@ hw_intr_init_err:
 perf_err:
 power_error:
 	sde_power_resource_enable(&priv->phandle, sde_kms->core_client, false);
-	pm_runtime_put_sync(dev->dev);
 error:
 	_sde_kms_hw_destroy(sde_kms, platformdev);
 end:
