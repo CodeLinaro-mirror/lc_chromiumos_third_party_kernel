@@ -1696,7 +1696,7 @@ static struct drm_driver msm_driver = {
 	.ioctls             = msm_ioctls,
 	.num_ioctls         = ARRAY_SIZE(msm_ioctls),
 	.fops               = &fops,
-	.name               = "msm",
+	.name               = "msm_drm",
 	.desc               = "MSM Snapdragon DRM",
 	.date               = "20130625",
 	.major              = MSM_VERSION_MAJOR,
@@ -2059,7 +2059,7 @@ static struct platform_driver msm_platform_driver = {
 	.probe      = msm_pdev_probe,
 	.remove     = msm_pdev_remove,
 	.driver     = {
-		.name   = "msm",
+		.name   = "msm_drm",
 		.of_match_table = dt_match,
 		.pm     = &msm_pm_ops,
 	},
