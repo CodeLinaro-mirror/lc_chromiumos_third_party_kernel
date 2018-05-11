@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2017-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -51,10 +51,8 @@ static long div_round_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct clk_regmap_div *divider = to_clk_regmap_div(hw);
 
-	return divider_round_rate(hw, rate, prate, divider->table,
-				  divider->width,
-				  CLK_DIVIDER_ROUND_CLOSEST |
-				  divider->flags);
+	return divider_round_rate(hw, rate, prate, NULL, divider->width,
+				  CLK_DIVIDER_ROUND_CLOSEST);
 }
 
 static int div_set_rate(struct clk_hw *hw, unsigned long rate,
@@ -64,9 +62,8 @@ static int div_set_rate(struct clk_hw *hw, unsigned long rate,
 	struct clk_regmap *clkr = &divider->clkr;
 	u32 div;
 
-	div = divider_get_val(rate, parent_rate, divider->table,
-			      divider->width, CLK_DIVIDER_ROUND_CLOSEST |
-			      divider->flags);
+	div = divider_get_val(rate, parent_rate, NULL, divider->width,
+			      CLK_DIVIDER_ROUND_CLOSEST);
 
 	return regmap_update_bits(clkr->regmap, divider->reg,
 				  (BIT(divider->width) - 1) << divider->shift,
