@@ -955,11 +955,9 @@ static int dsi_display_parse_boot_display_selection(void)
 		boot_displays[i].name[j] = '\0';
 
 		if (i == DSI_PRIMARY) {
-#ifdef CONFIG_CHROME_CONT_SPLASH
 			boot_displays[i].is_primary = true;
 			/* Currently, secondary DSI display is not supported */
 			boot_displays[i].boot_disp_en = true;
-#endif
 		}
 	}
 	return 0;
