@@ -116,7 +116,7 @@ static int msm_sharedmem_probe(struct platform_device *pdev)
 
 	/* Get the addresses from platform-data */
 	if (!pdev->dev.of_node) {
-		pr_err("Node not found\n");
+		dev_err(&pdev->dev, "Entry not present in DT.\n");
 		ret = -ENODEV;
 		goto out;
 	}
@@ -128,10 +128,8 @@ static int msm_sharedmem_probe(struct platform_device *pdev)
 
 	ret = of_property_read_u32(pdev->dev.of_node, CLIENT_ID_PROP,
 				   &client_id);
-	if (ret) {
-		client_id = ((u32)~0U);
+	if (ret)
 		pr_warn("qcom,client-id property not found\n");
-	}
 
 	info = devm_kzalloc(&pdev->dev, sizeof(struct uio_info), GFP_KERNEL);
 	if (!info)
