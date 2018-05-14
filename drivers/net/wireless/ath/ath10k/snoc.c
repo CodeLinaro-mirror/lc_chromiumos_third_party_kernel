@@ -1508,6 +1508,9 @@ static void ath10k_iommu_deinit(struct ath10k *ar)
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
 	struct platform_device *pdev;
 
+	if (ar_snoc->iommu_bypass)
+		return;
+
 	pdev = ar_snoc->dev;
 
 	if (!ar_snoc->iommu_mapping)
@@ -1526,6 +1529,12 @@ static int ath10k_iommu_init(struct ath10k *ar)
 	int ret = 0;
 
 	pdev = ar_snoc->dev;
+
+	if (of_find_property(pdev->dev.of_node, "iommu-bypass", NULL)) {
+		ar_snoc->iommu_bypass = true;
+		return 0;
+	}
+
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 					   "iommu_iova_base");
 	if (!res) {

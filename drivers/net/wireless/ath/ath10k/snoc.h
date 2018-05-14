@@ -86,6 +86,7 @@ struct ath10k_snoc {
 	struct iommu_domain *iommu_mapping;
 	dma_addr_t iommu_iova_start;
 	size_t iommu_iova_len;
+	bool iommu_bypass;
 };
 
 static inline struct ath10k_snoc *ath10k_snoc_priv(struct ath10k *ar)
