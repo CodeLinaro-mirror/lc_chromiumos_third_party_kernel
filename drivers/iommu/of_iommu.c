@@ -170,6 +170,9 @@ const struct iommu_ops *of_iommu_configure(struct device *dev,
 	if (!master_np)
 		return NULL;
 
+	if (of_find_property(dev->of_node, "iommu-bypass", NULL))
+		return NULL;
+
 	if (fwspec) {
 		if (fwspec->ops)
 			return fwspec->ops;
