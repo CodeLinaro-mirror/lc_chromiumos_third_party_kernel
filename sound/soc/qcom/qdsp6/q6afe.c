@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-// Copyright (c) 2011-2017, The Linux Foundation
+// Copyright (c) 2011-2017, The Linux Foundation. All rights reserved.
 // Copyright (c) 2018, Linaro Limited
 
 #include <linux/slab.h>
@@ -34,7 +34,7 @@
 #define AFE_PARAM_ID_CDC_SLIMBUS_SLAVE_CFG 0x00010235
 
 #define AFE_PARAM_ID_LPAIF_CLK_CONFIG	0x00010238
-#define AFE_PARAM_ID_INTERNAL_DIGITAL_CDC_CLK_CONFIG	0x00010239
+#define AFE_PARAM_ID_INT_DIGITAL_CDC_CLK_CONFIG	0x00010239
 
 #define AFE_PARAM_ID_SLIMBUS_CONFIG    0x00010212
 #define AFE_PARAM_ID_I2S_CONFIG	0x0001020D
@@ -133,13 +133,11 @@ struct q6afe {
 };
 
 struct afe_port_cmd_device_start {
-	struct apr_hdr hdr;
 	u16 port_id;
 	u16 reserved;
 } __packed;
 
 struct afe_port_cmd_device_stop {
-	struct apr_hdr hdr;
 	u16 port_id;
 	u16 reserved;
 /* Reserved for 32-bit alignment. This field must be set to 0.*/
@@ -263,29 +261,6 @@ struct afe_clk_set {
 	uint32_t enable;
 };
 
-struct afe_lpass_clk_config_command {
-	struct apr_hdr			 hdr;
-	struct afe_port_cmd_set_param_v2 param;
-	struct afe_port_param_data_v2    pdata;
-	struct afe_clk_cfg clk_cfg;
-} __packed;
-
-struct afe_lpass_clk_config_command_v2 {
-	struct apr_hdr			hdr;
-	struct afe_svc_cmd_set_param	param;
-	struct afe_port_param_data_v2    pdata;
-	struct afe_clk_set		clk_cfg;
-} __packed;
-
-
-
-struct afe_lpass_digital_clk_config_command {
-	struct apr_hdr			 hdr;
-	struct afe_port_cmd_set_param_v2 param;
-	struct afe_port_param_data_v2    pdata;
-	struct afe_digital_clk_cfg clk_cfg;
-} __packed;
-
 struct q6afe_port {
 	wait_queue_head_t wait;
 	union afe_port_config port_cfg;
@@ -297,13 +272,6 @@ struct q6afe_port {
 	struct list_head	node;
 };
 
-struct afe_audioif_config_command {
-	struct apr_hdr hdr;
-	struct afe_port_cmd_set_param_v2 param;
-	struct afe_port_param_data_v2 pdata;
-	union afe_port_config pcfg;
-} __packed;
-
 struct afe_port_map {
 	int port_id;
 	int token;
@@ -311,11 +279,11 @@ struct afe_port_map {
 	int is_dig_pcm;
 };
 
-/**
+/*
  * Mapping between Virtual Port IDs to DSP AFE Port ID
  * On B Family SoCs DSP Port IDs are consistent across multiple SoCs
  * on A Family SoCs DSP port IDs are same as virtual Port IDs.
- **/
+ */
 
 static struct afe_port_map port_maps[AFE_PORT_MAX] = {
 	[HDMI_RX] = { AFE_PORT_ID_MULTICHAN_HDMI_RX, HDMI_RX, 1, 1},
@@ -331,10 +299,12 @@ static struct afe_port_map port_maps[AFE_PORT_MAX] = {
 				SLIMBUS_4_RX, 1, 1},
 	[SLIMBUS_5_RX] = { AFE_PORT_ID_SLIMBUS_MULTI_CHAN_5_RX,
 				SLIMBUS_5_RX, 1, 1},
-	[QUATERNARY_MI2S_RX] = { AFE_PORT_ID_QUATERNARY_MI2S_RX,
-				QUATERNARY_MI2S_RX, 1, 1},
-	[QUATERNARY_MI2S_TX] = { AFE_PORT_ID_QUATERNARY_MI2S_TX,
-				QUATERNARY_MI2S_TX, 0, 1},
+	[SLIMBUS_6_RX] = { AFE_PORT_ID_SLIMBUS_MULTI_CHAN_6_RX,
+				SLIMBUS_6_RX, 1, 1},
+	[PRIMARY_MI2S_RX] = { AFE_PORT_ID_PRIMARY_MI2S_RX,
+				PRIMARY_MI2S_RX, 1, 1},
+	[PRIMARY_MI2S_TX] = { AFE_PORT_ID_PRIMARY_MI2S_TX,
+				PRIMARY_MI2S_RX, 0, 1},
 	[SECONDARY_MI2S_RX] = { AFE_PORT_ID_SECONDARY_MI2S_RX,
 				SECONDARY_MI2S_RX, 1, 1},
 	[SECONDARY_MI2S_TX] = { AFE_PORT_ID_SECONDARY_MI2S_TX,
@@ -343,40 +313,41 @@ static struct afe_port_map port_maps[AFE_PORT_MAX] = {
 				TERTIARY_MI2S_RX, 1, 1},
 	[TERTIARY_MI2S_TX] = { AFE_PORT_ID_TERTIARY_MI2S_TX,
 				TERTIARY_MI2S_TX, 0, 1},
-	[PRIMARY_MI2S_RX] = { AFE_PORT_ID_PRIMARY_MI2S_RX,
-				PRIMARY_MI2S_RX, 1, 1},
-	[PRIMARY_MI2S_TX] = { AFE_PORT_ID_PRIMARY_MI2S_TX,
-				PRIMARY_MI2S_RX, 0, 1},
-	[SLIMBUS_6_RX] = { AFE_PORT_ID_SLIMBUS_MULTI_CHAN_6_RX,
-				SLIMBUS_6_RX, 1, 1},
+	[QUATERNARY_MI2S_RX] = { AFE_PORT_ID_QUATERNARY_MI2S_RX,
+				QUATERNARY_MI2S_RX, 1, 1},
+	[QUATERNARY_MI2S_TX] = { AFE_PORT_ID_QUATERNARY_MI2S_TX,
+				QUATERNARY_MI2S_TX, 0, 1},
 };
 
 static struct q6afe_port *afe_find_port(struct q6afe *afe, int token)
 {
 	struct q6afe_port *p = NULL;
+	struct q6afe_port *ret = NULL;
 	unsigned long flags;
 
 	spin_lock_irqsave(&afe->port_list_lock, flags);
 	list_for_each_entry(p, &afe->port_list, node)
-		if (p->token == token)
+		if (p->token == token) {
+			ret = p;
 			break;
+		}
 
 	spin_unlock_irqrestore(&afe->port_list_lock, flags);
-	return p;
+	return ret;
 }
 
-static int q6afe_callback(struct apr_device *adev,
-			struct apr_client_message *data)
+static int q6afe_callback(struct apr_device *adev, struct apr_resp_pkt *data)
 {
 	struct q6afe *afe = dev_get_drvdata(&adev->dev);
 	struct aprv2_ibasic_rsp_result_t *res;
+	struct apr_hdr *hdr = &data->hdr;
 	struct q6afe_port *port;
 
 	if (!data->payload_size)
 		return 0;
 
 	res = data->payload;
-	switch (data->opcode) {
+	switch (hdr->opcode) {
 	case APR_BASIC_RSP_RESULT: {
 		if (res->status) {
 			dev_err(afe->dev, "cmd = 0x%x returned error = 0x%x\n",
@@ -387,7 +358,7 @@ static int q6afe_callback(struct apr_device *adev,
 		case AFE_PORT_CMD_DEVICE_STOP:
 		case AFE_PORT_CMD_DEVICE_START:
 		case AFE_SVC_CMD_SET_PARAM:
-			port = afe_find_port(afe, data->token);
+			port = afe_find_port(afe, hdr->token);
 			if (port) {
 				port->result = *res;
 				wake_up(&port->wait);
@@ -422,18 +393,18 @@ int q6afe_get_port_id(int index)
 }
 EXPORT_SYMBOL_GPL(q6afe_get_port_id);
 
-static int afe_apr_send_pkt(struct q6afe *afe, void *data,
+static int afe_apr_send_pkt(struct q6afe *afe, struct apr_pkt *pkt,
 			    struct q6afe_port *port)
 {
 	wait_queue_head_t *wait = &port->wait;
-	struct apr_hdr *hdr = data;
+	struct apr_hdr *hdr = &pkt->hdr;
 	int ret;
 
 	mutex_lock(&afe->lock);
 	port->result.opcode = 0;
 	port->result.status = 0;
 
-	ret = apr_send_pkt(afe->apr, data);
+	ret = apr_send_pkt(afe->apr, pkt);
 	if (ret < 0) {
 		dev_err(afe->dev, "packet not transmitted (%d)\n", ret);
 		ret = -EINVAL;
@@ -459,28 +430,35 @@ err:
 }
 
 static int q6afe_port_set_param(struct q6afe_port *port, void *data,
-				   int param_id, int module_id, int psize)
+				int param_id, int module_id, int psize)
 {
-	struct apr_hdr *hdr;
 	struct afe_svc_cmd_set_param *param;
 	struct afe_port_param_data_v2 *pdata;
 	struct q6afe *afe = port->afe;
+	struct apr_pkt *pkt;
 	u16 port_id = port->id;
-	int ret;
+	int ret, pkt_size;
+	void *p, *pl;
 
-	hdr = data;
-	param = data + sizeof(*hdr);
-	pdata = data + sizeof(*hdr) + sizeof(*param);
+	pkt_size = APR_HDR_SIZE + sizeof(*param) + sizeof(*pdata) + psize;
+	p = kzalloc(pkt_size, GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
 
-	hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-					      APR_HDR_LEN(APR_HDR_SIZE),
-					      APR_PKT_VER);
-	hdr->pkt_size = sizeof(*hdr) + sizeof(*param) +
-			sizeof(*pdata) + psize;
-	hdr->src_port = 0;
-	hdr->dest_port = 0;
-	hdr->token = port->token;
-	hdr->opcode = AFE_SVC_CMD_SET_PARAM;
+	pkt = p;
+	param = p + APR_HDR_SIZE;
+	pdata = p + APR_HDR_SIZE + sizeof(*param);
+	pl = p + APR_HDR_SIZE + sizeof(*param) + sizeof(*pdata);
+	memcpy(pl, data, psize);
+
+	pkt->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+					   APR_HDR_LEN(APR_HDR_SIZE),
+					   APR_PKT_VER);
+	pkt->hdr.pkt_size = pkt_size;
+	pkt->hdr.src_port = 0;
+	pkt->hdr.dest_port = 0;
+	pkt->hdr.token = port->token;
+	pkt->hdr.opcode = AFE_SVC_CMD_SET_PARAM;
 
 	param->payload_size = sizeof(*pdata) + psize;
 	param->payload_address_lsw = 0x00;
@@ -490,37 +468,46 @@ static int q6afe_port_set_param(struct q6afe_port *port, void *data,
 	pdata->param_id = param_id;
 	pdata->param_size = psize;
 
-	ret = afe_apr_send_pkt(afe, data, port);
+	ret = afe_apr_send_pkt(afe, pkt, port);
 	if (ret)
 		dev_err(afe->dev, "AFE enable for port 0x%x failed %d\n",
 		       port_id, ret);
 
+	kfree(pkt);
 	return ret;
 }
 
 static int q6afe_port_set_param_v2(struct q6afe_port *port, void *data,
 				   int param_id, int psize)
 {
-	struct apr_hdr *hdr;
 	struct afe_port_cmd_set_param_v2 *param;
 	struct afe_port_param_data_v2 *pdata;
 	struct q6afe *afe = port->afe;
+	struct apr_pkt *pkt;
 	u16 port_id = port->id;
-	int ret;
+	int ret, pkt_size;
+	void *p, *pl;
 
-	hdr = data;
-	param = data + sizeof(*hdr);
-	pdata = data + sizeof(*hdr) + sizeof(*param);
+	pkt_size = APR_HDR_SIZE + sizeof(*param) + sizeof(*pdata) + psize;
+	p = kzalloc(pkt_size, GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
 
-	hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-					      APR_HDR_LEN(APR_HDR_SIZE),
-					      APR_PKT_VER);
-	hdr->pkt_size = sizeof(*hdr) + sizeof(*param) +
-			sizeof(*pdata) + psize;
-	hdr->src_port = 0;
-	hdr->dest_port = 0;
-	hdr->token = port->token;
-	hdr->opcode = AFE_PORT_CMD_SET_PARAM_V2;
+	pkt = p;
+	param = p + APR_HDR_SIZE;
+	pdata = p + APR_HDR_SIZE + sizeof(*param);
+	pl = p + APR_HDR_SIZE + sizeof(*param) + sizeof(*pdata);
+	memcpy(pl, data, psize);
+
+	pkt->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+					   APR_HDR_LEN(APR_HDR_SIZE),
+					   APR_PKT_VER);
+	pkt->hdr.pkt_size = pkt_size;
+	pkt->hdr.src_port = 0;
+	pkt->hdr.dest_port = 0;
+	pkt->hdr.token = port->token;
+	pkt->hdr.opcode = AFE_PORT_CMD_SET_PARAM_V2;
+
 	param->port_id = port_id;
 	param->payload_size = sizeof(*pdata) + psize;
 	param->payload_address_lsw = 0x00;
@@ -530,66 +517,36 @@ static int q6afe_port_set_param_v2(struct q6afe_port *port, void *data,
 	pdata->param_id = param_id;
 	pdata->param_size = psize;
 
-	ret = afe_apr_send_pkt(afe, data, port);
+	ret = afe_apr_send_pkt(afe, pkt, port);
 	if (ret)
 		dev_err(afe->dev, "AFE enable for port 0x%x failed %d\n",
 		       port_id, ret);
 
-
+	kfree(pkt);
 	return ret;
 }
 
 static int q6afe_set_lpass_clock(struct q6afe_port *port,
 				 struct afe_clk_cfg *cfg)
 {
-	struct afe_lpass_clk_config_command clk_cfg = {{0} };
-	int param_id = AFE_PARAM_ID_LPAIF_CLK_CONFIG;
-	struct q6afe *afe = port->afe;
-
-	if (!cfg) {
-		dev_err(afe->dev, "clock cfg is NULL\n");
-		return -EINVAL;
-	}
-
-	clk_cfg.clk_cfg = *cfg;
-
-	return q6afe_port_set_param_v2(port, &clk_cfg, param_id, sizeof(*cfg));
+	return q6afe_port_set_param_v2(port, cfg,
+				       AFE_PARAM_ID_LPAIF_CLK_CONFIG,
+				       sizeof(*cfg));
 }
 
 static int q6afe_set_lpass_clock_v2(struct q6afe_port *port,
 				 struct afe_clk_set *cfg)
 {
-	struct afe_lpass_clk_config_command_v2 clk_cfg = {{0} };
-	int param_id = AFE_PARAM_ID_CLOCK_SET;
-	int module_id = AFE_MODULE_CLOCK_SET;
-	struct q6afe *afe = port->afe;
-
-	if (!cfg) {
-		dev_err(afe->dev, "clock cfg is NULL\n");
-		return -EINVAL;
-	}
-
-	clk_cfg.clk_cfg = *cfg;
-
-	return q6afe_port_set_param(port, &clk_cfg, param_id,
-				       module_id, sizeof(*cfg));
+	return q6afe_port_set_param(port, cfg, AFE_PARAM_ID_CLOCK_SET,
+				    AFE_MODULE_CLOCK_SET, sizeof(*cfg));
 }
 
 static int q6afe_set_digital_codec_core_clock(struct q6afe_port *port,
 					      struct afe_digital_clk_cfg *cfg)
 {
-	struct afe_lpass_digital_clk_config_command clk_cfg = {{0} };
-	int param_id = AFE_PARAM_ID_INTERNAL_DIGITAL_CDC_CLK_CONFIG;
-	struct q6afe *afe = port->afe;
-
-	if (!cfg) {
-		dev_err(afe->dev, "clock cfg is NULL\n");
-		return -EINVAL;
-	}
-
-	clk_cfg.clk_cfg = *cfg;
-
-	return q6afe_port_set_param_v2(port, &clk_cfg, param_id, sizeof(*cfg));
+	return q6afe_port_set_param_v2(port, cfg,
+				       AFE_PARAM_ID_INT_DIGITAL_CDC_CLK_CONFIG,
+				       sizeof(*cfg));
 }
 
 int q6afe_port_set_sysclk(struct q6afe_port *port, int clk_id,
@@ -652,11 +609,13 @@ EXPORT_SYMBOL_GPL(q6afe_port_set_sysclk);
  */
 int q6afe_port_stop(struct q6afe_port *port)
 {
-	int port_id = port->id;
-	struct afe_port_cmd_device_stop stop;
+	struct afe_port_cmd_device_stop *stop;
 	struct q6afe *afe = port->afe;
+	struct apr_pkt *pkt;
+	int port_id = port->id;
 	int ret = 0;
-	int index;
+	int index, pkt_size;
+	void *p;
 
 	port_id = port->id;
 	index = port->token;
@@ -665,21 +624,30 @@ int q6afe_port_stop(struct q6afe_port *port)
 		return -EINVAL;
 	}
 
-	stop.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+	pkt_size = APR_HDR_SIZE + sizeof(*stop);
+	p = kzalloc(pkt_size, GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+
+	pkt = p;
+	stop = p + APR_HDR_SIZE;
+
+	pkt->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 					   APR_HDR_LEN(APR_HDR_SIZE),
 					   APR_PKT_VER);
-	stop.hdr.pkt_size = sizeof(stop);
-	stop.hdr.src_port = 0;
-	stop.hdr.dest_port = 0;
-	stop.hdr.token = index;
-	stop.hdr.opcode = AFE_PORT_CMD_DEVICE_STOP;
-	stop.port_id = port_id;
-	stop.reserved = 0;
+	pkt->hdr.pkt_size = pkt_size;
+	pkt->hdr.src_port = 0;
+	pkt->hdr.dest_port = 0;
+	pkt->hdr.token = index;
+	pkt->hdr.opcode = AFE_PORT_CMD_DEVICE_STOP;
+	stop->port_id = port_id;
+	stop->reserved = 0;
 
-	ret = afe_apr_send_pkt(afe, &stop, port);
+	ret = afe_apr_send_pkt(afe, pkt, port);
 	if (ret)
 		dev_err(afe->dev, "AFE close failed %d\n", ret);
 
+	kfree(pkt);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(q6afe_port_stop);
@@ -882,37 +850,47 @@ EXPORT_SYMBOL_GPL(q6afe_i2s_port_prepare);
  */
 int q6afe_port_start(struct q6afe_port *port)
 {
-	struct afe_audioif_config_command config = {{0,} };
-	struct afe_port_cmd_device_start start;
+	struct afe_port_cmd_device_start *start;
 	struct q6afe *afe = port->afe;
 	int port_id = port->id;
 	int ret, param_id = port->cfg_type;
+	struct apr_pkt *pkt;
+	int pkt_size;
+	void *p;
 
-	config.pcfg = port->port_cfg;
-
-	ret  = q6afe_port_set_param_v2(port, &config, param_id,
-				       sizeof(config.pcfg));
+	ret  = q6afe_port_set_param_v2(port, &port->port_cfg, param_id,
+				       sizeof(port->port_cfg));
 	if (ret) {
 		dev_err(afe->dev, "AFE enable for port 0x%x failed %d\n",
 			port_id, ret);
 		return ret;
 	}
 
-	start.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+	pkt_size = APR_HDR_SIZE + sizeof(*start);
+	p = kzalloc(pkt_size, GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+
+	pkt = p;
+	start = p + APR_HDR_SIZE;
+
+	pkt->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 					    APR_HDR_LEN(APR_HDR_SIZE),
 					    APR_PKT_VER);
-	start.hdr.pkt_size = sizeof(start);
-	start.hdr.src_port = 0;
-	start.hdr.dest_port = 0;
-	start.hdr.token = port->token;
-	start.hdr.opcode = AFE_PORT_CMD_DEVICE_START;
-	start.port_id = port_id;
+	pkt->hdr.pkt_size = pkt_size;
+	pkt->hdr.src_port = 0;
+	pkt->hdr.dest_port = 0;
+	pkt->hdr.token = port->token;
+	pkt->hdr.opcode = AFE_PORT_CMD_DEVICE_START;
 
-	ret = afe_apr_send_pkt(afe, &start, port);
+	start->port_id = port_id;
+
+	ret = afe_apr_send_pkt(afe, pkt, port);
 	if (ret)
 		dev_err(afe->dev, "AFE enable for port 0x%x failed %d\n",
 			port_id, ret);
 
+	kfree(pkt);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(q6afe_port_start);
