@@ -22,7 +22,7 @@
 		     "google,cheza", "qcom,sdm845";
 
 	aliases {
-		serial0 = &qup_uart2;
+		serial0 = &uart2;
 	};
 
 	chosen {

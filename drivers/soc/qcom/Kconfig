@@ -3,12 +3,22 @@
 #
 menu "Qualcomm SoC drivers"
 
-config QCOM_GENI_SE
-	bool "QCOM GENI Serial Engine Driver"
+config QCOM_COMMAND_DB
+	bool "Qualcomm Command DB"
+	depends on (ARCH_QCOM && OF) || COMPILE_TEST
 	help
-	  This module is used to manage Generic Interface (GENI) firmware based
+	  Command DB queries shared memory by key string for shared system
+	  resources. Platform drivers that require to set state of a shared
+	  resource on a RPM-hardened platform must use this database to get
+	  SoC specific identifier and information for the shared resources.
+
+config QCOM_GENI_SE
+	tristate "QCOM GENI Serial Engine Driver"
+	depends on ARCH_QCOM || COMPILE_TEST
+	help
+	  This driver is used to manage Generic Interface (GENI) firmware based
 	  Qualcomm Technologies, Inc. Universal Peripheral (QUP) Wrapper. This
-	  module is also used to manage the common aspects of multiple Serial
+	  driver is also used to manage the common aspects of multiple Serial
 	  Engines present in the QUP.
 
 config QCOM_GLINK_SSR
@@ -45,7 +55,7 @@ config QCOM_PM
 
 config QCOM_QMI_HELPERS
 	tristate
-	depends on ARCH_QCOM
+	depends on ARCH_QCOM && NET
 	help
 	  Helper library for handling QMI encoded messages.  QMI encoded
 	  messages are used in communication between the majority of QRTR
@@ -55,6 +65,7 @@ config QCOM_QMI_HELPERS
 config QCOM_RMTFS_MEM
 	tristate "Qualcomm Remote Filesystem memory driver"
 	depends on ARCH_QCOM
+	select QCOM_SCM
 	help
 	  The Qualcomm remote filesystem memory driver is used for allocating
 	  and exposing regions of shared memory with remote processors for the

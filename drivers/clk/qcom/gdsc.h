@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2017-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -58,7 +58,7 @@ struct gdsc {
 #define CLAMP_IO	BIT(1)
 #define HW_CTRL		BIT(2)
 #define SW_RESET	BIT(3)
-#define RESET_AON	BIT(4)
+#define AON_RESET	BIT(4)
 #define FORCE_ROOT_ENABLE      BIT(5)
 	struct reset_controller_dev	*rcdev;
 	unsigned int			*resets;

@@ -991,6 +991,16 @@ void dce110_disable_stream(struct pipe_ctx *pipe_ctx, int option)
 	struct dc_link *link = stream->sink->link;
 	struct dc *dc = pipe_ctx->stream->ctx->dc;
 
+	if (dc_is_hdmi_signal(pipe_ctx->stream->signal))
+		pipe_ctx->stream_res.stream_enc->funcs->stop_hdmi_info_packets(
+			pipe_ctx->stream_res.stream_enc);
+
+	if (dc_is_dp_signal(pipe_ctx->stream->signal))
+		pipe_ctx->stream_res.stream_enc->funcs->stop_dp_info_packets(
+			pipe_ctx->stream_res.stream_enc);
+
+	pipe_ctx->stream_res.stream_enc->funcs->audio_mute_control(
+			pipe_ctx->stream_res.stream_enc, true);
 	if (pipe_ctx->stream_res.audio) {
 		pipe_ctx->stream_res.audio->funcs->az_disable(pipe_ctx->stream_res.audio);
 
@@ -1014,18 +1024,6 @@ void dce110_disable_stream(struct pipe_ctx *pipe_ctx, int option)
 		 * stream->stream_engine_id);
 		 */
 	}
-
-	if (dc_is_hdmi_signal(pipe_ctx->stream->signal))
-		pipe_ctx->stream_res.stream_enc->funcs->stop_hdmi_info_packets(
-			pipe_ctx->stream_res.stream_enc);
-
-	if (dc_is_dp_signal(pipe_ctx->stream->signal))
-		pipe_ctx->stream_res.stream_enc->funcs->stop_dp_info_packets(
-			pipe_ctx->stream_res.stream_enc);
-
-	pipe_ctx->stream_res.stream_enc->funcs->audio_mute_control(
-			pipe_ctx->stream_res.stream_enc, true);
-
 
 	/* blank at encoder level */
 	if (dc_is_dp_signal(pipe_ctx->stream->signal)) {
@@ -1872,8 +1870,10 @@ static void dce110_reset_hw_ctx_wrap(
 				pipe_need_reprogram(pipe_ctx_old, pipe_ctx)) {
 			struct clock_source *old_clk = pipe_ctx_old->clock_source;
 
-			/* disable already, no need to disable again */
-			if (pipe_ctx->stream && !pipe_ctx->stream->dpms_off)
+			/* Disable if new stream is null. O/w, if stream is
+			 * disabled already, no need to disable again.
+			 */
+			if (!pipe_ctx->stream || !pipe_ctx->stream->dpms_off)
 				core_link_disable_stream(pipe_ctx_old, FREE_ACQUIRED_RESOURCE);
 
 			pipe_ctx_old->stream_res.tg->funcs->set_blank(pipe_ctx_old->stream_res.tg, true);
@@ -2725,7 +2725,9 @@ static void dce110_program_front_end_for_pipe(
 	struct pipe_ctx *cur_pipe_ctx =
 					&dc->current_state->res_ctx.pipe_ctx[pipe_ctx->pipe_idx];
 	unsigned int i;
-
+#if defined(CONFIG_DRM_AMD_DC_FBC)
+       unsigned int underlay_idx = dc->res_pool->underlay_pipe_index;
+#endif
 	memset(&tbl_entry, 0, sizeof(tbl_entry));
 
 	if (dc->current_state)
@@ -2788,7 +2790,9 @@ static void dce110_program_front_end_for_pipe(
 	program_scaler(dc, pipe_ctx);
 
 #if defined(CONFIG_DRM_AMD_DC_FBC)
-	if (dc->fbc_compressor && old_pipe->stream) {
+	/* fbc not applicable on Underlay pipe */
+	if (dc->fbc_compressor && old_pipe->stream &&
+	    pipe_ctx->pipe_idx != underlay_idx) {
 		if (plane_state->tiling_info.gfx8.array_mode == DC_ARRAY_LINEAR_GENERAL)
 			dc->fbc_compressor->funcs->disable_fbc(dc->fbc_compressor);
 		else
@@ -2866,16 +2870,19 @@ static void dce110_apply_ctx_for_surface(
 		int num_planes,
 		struct dc_state *context)
 {
-	int i, be_idx;
+	int i;
 
 	if (num_planes == 0)
 		return;
 
-	be_idx = -1;
 	for (i = 0; i < dc->res_pool->pipe_count; i++) {
-		if (stream == context->res_ctx.pipe_ctx[i].stream) {
-			be_idx = context->res_ctx.pipe_ctx[i].stream_res.tg->inst;
-			break;
+		struct pipe_ctx *pipe_ctx = &context->res_ctx.pipe_ctx[i];
+		struct pipe_ctx *old_pipe_ctx = &dc->current_state->res_ctx.pipe_ctx[i];
+
+		if (stream == pipe_ctx->stream) {
+			if (!pipe_ctx->top_pipe &&
+				(pipe_ctx->plane_state || old_pipe_ctx->plane_state))
+				dc->hwss.pipe_control_lock(dc, pipe_ctx, true);
 		}
 	}
 
@@ -2895,8 +2902,21 @@ static void dce110_apply_ctx_for_surface(
 					context->stream_count);
 
 		dce110_program_front_end_for_pipe(dc, pipe_ctx);
+
+		dc->hwss.update_plane_addr(dc, pipe_ctx);
+
 		program_surface_visibility(dc, pipe_ctx);
 
+	}
+
+	for (i = 0; i < dc->res_pool->pipe_count; i++) {
+		struct pipe_ctx *pipe_ctx = &context->res_ctx.pipe_ctx[i];
+		struct pipe_ctx *old_pipe_ctx = &dc->current_state->res_ctx.pipe_ctx[i];
+
+		if ((stream == pipe_ctx->stream) &&
+			(!pipe_ctx->top_pipe) &&
+			(pipe_ctx->plane_state || old_pipe_ctx->plane_state))
+			dc->hwss.pipe_control_lock(dc, pipe_ctx, false);
 	}
 }
 

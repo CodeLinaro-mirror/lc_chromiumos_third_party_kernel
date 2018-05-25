@@ -121,6 +121,10 @@ static bool create_links(
 			goto failed_alloc;
 		}
 
+		link->link_index = dc->link_count;
+		dc->links[dc->link_count] = link;
+		dc->link_count++;
+
 		link->ctx = dc->ctx;
 		link->dc = dc;
 		link->connector_signal = SIGNAL_TYPE_VIRTUAL;
@@ -128,6 +132,13 @@ static bool create_links(
 		link->link_id.id = CONNECTOR_ID_VIRTUAL;
 		link->link_id.enum_id = ENUM_ID_1;
 		link->link_enc = kzalloc(sizeof(*link->link_enc), GFP_KERNEL);
+
+		if (!link->link_enc) {
+			BREAK_TO_DEBUGGER();
+			goto failed_alloc;
+		}
+
+		link->link_status.dpcd_caps = &link->dpcd_caps;
 
 		enc_init.ctx = dc->ctx;
 		enc_init.channel = CHANNEL_ID_UNKNOWN;
@@ -138,10 +149,6 @@ static bool create_links(
 		enc_init.encoder.id = ENCODER_ID_INTERNAL_VIRTUAL;
 		enc_init.encoder.enum_id = ENUM_ID_1;
 		virtual_link_encoder_construct(link->link_enc, &enc_init);
-
-		link->link_index = dc->link_count;
-		dc->links[dc->link_count] = link;
-		dc->link_count++;
 	}
 
 	return true;
@@ -1473,10 +1480,7 @@ void dc_commit_updates_for_stream(struct dc *dc,
 				stream_update,
 				update_type,
 				context);
-
-	if (update_type >= UPDATE_TYPE_FULL)
-		dc_post_update_surfaces_to_stream(dc);
-
+	/*update current_State*/
 	if (dc->current_state != context) {
 
 		struct dc_state *old = dc->current_state;
@@ -1485,6 +1489,9 @@ void dc_commit_updates_for_stream(struct dc *dc,
 		dc_release_state(old);
 
 	}
+	/*let's use current_state to update watermark etc*/
+	if (update_type >= UPDATE_TYPE_FULL)
+		dc_post_update_surfaces_to_stream(dc);
 
 	return;
 

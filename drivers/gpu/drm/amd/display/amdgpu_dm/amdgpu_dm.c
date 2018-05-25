@@ -535,7 +535,8 @@ static int detect_mst_link_for_all_connectors(struct drm_device *dev)
 
 	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
 		aconnector = to_amdgpu_dm_connector(connector);
-		if (aconnector->dc_link->type == dc_connection_mst_branch) {
+		if (aconnector->dc_link->type == dc_connection_mst_branch &&
+		    aconnector->mst_mgr.aux) {
 			DRM_DEBUG_DRIVER("DM_MST: starting TM on aconnector: %p [id: %d]\n",
 					aconnector, aconnector->base.base.id);
 
@@ -692,6 +693,10 @@ int amdgpu_dm_display_resume(struct amdgpu_device *adev)
 
 		mutex_lock(&aconnector->hpd_lock);
 		dc_link_detect(aconnector->dc_link, DETECT_REASON_HPD);
+
+		if (aconnector->fake_enable && aconnector->dc_link->local_sink)
+			aconnector->fake_enable = false;
+
 		aconnector->dc_sink = NULL;
 		amdgpu_dm_update_connector_after_detect(aconnector);
 		mutex_unlock(&aconnector->hpd_lock);
@@ -2373,7 +2378,7 @@ create_stream_for_sink(struct amdgpu_dm_connector *aconnector,
 		       const struct dm_connector_state *dm_state)
 {
 	struct drm_display_mode *preferred_mode = NULL;
-	const struct drm_connector *drm_connector;
+	struct drm_connector *drm_connector;
 	struct dc_stream_state *stream = NULL;
 	struct drm_display_mode mode = *drm_mode;
 	bool native_mode_found = false;
@@ -2392,11 +2397,13 @@ create_stream_for_sink(struct amdgpu_dm_connector *aconnector,
 
 	if (!aconnector->dc_sink) {
 		/*
-		 * Exclude MST from creating fake_sink
-		 * TODO: need to enable MST into fake_sink feature
+		 * Create dc_sink when necessary to MST
+		 * Don't apply fake_sink to MST
 		 */
-		if (aconnector->mst_port)
-			goto stream_create_fail;
+		if (aconnector->mst_port) {
+			dm_dp_mst_dc_sink_create(drm_connector);
+			goto mst_dc_sink_create_done;
+		}
 
 		if (create_fake_sink(aconnector))
 			goto stream_create_fail;
@@ -2447,6 +2454,7 @@ create_stream_for_sink(struct amdgpu_dm_connector *aconnector,
 stream_create_fail:
 dm_state_null:
 drm_connector_null:
+mst_dc_sink_create_done:
 	return stream;
 }
 
@@ -2745,7 +2753,7 @@ static void create_eml_sink(struct amdgpu_dm_connector *aconnector)
 			.link = aconnector->dc_link,
 			.sink_signal = SIGNAL_TYPE_VIRTUAL
 	};
-	struct edid *edid = (struct edid *) aconnector->base.edid_blob_ptr->data;
+	struct edid *edid;
 
 	if (!aconnector->base.edid_blob_ptr) {
 		DRM_ERROR("No EDID firmware found on connector: %s ,forcing to OFF!\n",
@@ -2755,6 +2763,8 @@ static void create_eml_sink(struct amdgpu_dm_connector *aconnector)
 		aconnector->base.override_edid = false;
 		return;
 	}
+
+	edid = (struct edid *) aconnector->base.edid_blob_ptr->data;
 
 	aconnector->edid = edid;
 
@@ -4236,12 +4246,12 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_state *state)
 		update_stream_scaling_settings(&dm_new_con_state->base.crtc->mode,
 				dm_new_con_state, (struct dc_stream_state *)dm_new_crtc_state->stream);
 
+		if (!dm_new_crtc_state->stream)
+			continue;
+
 		status = dc_stream_get_status(dm_new_crtc_state->stream);
 		WARN_ON(!status);
 		WARN_ON(!status->plane_count);
-
-		if (!dm_new_crtc_state->stream)
-			continue;
 
 		/*TODO How it works with MPO ?*/
 		if (!dc_commit_planes_to_stream(
@@ -4296,7 +4306,7 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_state *state)
 	drm_atomic_helper_commit_hw_done(state);
 
 	if (wait_for_vblank)
-		drm_atomic_helper_wait_for_vblanks(dev, state);
+		drm_atomic_helper_wait_for_flip_done(dev, state);
 
 	drm_atomic_helper_cleanup_planes(dev, state);
 }
@@ -4375,9 +4385,11 @@ void dm_restore_drm_connector_state(struct drm_device *dev,
 		return;
 
 	disconnected_acrtc = to_amdgpu_crtc(connector->encoder->crtc);
-	acrtc_state = to_dm_crtc_state(disconnected_acrtc->base.state);
+	if (!disconnected_acrtc)
+		return;
 
-	if (!disconnected_acrtc || !acrtc_state->stream)
+	acrtc_state = to_dm_crtc_state(disconnected_acrtc->base.state);
+	if (!acrtc_state->stream)
 		return;
 
 	/*
@@ -4498,7 +4510,7 @@ static int dm_update_crtcs_state(struct dc *dc,
 			}
 		}
 
-		if (dc_is_stream_unchanged(new_stream, dm_old_crtc_state->stream) &&
+		if (enable && dc_is_stream_unchanged(new_stream, dm_old_crtc_state->stream) &&
 				dc_is_stream_scaling_unchanged(new_stream, dm_old_crtc_state->stream)) {
 
 			new_crtc_state->mode_changed = false;
@@ -4612,8 +4624,6 @@ static int dm_update_planes_state(struct dc *dc,
 	bool pflip_needed  = !state->allow_modeset;
 	int ret = 0;
 
-	if (pflip_needed)
-		return ret;
 
 	/* Add new planes, in reverse order as DC expectation */
 	for_each_oldnew_plane_in_state_reverse(state, plane, old_plane_state, new_plane_state, i) {
@@ -4628,6 +4638,8 @@ static int dm_update_planes_state(struct dc *dc,
 
 		/* Remove any changed/removed planes */
 		if (!enable) {
+			if (pflip_needed)
+				continue;
 
 			if (!old_plane_crtc)
 				continue;
@@ -4672,6 +4684,8 @@ static int dm_update_planes_state(struct dc *dc,
 			if (!dm_new_crtc_state->stream)
 				continue;
 
+			if (pflip_needed)
+				continue;
 
 			WARN_ON(dm_new_plane_state->dc_state);
 

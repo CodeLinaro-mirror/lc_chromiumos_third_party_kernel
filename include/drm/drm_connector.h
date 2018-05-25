@@ -24,6 +24,7 @@
 #define __DRM_CONNECTOR_H__
 
 #include <linux/list.h>
+#include <linux/llist.h>
 #include <linux/ctype.h>
 #include <linux/hdmi.h>
 #include <drm/drm_mode_object.h>
@@ -284,6 +285,11 @@ struct drm_display_info {
 	 * @hdmi: advance features of a HDMI sink.
 	 */
 	struct drm_hdmi_info hdmi;
+
+	/**
+	 * @non_desktop: Non desktop display (HMD).
+	 */
+	bool non_desktop;
 };
 
 int drm_display_info_set_bus_formats(struct drm_display_info *info,
@@ -912,6 +918,15 @@ struct drm_connector {
 	uint8_t num_h_tile, num_v_tile;
 	uint8_t tile_h_loc, tile_v_loc;
 	uint16_t tile_h_size, tile_v_size;
+
+	/**
+	 * @free_node:
+	 *
+	 * List used only by &drm_connector_iter to be able to clean up a
+	 * connector from any context, in conjunction with
+	 * &drm_mode_config.connector_free_work.
+	 */
+	struct llist_node free_node;
 };
 
 #define obj_to_connector(x) container_of(x, struct drm_connector, base)
@@ -934,6 +949,7 @@ static inline unsigned drm_connector_index(struct drm_connector *connector)
 /**
  * drm_connector_lookup - lookup connector object
  * @dev: DRM device
+ * @file_priv: drm file to check for lease against.
  * @id: connector object id
  *
  * This function looks up the connector object specified by id

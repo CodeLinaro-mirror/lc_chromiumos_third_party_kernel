@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2017-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -204,7 +204,7 @@ static int gdsc_enable(struct generic_pm_domain *domain)
 	}
 
 	if (sc->flags & CLAMP_IO) {
-		if (sc->flags & RESET_AON)
+		if (sc->flags & AON_RESET)
 			gdsc_assert_reset_aon(sc);
 		gdsc_deassert_clamp_io(sc);
 	}

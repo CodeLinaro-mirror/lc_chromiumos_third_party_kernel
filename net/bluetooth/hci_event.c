@@ -1877,7 +1877,6 @@ static void hci_cs_disconnect(struct hci_dev *hdev, u8 status)
 {
 	struct hci_cp_disconnect *cp;
 	struct hci_conn *conn;
-	u8 type;
 
 	if (!status)
 		return;
@@ -1892,23 +1891,6 @@ static void hci_cs_disconnect(struct hci_dev *hdev, u8 status)
 	if (conn)
 		mgmt_disconnect_failed(hdev, &conn->dst, conn->type,
 				       conn->dst_type, status);
-
-	/* If the disconnection failed for any reason, the upper layer does
-	 * not retry to disconnect in current implementation. Hence, we need
-	 * to do some basic cleanup here.
-	 * TODO(b/72355862): Intel to fix the controller firmware
-	 * The disconnect failure occurs sometimes on Intel 7265 controller
-	 * as follows:
-	 *     > HCI Event: Command Status (0x0f) plen 4
-	 *         Disconnect (0x01|0x0006) ncmd 1
-	 *           Status: Unknown Connection Identifier (0x02)
-	 */
-	BT_DBG("Do some disconnect cleanup.");
-
-	type = conn->type;
-	hci_conn_del(conn);
-	if (type == LE_LINK)
-		hci_req_reenable_advertising(hdev);
 
 	hci_dev_unlock(hdev);
 }
@@ -4664,7 +4646,8 @@ static void hci_le_conn_update_complete_evt(struct hci_dev *hdev,
 /* This function requires the caller holds hdev->lock */
 static struct hci_conn *check_pending_le_conn(struct hci_dev *hdev,
 					      bdaddr_t *addr,
-					      u8 addr_type, u8 adv_type)
+					      u8 addr_type, u8 adv_type,
+					      bdaddr_t *direct_rpa)
 {
 	struct hci_conn *conn;
 	struct hci_conn_params *params;
@@ -4715,7 +4698,8 @@ static struct hci_conn *check_pending_le_conn(struct hci_dev *hdev,
 	}
 
 	conn = hci_connect_le(hdev, addr, addr_type, BT_SECURITY_LOW,
-			      HCI_LE_AUTOCONN_TIMEOUT, HCI_ROLE_MASTER);
+			      HCI_LE_AUTOCONN_TIMEOUT, HCI_ROLE_MASTER,
+			      direct_rpa);
 	if (!IS_ERR(conn)) {
 		/* If HCI_AUTO_CONN_EXPLICIT is set, conn is already owned
 		 * by higher layer that tried to connect, if no then
@@ -4825,8 +4809,13 @@ static void process_adv_report(struct hci_dev *hdev, u8 type, bdaddr_t *bdaddr,
 		bdaddr_type = irk->addr_type;
 	}
 
-	/* Check if we have been requested to connect to this device */
-	conn = check_pending_le_conn(hdev, bdaddr, bdaddr_type, type);
+	/* Check if we have been requested to connect to this device.
+	 *
+	 * direct_addr is set only for directed advertising reports (it is NULL
+	 * for advertising reports) and is already verified to be RPA above.
+	 */
+	conn = check_pending_le_conn(hdev, bdaddr, bdaddr_type, type,
+								direct_addr);
 	if (conn && type == LE_ADV_IND) {
 		/* Store report for later inclusion by
 		 * mgmt_device_connected
