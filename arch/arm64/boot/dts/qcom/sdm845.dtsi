@@ -5,8 +5,8 @@
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  */
 
-#include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/clock/qcom,gcc-sdm845.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/clock/qcom,rpmh.h>
 #include <dt-bindings/clock/qcom,dispcc-sdm845.h>
 #include <dt-bindings/clock/qcom,gpucc-sdm845.h>
@@ -41,35 +41,35 @@
 		#size-cells = <2>;
 		ranges;
 
-		removed_region2: removed_region2@85fc0000 {
+		memory@85fc0000 {
+			reg = <0 0x85fc0000 0 0x20000>;
 			no-map;
-			reg = <0 0x85fc0000 0 0x40000>;
 		};
 
-		smem_mem: smem-mem@86000000 {
+		memory@85fe0000 {
+			compatible = "qcom,cmd-db";
+			reg = <0x0 0x85fe0000 0x0 0x20000>;
 			no-map;
-			reg = <0 0x86000000 0 0x200000>;
 		};
 
-		removed_region3: removed-region3@86200000 {
+		smem_mem: memory@86000000 {
+			reg = <0x0 0x86000000 0x0 0x200000>;
 			no-map;
+		};
+
+		memory@86200000 {
 			reg = <0 0x86200000 0 0x2d00000>;
+			no-map;
 		};
 
-		mpss_mem: mpss@8cc00000 {
+		mpss_mem: memory@8cc00000 {
 			no-map;
 			reg = <0 0x8e000000 0 0x7800000>;
 		};
 
-		mba_mem: mba@94f00000 {
+		mba_mem: memory@94f00000 {
 			no-map;
 			reg = <0 0x96500000 0 0x200000>;
-		};
-
-		qcom,cmd-db@c3f000c {
-			compatible = "qcom,cmd-db";
-			reg = <0x0 0xc3f000c 0x0 0x8>,
-			      <0x0 0x85fe0000 0x0 0x20000>;
 		};
 	};
 
@@ -269,7 +269,7 @@
 			L1_D_700: l1-dcache {
 				compatible = "cache";
 				qcom,dump-size = <0x12000>;
-			};
+		};
 		};
 	};
 
@@ -285,7 +285,8 @@
 		xo_board: xo-board {
 			compatible = "fixed-clock";
 			#clock-cells = <0>;
-			clock-frequency = <19200000>;
+			clock-frequency = <38400000>;
+			clock-output-names = "xo_board";
 		};
 
 		sleep_clk: sleep-clk {
@@ -301,6 +302,18 @@
 		};
 	};
 
+	tcsr_mutex: hwlock {
+		compatible = "qcom,tcsr-mutex";
+		syscon = <&tcsr_mutex_regs 0 0x1000>;
+		#hwlock-cells = <1>;
+	};
+
+	smem {
+		compatible = "qcom,smem";
+		memory-region = <&smem_mem>;
+		hwlocks = <&tcsr_mutex 3>;
+	};
+
 	psci {
 		compatible = "arm,psci-1.0";
 		method = "smc";
@@ -312,32 +325,55 @@
 		ranges = <0 0 0 0xffffffff>;
 		compatible = "simple-bus";
 
-		intc: interrupt-controller@17a00000 {
-			compatible = "arm,gic-v3";
-			#address-cells = <1>;
-			#size-cells = <1>;
-			ranges;
-			#interrupt-cells = <3>;
-			interrupt-controller;
-			reg = <0x17a00000 0x10000>,     /* GICD */
-			      <0x17a60000 0x100000>;    /* GICR * 8 */
-			interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH>;
-
-			gic-its@17a40000 {
-				compatible = "arm,gic-v3-its";
-				msi-controller;
-				#msi-cells = <1>;
-				reg = <0x17a40000 0x20000>;
-				status = "disabled";
-			};
-		};
-
 		gcc: clock-controller@100000 {
 			compatible = "qcom,gcc-sdm845";
 			reg = <0x100000 0x1f0000>;
 			#clock-cells = <1>;
 			#reset-cells = <1>;
 			#power-domain-cells = <1>;
+		};
+
+		geniqup@ac0000 {
+			compatible = "qcom,geni-se-qup";
+			reg = <0xac0000 0x6000>;
+			clock-names = "m-ahb", "s-ahb";
+			clocks = <&gcc GCC_QUPV3_WRAP_1_M_AHB_CLK>,
+				 <&gcc GCC_QUPV3_WRAP_1_S_AHB_CLK>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+			status = "disabled";
+
+			uart2: serial@a84000 {
+				compatible = "qcom,geni-debug-uart";
+				reg = <0xa84000 0x4000>;
+				clock-names = "se";
+				clocks = <&gcc GCC_QUPV3_WRAP1_S1_CLK>;
+				pinctrl-names = "default", "sleep";
+				pinctrl-0 = <&qup_uart2_default>;
+				pinctrl-1 = <&qup_uart2_sleep>;
+				interrupts = <GIC_SPI 354 IRQ_TYPE_LEVEL_HIGH>;
+				status = "disabled";
+			};
+
+			i2c10: i2c@a88000 {
+				compatible = "qcom,geni-i2c";
+				reg = <0xa88000 0x4000>;
+				clock-names = "se";
+				clocks = <&gcc GCC_QUPV3_WRAP1_S2_CLK>;
+				pinctrl-names = "default", "sleep";
+				pinctrl-0 = <&qup_i2c10_default>;
+				pinctrl-1 = <&qup_i2c10_sleep>;
+				interrupts = <GIC_SPI 355 IRQ_TYPE_LEVEL_HIGH>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+		};
+
+		tcsr_mutex_regs: syscon@1f40000 {
+			compatible = "syscon";
+			reg = <0x1f40000 0x40000>;
 		};
 
 		tlmm: pinctrl@3400000 {
@@ -378,23 +414,73 @@
 			};
 		};
 
-	apps_rsc: rsc@179e000 {
-		compatible = "qcom,rpmh-rsc";
-		label = "apps_rsc";
-		reg = <0x179e0000 0x100>, <0x179e0d00 0x3000>;
-		reg-names = "drv", "tcs";
-		interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
-		qcom,drv-id = <2>;
-		qcom,tcs-config = <ACTIVE_TCS  2>,
-				  <SLEEP_TCS   3>,
-				  <WAKE_TCS    3>,
-				  <CONTROL_TCS 1>;
+	        apps_rsc: rsc@179e000 {
+			compatible = "qcom,rpmh-rsc";
+			label = "apps_rsc";
+			reg = <0x179e0000 0x100>, <0x179e0d00 0x3000>;
+			reg-names = "drv", "tcs";
+			interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
+			qcom,drv-id = <2>;
+			qcom,tcs-config = <ACTIVE_TCS  2>,
+					  <SLEEP_TCS   3>,
+					  <WAKE_TCS    3>,
+					  <CONTROL_TCS 1>;
 
-		msm_bus_apps_rsc {
-			compatible = "qcom,msm-bus-rsc";
-			qcom,msm-bus-id = <MSM_BUS_RSC_APPS>;
+			msm_bus_apps_rsc {
+				compatible = "qcom,msm-bus-rsc";
+				qcom,msm-bus-id = <MSM_BUS_RSC_APPS>;
+			};
 		};
-	};
+
+		spmi_bus: spmi@c440000 {
+			compatible = "qcom,spmi-pmic-arb";
+			reg = <0xc440000 0x1100>,
+			      <0xc600000 0x2000000>,
+			      <0xe600000 0x100000>,
+			      <0xe700000 0xa0000>,
+			      <0xc40a000 0x26000>;
+			reg-names = "core", "chnls", "obsrvr", "intr", "cnfg";
+			interrupt-names = "periph_irq";
+			interrupts = <GIC_SPI 481 IRQ_TYPE_LEVEL_HIGH>;
+			qcom,ee = <0>;
+			qcom,channel = <0>;
+			#address-cells = <2>;
+			#size-cells = <0>;
+			interrupt-controller;
+			#interrupt-cells = <4>;
+			cell-index = <0>;
+		};
+
+		apcs: syscon@1799000c {
+			compatible = "syscon";
+			reg = <0x1799000c 0x4>;
+		};
+
+		apss_shared: mailbox@17990000 {
+			compatible = "qcom,sdm845-apss-shared";
+			reg = <0x17990000 0x1000>;
+			#mbox-cells = <1>;
+		};
+
+		intc: interrupt-controller@17a00000 {
+			compatible = "arm,gic-v3";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			reg = <0x17a00000 0x10000>,     /* GICD */
+			      <0x17a60000 0x100000>;    /* GICR * 8 */
+			interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH>;
+
+			gic-its@17a40000 {
+				compatible = "arm,gic-v3-its";
+				msi-controller;
+				#msi-cells = <1>;
+				reg = <0x17a40000 0x20000>;
+				status = "disabled";
+			};
+		};
 
 		timer@17c90000 {
 			#address-cells = <1>;
@@ -454,34 +540,6 @@
 			};
 		};
 
-		tcsr_mutex_regs: syscon@1f40000 {
-			compatible = "syscon";
-			reg = <0x1f40000 0x40000>;
-		};
-
-		tcsr_mutex: hwlock@1f40000 {
-			compatible = "qcom,tcsr-mutex";
-			syscon = <&tcsr_mutex_regs 0 0x1000>;
-			#hwlock-cells = <1>;
-		};
-
-		smem {
-			compatible = "qcom,smem";
-			memory-region = <&smem_mem>;
-			hwlocks = <&tcsr_mutex 3>;
-		};
-
-		apcs: syscon@1799000c {
-			compatible = "syscon";
-			reg = <0x1799000c 0x4>;
-		};
-
-		apcs_glb: mailbox@17990000 {
-			compatible = "qcom,sdm845-apcs-hmss-global";
-			reg = <0x17990000 0x1000>;
-			#mbox-cells = <1>;
-		};
-
 		aoss_reset: qcom,reset-controller@b2e0100 {
 			compatible = "qcom,sdm845-aoss-reset";
 			reg = <0xc2b0000 0x20004>;
@@ -507,63 +565,6 @@
 			reg = <0x65c 4>;
 		};
 	};
-
-		spmi_bus: spmi@c440000 {
-			compatible = "qcom,spmi-pmic-arb";
-			reg = <0xc440000 0x1100>,
-			      <0xc600000 0x2000000>,
-			      <0xe600000 0x100000>,
-			      <0xe700000 0xa0000>,
-			      <0xc40a000 0x26000>;
-			reg-names = "core", "chnls", "obsrvr", "intr", "cnfg";
-			interrupt-names = "periph_irq";
-			interrupts = <GIC_SPI 481 IRQ_TYPE_NONE>;
-			qcom,ee = <0>;
-			qcom,channel = <0>;
-			#address-cells = <2>;
-			#size-cells = <0>;
-			interrupt-controller;
-			#interrupt-cells = <4>;
-			cell-index = <0>;
-		};
-
-		geniqup@ac0000 {
-			compatible = "qcom,geni-se-qup";
-			reg = <0xac0000 0x6000>;
-			clock-names = "m-ahb", "s-ahb";
-			clocks = <&gcc GCC_QUPV3_WRAP_1_M_AHB_CLK>,
-				 <&gcc GCC_QUPV3_WRAP_1_S_AHB_CLK>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-			ranges;
-			status = "disabled";
-
-			uart2: serial@a84000 {
-				compatible = "qcom,geni-debug-uart";
-				reg = <0xa84000 0x4000>;
-				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S1_CLK>;
-				pinctrl-names = "default", "sleep";
-				pinctrl-0 = <&qup_uart2_default>;
-				pinctrl-1 = <&qup_uart2_sleep>;
-				interrupts = <GIC_SPI 354 IRQ_TYPE_LEVEL_HIGH>;
-				status = "disabled";
-			};
-
-			i2c10: i2c@a88000 {
-				compatible = "qcom,geni-i2c";
-				reg = <0xa88000 0x4000>;
-				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S2_CLK>;
-				pinctrl-names = "default", "sleep";
-				pinctrl-0 = <&qup_i2c10_default>;
-				pinctrl-1 = <&qup_i2c10_sleep>;
-				interrupts = <GIC_SPI 355 IRQ_TYPE_LEVEL_HIGH>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-				status = "disabled";
-			};
-		};
 
 		clock_dispcc: qcom,dispcc@af00000 {
 			compatible = "qcom,dispcc-sdm845", "syscon";
@@ -1044,7 +1045,7 @@
 				interrupts = <0 449 IRQ_TYPE_EDGE_RISING>;
 				label = "modem";
 				qcom,remote-pid = <1>;
-				mboxes = <&apcs_glb 12>;
+				mboxes = <&apss_shared 12>;
 				mbox-names = "mpss_smem";
 			};
 		};

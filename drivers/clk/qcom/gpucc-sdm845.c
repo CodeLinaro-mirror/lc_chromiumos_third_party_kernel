@@ -35,14 +35,6 @@
 
 #define F(f, s, h, m, n) { (f), (s), (2 * (h) - 1), (m), (n) }
 
-static struct freq_tbl cxo_safe_src_f = {
-	.freq = CXO_FREQUENCY,
-	.src = 0,
-	.pre_div = 1,
-	.m = 0,
-	.n = 0,
-};
-
 enum {
 	P_BI_TCXO,
 	P_CORE_BI_PLL_TEST_SE,
@@ -185,7 +177,6 @@ static struct clk_rcg2 gpu_cc_gmu_clk_src = {
 	.hid_width = 5,
 	.parent_map = gpu_cc_parent_map_0,
 	.freq_tbl = ftbl_gpu_cc_gmu_clk_src,
-	.safe_src_freq_tbl = &cxo_safe_src_f,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "gpu_cc_gmu_clk_src",
 		.parent_names = gpu_cc_parent_names_0,
@@ -225,7 +216,6 @@ static struct clk_rcg2 gpu_cc_gx_gfx3d_clk_src = {
 	.hid_width = 5,
 	.parent_map = gpu_cc_parent_map_2,
 	.freq_tbl = ftbl_gpu_cc_gx_gfx3d_clk_src,
-	.safe_src_freq_tbl = &cxo_safe_src_f,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "gpu_cc_gx_gfx3d_clk_src",
 		.parent_names = gpu_cc_parent_names_2,
@@ -463,7 +453,7 @@ static struct gdsc gpu_gx_gdsc = {
 	.resets = (unsigned int []){ GPUCC_GPU_CC_GX_BCR },
 	.reset_count = 1,
 	.pwrsts = PWRSTS_OFF_ON,
-	.flags = CLAMP_IO | RESET_AON | SW_RESET | FORCE_ROOT_ENABLE,
+	.flags = CLAMP_IO | AON_RESET | SW_RESET | FORCE_ROOT_ENABLE,
 };
 
 static struct clk_regmap *gpu_cc_sdm845_clocks[] = {

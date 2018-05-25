@@ -325,9 +325,9 @@ void iwl_pcie_apm_config(struct iwl_trans *trans)
 
 	pcie_capability_read_word(trans_pcie->pci_dev, PCI_EXP_DEVCTL2, &cap);
 	trans->ltr_enabled = cap & PCI_EXP_DEVCTL2_LTR_EN;
-	IWL_DEBUG_POWER(trans, "L1 %sabled - LTR %sabled\n",
-			(lctl & PCI_EXP_LNKCTL_ASPM_L1) ? "En" : "Dis",
-			trans->ltr_enabled ? "En" : "Dis");
+	dev_info(trans->dev, "L1 %sabled - LTR %sabled\n",
+		 (lctl & PCI_EXP_LNKCTL_ASPM_L1) ? "En" : "Dis",
+		 trans->ltr_enabled ? "En" : "Dis");
 }
 
 /*
@@ -2057,7 +2057,7 @@ static bool iwl_trans_pcie_grab_nic_access(struct iwl_trans *trans,
 		if (iwlwifi_mod_params.remove_when_gone && cntrl == ~0U) {
 			struct iwl_trans_pcie_removal *removal;
 
-			if (trans_pcie->scheduled_for_removal)
+			if (test_bit(STATUS_TRANS_DEAD, &trans->status))
 				goto err;
 
 			IWL_ERR(trans, "Device gone - scheduling removal!\n");
@@ -2083,7 +2083,7 @@ static bool iwl_trans_pcie_grab_nic_access(struct iwl_trans *trans,
 			 * we don't need to clear this flag, because
 			 * the trans will be freed and reallocated.
 			*/
-			trans_pcie->scheduled_for_removal = true;
+			set_bit(STATUS_TRANS_DEAD, &trans->status);
 
 			removal->pdev = to_pci_dev(trans->dev);
 			INIT_WORK(&removal->work, iwl_trans_pcie_removal_wk);
@@ -2293,6 +2293,10 @@ static int iwl_trans_pcie_wait_txq_empty(struct iwl_trans *trans, int txq_idx)
 	struct iwl_txq *txq;
 	unsigned long now = jiffies;
 	u8 wr_ptr;
+
+	/* Make sure the NIC is still alive in the bus */
+	if (test_bit(STATUS_TRANS_DEAD, &trans->status))
+		return -ENODEV;
 
 	if (!test_bit(txq_idx, trans_pcie->queue_used))
 		return -EINVAL;
@@ -3356,6 +3360,11 @@ struct iwl_trans *iwl_trans_pcie_alloc(struct pci_dev *pdev,
 	iwl_disable_interrupts(trans);
 
 	trans->hw_rev = iwl_read32(trans, CSR_HW_REV);
+	if (trans->hw_rev == 0xffffffff) {
+		dev_err(&pdev->dev, "HW_REV=0xFFFFFFFF, PCI issues?\n");
+		ret = -EIO;
+		goto out_no_pci;
+	}
 	/*
 	 * In the 8000 HW family the format of the 4 bytes of CSR_HW_REV have
 	 * changed, and now the revision step also includes bit 0-1 (no more

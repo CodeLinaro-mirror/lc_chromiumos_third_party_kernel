@@ -1748,60 +1748,69 @@ static void apply_min_clocks(
 /*
  *  Check if FBC can be enabled
  */
-static enum dc_status validate_fbc(struct dc *dc,
-		struct dc_state *context)
+static bool should_enable_fbc(struct dc *dc,
+			      struct dc_state *context,
+			      uint32_t *pipe_idx)
 {
-	struct pipe_ctx *pipe_ctx =
-			      &context->res_ctx.pipe_ctx[0];
+	uint32_t i;
+	struct pipe_ctx *pipe_ctx = NULL;
+	struct resource_context *res_ctx = &context->res_ctx;
+
 
 	ASSERT(dc->fbc_compressor);
 
 	/* FBC memory should be allocated */
 	if (!dc->ctx->fbc_gpu_addr)
-		return DC_ERROR_UNEXPECTED;
+		return false;
 
 	/* Only supports single display */
 	if (context->stream_count != 1)
-		return DC_ERROR_UNEXPECTED;
+		return false;
+
+	for (i = 0; i < dc->res_pool->pipe_count; i++) {
+		if (res_ctx->pipe_ctx[i].stream) {
+			pipe_ctx = &res_ctx->pipe_ctx[i];
+			*pipe_idx = i;
+			break;
+		}
+	}
 
 	/* Only supports eDP */
 	if (pipe_ctx->stream->sink->link->connector_signal != SIGNAL_TYPE_EDP)
-		return DC_ERROR_UNEXPECTED;
+		return false;
 
 	/* PSR should not be enabled */
 	if (pipe_ctx->stream->sink->link->psr_enabled)
-		return DC_ERROR_UNEXPECTED;
+		return false;
 
 	/* Nothing to compress */
 	if (!pipe_ctx->plane_state)
-		return DC_ERROR_UNEXPECTED;
+		return false;
 
 	/* Only for non-linear tiling */
 	if (pipe_ctx->plane_state->tiling_info.gfx8.array_mode == DC_ARRAY_LINEAR_GENERAL)
-		return DC_ERROR_UNEXPECTED;
+		return false;
 
-	return DC_OK;
+	return true;
 }
 
 /*
  *  Enable FBC
  */
-static enum dc_status enable_fbc(struct dc *dc,
-		struct dc_state *context)
+static void enable_fbc(struct dc *dc,
+		       struct dc_state *context)
 {
-	enum dc_status status = validate_fbc(dc, context);
+	uint32_t pipe_idx = 0;
 
-	if (status == DC_OK) {
+	if (should_enable_fbc(dc, context, &pipe_idx)) {
 		/* Program GRPH COMPRESSED ADDRESS and PITCH */
 		struct compr_addr_and_pitch_params params = {0, 0, 0};
 		struct compressor *compr = dc->fbc_compressor;
-		struct pipe_ctx *pipe_ctx =
-				      &context->res_ctx.pipe_ctx[0];
+		struct pipe_ctx *pipe_ctx = &context->res_ctx.pipe_ctx[pipe_idx];
 
-		params.source_view_width =
-				pipe_ctx->stream->timing.h_addressable;
-		params.source_view_height =
-				pipe_ctx->stream->timing.v_addressable;
+
+		params.source_view_width = pipe_ctx->stream->timing.h_addressable;
+		params.source_view_height = pipe_ctx->stream->timing.v_addressable;
 
 		compr->compr_surface_address.quad_part = dc->ctx->fbc_gpu_addr;
 
@@ -1810,7 +1819,6 @@ static enum dc_status enable_fbc(struct dc *dc,
 
 		compr->funcs->enable_fbc(compr, &params);
 	}
-	return status;
 }
 #endif
 
