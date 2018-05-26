@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __Q6_ADM_V2_H__
 #define __Q6_ADM_V2_H__
 
@@ -18,7 +18,7 @@ struct route_payload {
 int q6adm_open(struct device *dev, int port_id, int path, int rate,
 	       int channel_mode, int topology, int perf_mode,
 	       uint16_t bit_width, int app_type, int acdb_id);
-int q6adm_close(struct device *dev, int port, int topology, int perf_mode);
+int q6adm_close(struct device *dev, int port_id, int copp_idx);
 int q6adm_matrix_map(struct device *dev, int path,
 		     struct route_payload payload_map, int perf_mode);
 

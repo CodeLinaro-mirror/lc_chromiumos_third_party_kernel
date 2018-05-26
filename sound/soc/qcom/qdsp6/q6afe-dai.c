@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-// Copyright (c) 2011-2016, The Linux Foundation
+// Copyright (c) 2011-2017, The Linux Foundation. All rights reserved.
 // Copyright (c) 2018, Linaro Limited
 
 #include <linux/err.h>
@@ -254,9 +254,9 @@ static int q6afe_mi2s_set_sysclk(struct snd_soc_dai *dai,
 					     freq, dir);
 	case Q6AFE_LPASS_CLK_ID_PRI_MI2S_IBIT ... Q6AFE_LPASS_CLK_ID_INT_MCLK_1:
 		return q6afe_port_set_sysclk(port, clk_id,
-					Q6AFE_LPASS_CLK_ATTRIBUTE_COUPLE_NO,
-					Q6AFE_LPASS_CLK_ROOT_DEFAULT,
-					freq, dir);
+				     Q6AFE_LPASS_CLK_ATTRIBUTE_COUPLE_NO,
+				     Q6AFE_LPASS_CLK_ROOT_DEFAULT,
+				     freq, dir);
 	}
 
 	return 0;
@@ -306,10 +306,7 @@ static struct snd_soc_dai_ops q6slim_ops = {
 static int msm_dai_q6_dai_probe(struct snd_soc_dai *dai)
 {
 	struct q6afe_dai_data *dai_data = dev_get_drvdata(dai->dev);
-	struct snd_soc_dapm_context *dapm;
 	struct q6afe_port *port;
-
-	dapm = snd_soc_component_get_dapm(dai->component);
 
 	port = q6afe_port_get_from_id(dai->dev, dai->id);
 	if (IS_ERR(port)) {
@@ -664,7 +661,6 @@ static void of_q6afe_parse_dai_data(struct device *dev,
 	for_each_child_of_node(dev->of_node, node) {
 		unsigned int lines[Q6AFE_MAX_MI2S_LINES];
 		struct q6afe_dai_priv_data *priv;
-		const char *if_type;
 		int id, i, num_lines;
 
 		ret = of_property_read_u32(node, "reg", &id);
@@ -673,16 +669,14 @@ static void of_q6afe_parse_dai_data(struct device *dev,
 			continue;
 		}
 
-		if (of_property_read_string(node, "interface-type", &if_type))
-			continue;
-
-		priv = &data->priv[id];
-
+		switch (id) {
 		/* MI2S specific properties */
-		if (!strcmp(if_type, "mi2s")) {
+		case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
+			priv = &data->priv[id];
 			ret = of_property_read_variable_u32_array(node,
-						"qcom,sd-lines", lines, 0,
-						Q6AFE_MAX_MI2S_LINES);
+							"qcom,sd-lines",
+							lines, 0,
+							Q6AFE_MAX_MI2S_LINES);
 			if (ret < 0)
 				num_lines = 0;
 			else
@@ -692,6 +686,10 @@ static void of_q6afe_parse_dai_data(struct device *dev,
 
 			for (i = 0; i < num_lines; i++)
 				priv->sd_line_mask |= BIT(lines[i]);
+
+			break;
+		default:
+			break;
 		}
 	}
 }
@@ -699,11 +697,10 @@ static void of_q6afe_parse_dai_data(struct device *dev,
 static int q6afe_dai_bind(struct device *dev, struct device *master, void *data)
 {
 	struct q6afe_dai_data *dai_data;
-	int rc = 0;
 
 	dai_data = kzalloc(sizeof(*dai_data), GFP_KERNEL);
 	if (!dai_data)
-		rc = -ENOMEM;
+		return -ENOMEM;
 
 	dev_set_drvdata(dev, dai_data);
 

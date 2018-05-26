@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
-// Copyright (c) 2011-2016, The Linux Foundation
-// Copyright (c) 2017-2018, Linaro Limited
+// Copyright (c) 2011-2017, The Linux Foundation. All rights reserved.
+// Copyright (c) 2018, Linaro Limited
 
 #include <linux/init.h>
 #include <linux/err.h>
@@ -19,6 +19,8 @@
 #include "q6asm.h"
 #include "q6routing.h"
 #include "q6dsp-errno.h"
+
+#define DRV_NAME	"q6asm-fe-dai"
 
 #define PLAYBACK_MIN_NUM_PERIODS    2
 #define PLAYBACK_MAX_NUM_PERIODS   8
@@ -179,10 +181,11 @@ static int q6asm_dai_prepare(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct q6asm_dai_rtd *prtd = runtime->private_data;
+	struct snd_soc_component *c = snd_soc_rtdcom_lookup(soc_prtd, DRV_NAME);
 	struct q6asm_dai_data *pdata;
 	int ret, i;
 
-	pdata = snd_soc_platform_get_drvdata(soc_prtd->platform);
+	pdata = snd_soc_component_get_drvdata(c);
 	if (!pdata)
 		return -EINVAL;
 
@@ -294,18 +297,18 @@ static int q6asm_dai_open(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = soc_prtd->cpu_dai;
-
+	struct snd_soc_component *c = snd_soc_rtdcom_lookup(soc_prtd, DRV_NAME);
 	struct q6asm_dai_rtd *prtd;
 	struct q6asm_dai_data *pdata;
-	struct device *dev = soc_prtd->platform->dev;
+	struct device *dev = c->dev;
 	int ret = 0;
 	int stream_id;
 
 	stream_id = cpu_dai->driver->id;
 
-	pdata = snd_soc_platform_get_drvdata(soc_prtd->platform);
+	pdata = snd_soc_component_get_drvdata(c);
 	if (!pdata) {
-		pr_err("Platform data not found ..\n");
+		pr_err("Drv data not found ..\n");
 		return -EINVAL;
 	}
 
@@ -417,7 +420,8 @@ static int q6asm_dai_mmap(struct snd_pcm_substream *substream,
 
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
-	struct device *dev = soc_prtd->platform->dev;
+	struct snd_soc_component *c = snd_soc_rtdcom_lookup(soc_prtd, DRV_NAME);
+	struct device *dev = c->dev;
 
 	return dma_mmap_coherent(dev, vma,
 			runtime->dma_area, runtime->dma_addr,
@@ -459,16 +463,13 @@ static struct snd_pcm_ops q6asm_dai_ops = {
 static int q6asm_dai_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_pcm_substream *psubstream, *csubstream;
-	struct q6asm_dai_data *pdata;
+	struct snd_soc_component *c = snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	struct snd_pcm *pcm = rtd->pcm;
 	struct device *dev;
 	int size, ret;
 
-	dev = rtd->platform->dev;
-	pdata = snd_soc_platform_get_drvdata(rtd->platform);
-
+	dev = c->dev;
 	size = q6asm_dai_hardware_playback.buffer_bytes_max;
-
 	psubstream = pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
 	if (psubstream) {
 		ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, dev, size,
@@ -509,13 +510,6 @@ static void q6asm_dai_pcm_free(struct snd_pcm *pcm)
 	}
 }
 
-static struct snd_soc_platform_driver q6asm_soc_platform = {
-	.ops		= &q6asm_dai_ops,
-	.pcm_new	= q6asm_dai_pcm_new,
-	.pcm_free	= q6asm_dai_pcm_free,
-
-};
-
 static const struct snd_soc_dapm_route afe_pcm_routes[] = {
 	{"MM_DL1",  NULL, "MultiMedia1 Playback" },
 	{"MM_DL2",  NULL, "MultiMedia2 Playback" },
@@ -547,8 +541,13 @@ static int fe_dai_probe(struct snd_soc_dai *dai)
 	return 0;
 }
 
+
 static const struct snd_soc_component_driver q6asm_fe_dai_component = {
-	.name		= "q6asm-fe-dai",
+	.name		= DRV_NAME,
+	.ops		= &q6asm_dai_ops,
+	.pcm_new	= q6asm_dai_pcm_new,
+	.pcm_free	= q6asm_dai_pcm_free,
+
 };
 
 static struct snd_soc_dai_driver q6asm_fe_dais[] = {
@@ -581,12 +580,6 @@ static int q6asm_dai_bind(struct device *dev, struct device *master, void *data)
 
 	dev_set_drvdata(dev, pdata);
 
-	rc = snd_soc_register_platform(dev,  &q6asm_soc_platform);
-	if (rc) {
-		dev_err(dev, "err_dai_platform\n");
-		return rc;
-	}
-
 	return snd_soc_register_component(dev, &q6asm_fe_dai_component,
 					q6asm_fe_dais,
 					ARRAY_SIZE(q6asm_fe_dais));
@@ -596,7 +589,6 @@ static void q6asm_dai_unbind(struct device *dev, struct device *master,
 {
 	struct q6asm_dai_data *pdata = dev_get_drvdata(dev);
 
-	snd_soc_unregister_platform(dev);
 	snd_soc_unregister_component(dev);
 
 	kfree(pdata);
