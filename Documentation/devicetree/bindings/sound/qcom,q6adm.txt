@@ -9,7 +9,7 @@ used by the apr service device.
 - compatible:
 	Usage: required
 	Value type: <stringlist>
-	Definition: must be "qcom,adm-v<MAJOR-NUMBER>.<MINOR-NUMBER>".
+	Definition: must be "qcom,q6adm-v<MAJOR-NUMBER>.<MINOR-NUMBER>".
 		   Or "qcom,q6adm" where the version number can be queried
 		   from DSP.
 		   example "qcom,q6adm-v2.0"
@@ -20,14 +20,13 @@ used by the apr service device.
 
 - #sound-dai-cells
 	Usage: required
-	Value type: <prop-encoded-array>
+	Value type: <u32>
 	Definition: Must be 0
 
 = EXAMPLE
-q6adm: q6adm {
+q6adm@8 {
 	compatible = "qcom,q6adm";
-	qcom,apr-svc-name = "ADM";
-	qcom,apr-svc-id = <APR_SVC_ADM>;
+	reg = <APR_SVC_ADM>;
 	q6routing: routing {
 		#sound-dai-cells = <0>;
 	};
