@@ -128,7 +128,8 @@ static void qcom_geni_serial_stop_rx(struct uart_port *uport);
 
 static const unsigned long root_freq[] = {7372800, 14745600, 19200000, 29491200,
 					32000000, 48000000, 64000000, 80000000,
-					96000000, 100000000};
+					96000000, 100000000, 102400000,
+					112000000, 120000000, 128000000};
 
 #define to_dev_port(ptr, member) \
 		container_of(ptr, struct qcom_geni_serial_port, member)
@@ -1201,6 +1202,9 @@ static void qcom_geni_serial_pm(struct uart_port *uport,
 	struct qcom_geni_serial_port *port = to_dev_port(uport, uport);
 
 	if (new_state == UART_PM_STATE_ON && old_state == UART_PM_STATE_OFF)
+		geni_se_resources_on(&port->se);
+	else if (!uart_console(uport) && (new_state == UART_PM_STATE_ON &&
+				old_state == UART_PM_STATE_UNDEFINED))
 		geni_se_resources_on(&port->se);
 	else if (new_state == UART_PM_STATE_OFF &&
 			old_state == UART_PM_STATE_ON)
