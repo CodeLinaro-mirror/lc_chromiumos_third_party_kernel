@@ -16,6 +16,7 @@
 
 	aliases {
 		serial0 = &uart2;
+		hsuart0 = &uart6;
 	};
 
 	chosen {
@@ -33,6 +34,14 @@
 
 		i2c@a88000 {
 			clock-frequency = <400000>;
+			status = "okay";
+		};
+	};
+
+	geniqup@8c0000 {
+		status = "okay";
+
+		serial@898000 {
 			status = "okay";
 		};
 	};
