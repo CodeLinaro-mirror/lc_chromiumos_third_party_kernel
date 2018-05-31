@@ -1989,6 +1989,17 @@ ARM_SMMU_MATCH_DATA(arm_mmu401, ARM_SMMU_V1_64K, GENERIC_SMMU);
 ARM_SMMU_MATCH_DATA(arm_mmu500, ARM_SMMU_V2, ARM_MMU500);
 ARM_SMMU_MATCH_DATA(cavium_smmuv2, ARM_SMMU_V2, CAVIUM_SMMUV2);
 
+static const char * const qcom_sdm845_smmuv2_clks[] = {
+	"bus",
+};
+
+static const struct arm_smmu_match_data qcom_sdm845_smmuv2 = {
+	.version = ARM_SMMU_V2,
+	.model = QCOM_SMMUV2,
+	.clks = qcom_sdm845_smmuv2_clks,
+	.num_clks = ARRAY_SIZE(qcom_sdm845_smmuv2_clks),
+};
+
 static const char * const qcom_smmuv2_clks[] = {
 	"bus", "iface",
 };
@@ -2008,6 +2019,7 @@ static const struct of_device_id arm_smmu_of_match[] = {
 	{ .compatible = "arm,mmu-500", .data = &arm_mmu500 },
 	{ .compatible = "cavium,smmu-v2", .data = &cavium_smmuv2 },
 	{ .compatible = "qcom,smmu-v2", .data = &qcom_smmuv2 },
+	{ .compatible = "qcom,sdm845-smmu-v2", .data = &qcom_sdm845_smmuv2 },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, arm_smmu_of_match);
