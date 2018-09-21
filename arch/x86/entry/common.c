@@ -290,6 +290,12 @@ __visible void do_syscall_64(unsigned long nr, struct pt_regs *regs)
 	if (READ_ONCE(ti->flags) & _TIF_WORK_SYSCALL_ENTRY)
 		nr = syscall_trace_enter(regs);
 
+#ifdef CONFIG_ALT_SYSCALL
+	if (likely(nr < ti->nr_syscalls)) {
+		nr = array_index_nospec(nr, ti->nr_syscalls);
+		regs->ax = ti->sys_call_table[nr](regs);
+	}
+#else
 	if (likely(nr < NR_syscalls)) {
 		nr = array_index_nospec(nr, NR_syscalls);
 		regs->ax = sys_call_table[nr](regs);
@@ -301,6 +307,7 @@ __visible void do_syscall_64(unsigned long nr, struct pt_regs *regs)
 		regs->ax = x32_sys_call_table[nr](regs);
 #endif
 	}
+#endif /* CONFIG_ALT_SYSCALL */
 
 	syscall_return_slowpath(regs);
 }
@@ -332,10 +339,17 @@ static __always_inline void do_syscall_32_irqs_on(struct pt_regs *regs)
 		nr = syscall_trace_enter(regs);
 	}
 
+#ifdef CONFIG_ALT_SYSCALL
+	if (likely(nr < ti->ia32_nr_syscalls)) {
+		nr = array_index_nospec(nr, ti->ia32_nr_syscalls);
+		regs->ax = ti->ia32_sys_call_table[nr](regs);
+	}
+#else
 	if (likely(nr < IA32_NR_syscalls)) {
 		nr = array_index_nospec(nr, IA32_NR_syscalls);
 		regs->ax = ia32_sys_call_table[nr](regs);
 	}
+#endif
 
 	syscall_return_slowpath(regs);
 }
