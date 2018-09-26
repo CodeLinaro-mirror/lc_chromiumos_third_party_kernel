@@ -588,7 +588,7 @@ struct icl_mg_phy_ddi_buf_trans {
 	u32 cri_txdeemph_override_17_12;
 };
 
-static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_rbr_hbr[] = {
+static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_rbr_hbr[] __maybe_unused = {
 				/* Voltage swing  pre-emphasis */
 	{ 0x18, 0x00, 0x00 },	/* 0              0   */
 	{ 0x1D, 0x00, 0x05 },	/* 0              1   */
@@ -602,7 +602,7 @@ static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_rbr_hbr
 	{ 0x3F, 0x00, 0x00 },	/* 3              0   */
 };
 
-static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hbr2_hbr3[] = {
+static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hbr2_hbr3[] __maybe_unused = {
 				/* Voltage swing  pre-emphasis */
 	{ 0x18, 0x00, 0x00 },	/* 0              0   */
 	{ 0x1D, 0x00, 0x05 },	/* 0              1   */
@@ -616,7 +616,7 @@ static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hbr2_hb
 	{ 0x3F, 0x00, 0x00 },	/* 3              0   */
 };
 
-static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hdmi[] = {
+static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hdmi[] __maybe_unused = {
 				/* HDMI Preset	VS	Pre-emph */
 	{ 0x1A, 0x0, 0x0 },	/* 1		400mV	0dB */
 	{ 0x20, 0x0, 0x0 },	/* 2		500mV	0dB */
