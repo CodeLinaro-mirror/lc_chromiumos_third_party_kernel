@@ -25,6 +25,7 @@
 
 #include <linux/dma-mapping.h>
 #include <linux/moduleparam.h>
+#include <linux/dma-buf.h>
 
 #include "virtgpu_drv.h"
 
@@ -247,4 +248,24 @@ err_put_id:
 err_free_gem:
 	drm_gem_shmem_free_object(&shmem_obj->base);
 	return ret;
+}
+
+int virtio_gpu_dma_buf_to_handle(struct dma_buf *dma_buf, bool no_wait,
+				 uint32_t *handle)
+{
+	struct virtio_gpu_object *qobj;
+	struct virtio_gpu_device *vgdev;
+
+	if (dma_buf->ops != &virtgpu_dmabuf_ops)
+		return -EINVAL;
+
+	qobj = gem_to_virtio_gpu_obj(dma_buf->priv);
+	vgdev = (struct virtio_gpu_device *)qobj->base.base.dev->dev_private;
+	if (!qobj->create_callback_done && !no_wait)
+		wait_event(vgdev->resp_wq, qobj->create_callback_done);
+	if (!qobj->create_callback_done)
+		return -ETIMEDOUT;
+
+	*handle = qobj->hw_res_handle;
+	return 0;
 }
