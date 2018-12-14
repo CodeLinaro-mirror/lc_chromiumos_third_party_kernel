@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -47,6 +47,8 @@ static DEFINE_PER_CPU(struct list_head *, tracer_path);
  * for STM.
  */
 static struct list_head *stm_path;
+
+static struct coresight_device *activated_sink;
 
 /*
  * When losing synchronisation a new barrier packet needs to be inserted at the
@@ -577,6 +579,52 @@ struct coresight_device *coresight_get_sink(struct list_head *path)
 	return csdev;
 }
 
+static int coresight_enabled_sink(struct device *dev, const void *data)
+{
+	const bool *reset = data;
+	struct coresight_device *csdev = to_coresight_device(dev);
+
+	if ((csdev->type == CORESIGHT_DEV_TYPE_SINK ||
+	     csdev->type == CORESIGHT_DEV_TYPE_LINKSINK) &&
+	     csdev->activated) {
+		/*
+		 * Now that we have a handle on the sink for this session,
+		 * disable the sysFS "enable_sink" flag so that possible
+		 * concurrent perf session that wish to use another sink don't
+		 * trip on it.  Doing so has no ramification for the current
+		 * session.
+		 */
+		if (*reset)
+			csdev->activated = false;
+
+		return 1;
+	}
+
+	return 0;
+}
+
+/**
+ * coresight_get_activated_sink - returns the first enabled sink found on the bus
+ * @deactivate:	Whether the 'enable_sink' flag should be reset
+ *
+ * When operated from perf the deactivate parameter should be set to 'true'.
+ * That way the "enabled_sink" flag of the sink that was selected can be reset,
+ * allowing for other concurrent perf sessions to choose a different sink.
+ *
+ * When operated from sysFS users have full control and as such the deactivate
+ * parameter should be set to 'false', hence mandating users to explicitly
+ * clear the flag.
+ */
+struct coresight_device *coresight_get_activated_sink(bool deactivate)
+{
+	struct device *dev = NULL;
+
+	dev = bus_find_device(&coresight_bustype, NULL, &deactivate,
+			      coresight_enabled_sink);
+
+	return dev ? to_coresight_device(dev) : NULL;
+}
+
 static struct coresight_device *
 coresight_find_enabled_sink(struct coresight_device *csdev)
 {
@@ -1041,6 +1089,123 @@ static int coresight_validate_source(struct coresight_device *csdev,
 	return 0;
 }
 
+static void coresight_enable_source_link(struct list_head *path)
+{
+	u32 type;
+	int ret;
+	struct coresight_node *nd;
+	struct coresight_device *csdev, *parent, *child;
+
+	list_for_each_entry_reverse(nd, path, link) {
+		csdev = nd->csdev;
+		type = csdev->type;
+
+		if (type == CORESIGHT_DEV_TYPE_LINKSINK)
+			type = (csdev == coresight_get_sink(path)) ?
+						CORESIGHT_DEV_TYPE_SINK :
+						CORESIGHT_DEV_TYPE_LINK;
+
+		switch (type) {
+		case CORESIGHT_DEV_TYPE_SINK:
+			break;
+		case CORESIGHT_DEV_TYPE_SOURCE:
+			if (source_ops(csdev)->enable) {
+				ret = source_ops(csdev)->enable(csdev,
+					NULL, CS_MODE_SYSFS);
+				if (ret)
+					goto err;
+			}
+			csdev->enable = true;
+			break;
+		case CORESIGHT_DEV_TYPE_LINK:
+			parent = list_prev_entry(nd, link)->csdev;
+			child = list_next_entry(nd, link)->csdev;
+			ret = coresight_enable_link(csdev, parent, child);
+			if (ret)
+				goto err;
+			break;
+		default:
+			break;
+		}
+	}
+
+	return;
+err:
+	coresight_disable_path_from(path, nd);
+	coresight_release_path(path);
+}
+
+static void coresight_disable_source_link(struct list_head *path)
+{
+	u32 type;
+	struct coresight_node *nd;
+	struct coresight_device *csdev, *parent, *child;
+
+	list_for_each_entry(nd, path, link) {
+		csdev = nd->csdev;
+		type = csdev->type;
+
+		if (type == CORESIGHT_DEV_TYPE_LINKSINK)
+			type = (csdev == coresight_get_sink(path)) ?
+						CORESIGHT_DEV_TYPE_SINK :
+						CORESIGHT_DEV_TYPE_LINK;
+
+		switch (type) {
+		case CORESIGHT_DEV_TYPE_SINK:
+			break;
+		case CORESIGHT_DEV_TYPE_SOURCE:
+			if (source_ops(csdev)->disable) {
+				source_ops(csdev)->disable(csdev, NULL);
+			}
+			csdev->enable = false;
+			break;
+		case CORESIGHT_DEV_TYPE_LINK:
+			parent = list_prev_entry(nd, link)->csdev;
+			child = list_next_entry(nd, link)->csdev;
+			coresight_disable_link(csdev, parent, child);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+void coresight_disable_all_source_link(void)
+{
+	struct coresight_path *cspath = NULL;
+	struct coresight_path *cspath_next = NULL;
+
+	mutex_lock(&coresight_mutex);
+
+	list_for_each_entry_safe(cspath, cspath_next, &cs_active_paths, link) {
+		coresight_disable_source_link(cspath->path);
+	}
+
+	activated_sink = coresight_get_activated_sink(false);
+	if (activated_sink)
+		activated_sink->activated = false;
+
+	mutex_unlock(&coresight_mutex);
+}
+
+void coresight_enable_all_source_link(void)
+{
+	struct coresight_path *cspath = NULL;
+	struct coresight_path *cspath_next = NULL;
+
+	mutex_lock(&coresight_mutex);
+
+	list_for_each_entry_safe(cspath, cspath_next, &cs_active_paths, link) {
+		coresight_enable_source_link(cspath->path);
+	}
+
+	if (activated_sink && activated_sink->enable)
+		activated_sink->activated = true;
+
+	activated_sink = NULL;
+	mutex_unlock(&coresight_mutex);
+}
+
 int coresight_enable(struct coresight_device *csdev)
 {
 	int cpu, ret = 0;
@@ -1178,13 +1343,25 @@ static ssize_t enable_sink_store(struct device *dev,
 	if (ret)
 		return ret;
 
-	if (val)
+	mutex_lock(&coresight_mutex);
+
+	if (val) {
+		if (activated_sink)
+			goto err;
 		csdev->activated = true;
-	else
+	} else {
+		if (csdev->enable)
+			goto err;
 		csdev->activated = false;
+	}
+
+	mutex_unlock(&coresight_mutex);
 
 	return size;
 
+err:
+	mutex_unlock(&coresight_mutex);
+	return -EINVAL;
 }
 static DEVICE_ATTR_RW(enable_sink);
 

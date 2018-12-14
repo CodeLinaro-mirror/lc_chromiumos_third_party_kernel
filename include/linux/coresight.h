@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2021, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _LINUX_CORESIGHT_H
@@ -343,6 +343,8 @@ extern char *coresight_alloc_device_name(struct coresight_dev_list *devs,
 					 struct device *dev);
 
 extern bool coresight_loses_context_with_cpu(struct device *dev);
+extern void coresight_disable_all_source_link(void);
+extern void coresight_enable_all_source_link(void);
 #else
 static inline struct coresight_device *
 coresight_register(struct coresight_desc *desc) { return NULL; }
@@ -369,6 +371,8 @@ static inline bool coresight_loses_context_with_cpu(struct device *dev)
 {
 	return false;
 }
+static void coresight_disable_all_source_link(void) {};
+static void coresight_enable_all_source_link(void) {};
 #endif
 
 extern int coresight_get_cpu(struct device *dev);
