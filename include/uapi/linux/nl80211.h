@@ -2218,6 +2218,9 @@ enum nl80211_commands {
  *	the default per-interface tx power setting will be overriding. Driver
  *	should be picking up the lowest tx power, either tx power per-interface
  *	or per-station.
+
+ * @NL80211_ATTR_AIRTIME_WEIGHT: Station's weight when scheduled by the airtime
+ *	scheduler.
  *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined
@@ -5254,6 +5257,10 @@ enum nl80211_feature_flags {
  *
  * @NL80211_EXT_FEATURE_STA_TX_PWR: This driver supports controlling tx power
  8	to a station.
+ * @NL80211_EXT_FEATURE_AIRTIME_FAIRNESS: Driver supports getting airtime
+ *	fairness for transmitted packets and has enabled airtime fairness
+ *	scheduling.
+ *
  * @NUM_NL80211_EXT_FEATURES: number of extended features.
  * @MAX_NL80211_EXT_FEATURES: highest extended feature index.
  */
