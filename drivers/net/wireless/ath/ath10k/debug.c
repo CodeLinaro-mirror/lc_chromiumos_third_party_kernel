@@ -2104,7 +2104,7 @@ static int ath10k_validate_coex_priorities(struct ath10k *ar,
 		}
 
 		if (!profile_found) {
-			ath10k_err(ar, "No supported profiles given as input");
+			ath10k_err(ar, "Invalid profile set in input");
 			return -EINVAL;
 		}
 
