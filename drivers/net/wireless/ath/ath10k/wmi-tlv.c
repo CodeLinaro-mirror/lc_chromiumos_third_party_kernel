@@ -4055,7 +4055,7 @@ ath10k_wmi_tlv_op_gen_tpc_final_table(struct ath10k *ar, u32 param)
 
 static void
 ath10k_map_coex_priority_profiles(enum wmi_tlv_coex_profile profile,
-				  u8 index, u32 *priority_level,
+				  u8 index, u32 *priority,
 				  struct wmi_set_coex_param_tlv_cmd *cmd)
 {
 	u32 config_value = 0;
@@ -4064,51 +4064,69 @@ ath10k_map_coex_priority_profiles(enum wmi_tlv_coex_profile profile,
 
 	switch (profile) {
 	case WMI_TLV_COEX_PROFILE_WLAN:
-		if (priority_level[index] & WMI_TLV_COEX_STA_DISCOVERY)
+		if ((priority[index] & WMI_TLV_WLAN_STA_PROFILES) ==
+		    WMI_TLV_WLAN_STA_PROFILES) {
 			config_value |= assign_profile
-					(WMI_TLV_WIFI_STA_DISCOVERY, pi++);
+					(WMI_TLV_WIFI_STA_ALL, pi++);
+		} else {
+			if (priority[index] & WMI_TLV_COEX_STA_DISCOVERY)
+				config_value |= assign_profile
+						(WMI_TLV_WIFI_STA_DISCOVERY,
+						pi++);
 
-		if (priority_level[index] & WMI_TLV_COEX_STA_CONNECTION)
-			config_value |= assign_profile
-					(WMI_TLV_WIFI_STA_CONNECTION, pi++);
+			if (priority[index] & WMI_TLV_COEX_STA_CONNECTION)
+				config_value |= assign_profile
+						(WMI_TLV_WIFI_STA_CONNECTION,
+						pi++);
 
-		if (priority_level[index] & WMI_TLV_COEX_STA_CLASS_3_MGMT)
-			config_value |= assign_profile
-					(WMI_TLV_WIFI_STA_CLASS_3_MGMT, pi++);
+			if (priority[index] & WMI_TLV_COEX_STA_CLASS_3_MGMT)
+				config_value |= assign_profile
+						(WMI_TLV_WIFI_STA_CLASS_3_MGMT,
+						pi++);
 
-		if (priority_level[index] & WMI_TLV_COEX_STA_DATA)
-			config_value |= assign_profile
-					(WMI_TLV_WIFI_STA_DATA, pi++);
+			if (priority[index] & WMI_TLV_COEX_STA_DATA)
+				config_value |= assign_profile
+						(WMI_TLV_WIFI_STA_DATA, pi++);
+		}
 
-		if (priority_level[index] & WMI_TLV_COEX_SAP_DISCOVERY)
+		if ((priority[index] & WMI_TLV_WLAN_SAP_PROFILES) ==
+		    WMI_TLV_WLAN_SAP_PROFILES) {
 			config_value |= assign_profile
-					(WMI_TLV_WIFI_SAP_DISCOVERY, pi++);
+					(WMI_TLV_WIFI_SAP_ALL, pi++);
+		} else {
+			if (priority[index] & WMI_TLV_COEX_SAP_DISCOVERY)
+				config_value |= assign_profile
+						(WMI_TLV_WIFI_SAP_DISCOVERY,
+						pi++);
 
-		if (priority_level[index] & WMI_TLV_COEX_SAP_CONNECTION)
-			config_value |= assign_profile
-					(WMI_TLV_WIFI_SAP_CONNECTION, pi++);
+			if (priority[index] & WMI_TLV_COEX_SAP_CONNECTION)
+				config_value |= assign_profile
+						(WMI_TLV_WIFI_SAP_CONNECTION,
+						pi++);
 
-		if (priority_level[index] & WMI_TLV_COEX_SAP_CLASS_3_MGMT)
-			config_value |= assign_profile
-					(WMI_TLV_WIFI_SAP_CLASS_3_MGMT, pi++);
+			if (priority[index] & WMI_TLV_COEX_SAP_CLASS_3_MGMT)
+				config_value |= assign_profile
+						(WMI_TLV_WIFI_SAP_CLASS_3_MGMT,
+						pi++);
 
-		if (priority_level[index] & WMI_TLV_COEX_SAP_DATA)
-			config_value |= assign_profile
-					(WMI_TLV_WIFI_SAP_DATA, pi++);
+			if (priority[index] & WMI_TLV_COEX_SAP_DATA)
+				config_value |= assign_profile
+						(WMI_TLV_WIFI_SAP_DATA, pi++);
+		}
 		break;
 	case WMI_TLV_COEX_PROFILE_BT:
-		if (priority_level[index] & WMI_TLV_COEX_BT_A2DP)
+		if (priority[index] & WMI_TLV_COEX_BT_A2DP)
 			config_value |= assign_profile(WMI_TLV_BT_A2DP, pi++);
-		if (priority_level[index] & WMI_TLV_COEX_BT_BLE)
+		if (priority[index] & WMI_TLV_COEX_BT_BLE)
 			config_value |= assign_profile(WMI_TLV_BT_BLE, pi++);
-		if (priority_level[index] & WMI_TLV_COEX_BT_SCO)
+		if (priority[index] & WMI_TLV_COEX_BT_SCO)
 			config_value |= assign_profile(WMI_TLV_BT_SCO, pi++);
 		break;
 	case WMI_TLV_COEX_PROFILE_ZB:
-		if (priority_level[index] & WMI_TLV_COEX_ZB_LOW)
+		if (priority[index] & WMI_TLV_COEX_ZB_LOW)
 			config_value |= assign_profile(WMI_TLV_ZB_LOW, pi++);
 
-		if (priority_level[index] & WMI_TLV_COEX_ZB_HIGH)
+		if (priority[index] & WMI_TLV_COEX_ZB_HIGH)
 			config_value |= assign_profile(WMI_TLV_ZB_HIGH, pi++);
 		break;
 	}
