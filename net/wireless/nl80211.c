@@ -12618,7 +12618,7 @@ static int parse_tid_conf(struct cfg80211_registered_device *rdev,
 		if (attrs[NL80211_ATTR_TID_CONFIG_RETRY_LONG]) {
 			tid_conf->retry_long =
 			nla_get_u8(attrs[NL80211_ATTR_TID_CONFIG_RETRY_LONG]);
-			if (tid_conf->retry_short < 1 ||
+			if (tid_conf->retry_long < 1 ||
 				tid_conf->retry_long >
 					rdev->wiphy.max_data_retry_count)
 				return -EINVAL;
