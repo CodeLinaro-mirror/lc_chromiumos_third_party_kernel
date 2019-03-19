@@ -2062,6 +2062,10 @@ static struct sk_buff *ath10k_wmi_tlv_op_gen_init(struct ath10k *ar)
 		     ar->wmi.svc_map))
 		val |= WMI_RSRC_CFG_FLAG_PEER_TID_EXT;
 
+	if (test_bit(WMI_SERVICE_THREE_WAY_COEX_CONFIG_OVERRIDE,
+		     ar->wmi.svc_map))
+		val |= WMI_RSRC_CFG_FLAG_THREE_WAY_COEX_CONFIG_OVERRIDE;
+
 	cfg->host_capab = __cpu_to_le32(val);
 
 	if (ath10k_peer_stats_enabled(ar))
