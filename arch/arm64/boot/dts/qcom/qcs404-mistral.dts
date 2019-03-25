@@ -1,4 +1,4 @@
-/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2019, The Linux Foundation. All rights reserved.
  * Copyright (c) 2018 Google, Inc
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
 
 / {
 	model = "Google QCS404/Mistral";
-	compatible = "google,mistral", "qcom,qcs404";
+	compatible = "qcom,qcs404";
 
 	aliases {
 		serial0 = &blsp1_uart2;
