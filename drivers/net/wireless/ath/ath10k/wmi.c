@@ -4655,15 +4655,15 @@ static u8 ath10k_tpc_config_get_rate(struct ath10k *ar,
 	switch (type) {
 	case WMI_TPC_TABLE_TYPE_STBC:
 		tpc = min_t(u8, tpc,
-			    ev->max_reg_allow_pow_agstbc[ch - 1][stm_idx]);
+			    ev->max_reg_allow_pow_agstbc[ch][stm_idx]);
 		break;
 	case WMI_TPC_TABLE_TYPE_TXBF:
 		tpc = min_t(u8, tpc,
-			    ev->max_reg_allow_pow_agtxbf[ch - 1][stm_idx]);
+			    ev->max_reg_allow_pow_agtxbf[ch][stm_idx]);
 		break;
 	case WMI_TPC_TABLE_TYPE_CDD:
 		tpc = min_t(u8, tpc,
-			    ev->max_reg_allow_pow_agcdd[ch - 1][stm_idx]);
+			    ev->max_reg_allow_pow_agcdd[ch][stm_idx]);
 		break;
 	default:
 		ath10k_warn(ar, "unknown wmi tpc table type: %d\n", type);
@@ -4978,7 +4978,7 @@ ath10k_wmi_tpc_final_get_rate(struct ath10k *ar,
 
 	switch (type) {
 	case WMI_TPC_TABLE_TYPE_STBC:
-		pow_agstbc = ev->max_reg_allow_pow_agstbc[ch - 1][stm_idx];
+		pow_agstbc = ev->max_reg_allow_pow_agstbc[ch][stm_idx];
 		if (pream == 4)
 			tpc = min_t(u8, tpc, pow_agstbc);
 		else
@@ -4986,7 +4986,7 @@ ath10k_wmi_tpc_final_get_rate(struct ath10k *ar,
 				    ev->ctl_power_table[0][pream][stm_idx]);
 		break;
 	case WMI_TPC_TABLE_TYPE_TXBF:
-		pow_agtxbf = ev->max_reg_allow_pow_agtxbf[ch - 1][stm_idx];
+		pow_agtxbf = ev->max_reg_allow_pow_agtxbf[ch][stm_idx];
 		if (pream == 4)
 			tpc = min_t(u8, tpc, pow_agtxbf);
 		else
@@ -4994,7 +4994,7 @@ ath10k_wmi_tpc_final_get_rate(struct ath10k *ar,
 				    ev->ctl_power_table[1][pream][stm_idx]);
 		break;
 	case WMI_TPC_TABLE_TYPE_CDD:
-		pow_agcdd = ev->max_reg_allow_pow_agcdd[ch - 1][stm_idx];
+		pow_agcdd = ev->max_reg_allow_pow_agcdd[ch][stm_idx];
 		if (pream == 4)
 			tpc = min_t(u8, tpc, pow_agcdd);
 		else
