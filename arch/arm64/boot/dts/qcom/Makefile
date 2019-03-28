@@ -15,6 +15,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= qcs404-evb-1000.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= qcs404-evb-4000.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= qcs404-evb-4000-qca8k.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= qcs404-mistral.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= qcs404-gmevb.dtb
 
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)
