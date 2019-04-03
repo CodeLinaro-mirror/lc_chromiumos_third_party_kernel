@@ -2803,9 +2803,6 @@ int ath10k_debug_create(struct ath10k *ar)
 	INIT_LIST_HEAD(&ar->debug.fw_stats.peers);
 	INIT_LIST_HEAD(&ar->debug.fw_stats.peers_extd);
 
-	debugfs_create_file("reset_htt_stats", 0200, ar->debug.debugfs_phy, ar,
-			    &fops_reset_htt_stats);
-
 	return 0;
 }
 
@@ -2930,6 +2927,9 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("ps_state_enable", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_ps_state_enable);
+
+	debugfs_create_file("reset_htt_stats", 0200, ar->debug.debugfs_phy, ar,
+			    &fops_reset_htt_stats);
 
 	if (test_bit(WMI_SERVICE_TPC_STATS_FINAL, ar->wmi.svc_map))
 		debugfs_create_file("tpc_stats_final", 0400,
