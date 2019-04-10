@@ -531,33 +531,33 @@ u8 ath10k_wmi_tlv_tpc_final_get_rate(struct ath10k *ar,
 		if (pream == 4)
 			tpc = min_t(u8, tpc,
 				    ev->max_reg_allow_pow_agstbc
-				    [ch - 1][stm_idx]);
+				    [ch][stm_idx]);
 		else
 			tpc = min_t(u8, (min_t(u8, tpc,
 					       ev->max_reg_allow_pow_agstbc
-					       [ch - 1][stm_idx])),
+					       [ch][stm_idx])),
 				    ctl_tbl->ctl_pow_tbl[0][pream][stm_idx]);
 		break;
 	case WMI_TPC_TABLE_TYPE_TXBF:
 		if (pream == 4)
 			tpc = min_t(u8, tpc,
 				    ev->max_reg_allow_pow_agtxbf
-				    [ch - 1][stm_idx]);
+				    [ch][stm_idx]);
 		else
 			tpc = min_t(u8, (min_t(u8, tpc,
 					       ev->max_reg_allow_pow_agtxbf
-					       [ch - 1][stm_idx])),
+					       [ch][stm_idx])),
 				    ctl_tbl->ctl_pow_tbl[1][pream][stm_idx]);
 		break;
 	case WMI_TPC_TABLE_TYPE_CDD:
 		if (pream == 4)
 			tpc = min_t(u8, tpc,
 				    ev->max_reg_allow_pow_agcdd
-				    [ch - 1][stm_idx]);
+				    [ch][stm_idx]);
 		else
 			tpc = min_t(u8, (min_t(u8, tpc,
 					       ev->max_reg_allow_pow_agcdd
-					       [ch - 1][stm_idx])),
+					       [ch][stm_idx])),
 				    ctl_tbl->ctl_pow_tbl[0]
 				    [pream][stm_idx]);
 		break;
@@ -613,16 +613,13 @@ ath10k_wmi_tlv_tpc_final_disp_tbl(struct ath10k *ar,
 	}
 
 	pream_idx = 0;
-	for (i = 0; i < __le32_to_cpu(ev->rate_max); i++) {
+	for (i = 0; i < tpc_stats->rate_max; i++) {
 		memset(tpc_value, 0, sizeof(tpc_value));
 		memset(buff, 0, sizeof(buff));
 		if (i == pream_table[pream_idx])
 			pream_idx++;
 
-		for (j = 0; j < WMI_TPC_TX_N_CHAIN; j++) {
-			if (j >= __le32_to_cpu(ev->num_tx_chain))
-				break;
-
+		for (j = 0; j < tpc_stats->num_tx_chain; j++) {
 			tpc[j] = ath10k_wmi_tlv_tpc_final_get_rate(ar, ev, i,
 								   j + 1,
 								   rate_code[i],
@@ -667,8 +664,10 @@ ath10k_wmi_tlv_event_tpc_final_table(struct ath10k *ar, struct sk_buff *skb)
 		__le32_to_cpu(ev->twice_antenna_reduction);
 	tpc_stats->power_limit = __le32_to_cpu(ev->power_limit);
 	tpc_stats->twice_max_rd_power = __le32_to_cpu(ev->twice_max_rd_power);
-	tpc_stats->num_tx_chain = __le32_to_cpu(ev->num_tx_chain);
-	tpc_stats->rate_max = __le32_to_cpu(ev->rate_max);
+	tpc_stats->num_tx_chain = min_t(u32, __le32_to_cpu(ev->num_tx_chain),
+					WMI_TPC_TX_N_CHAIN);
+	tpc_stats->rate_max = min_t(u32, __le32_to_cpu(ev->rate_max),
+				    WMI_TPC_RATE_MAX);
 
 	ath10k_wmi_tlv_tpc_final_disp_tbl(ar, ev, tpc_stats,
 					  rate_code, pream_table,
