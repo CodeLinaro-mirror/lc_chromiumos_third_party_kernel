@@ -1470,25 +1470,19 @@ static int ath10k_debug_tpc_stats_request(struct ath10k *ar)
 }
 
 void ath10k_debug_tpc_stats_process(struct ath10k *ar,
-				    struct ath10k_tpc_stats *tpc_stats)
+				    struct ath10k_tpc_stats *tpc_stats,
+				    bool final)
 {
 	spin_lock_bh(&ar->data_lock);
 
-	kfree(ar->debug.tpc_stats);
-	ar->debug.tpc_stats = tpc_stats;
-	complete(&ar->debug.tpc_complete);
+	if (final) {
+		kfree(ar->debug.tpc_stats_final);
+		ar->debug.tpc_stats_final = tpc_stats;
+	} else {
+		kfree(ar->debug.tpc_stats);
+		ar->debug.tpc_stats = tpc_stats;
+	}
 
-	spin_unlock_bh(&ar->data_lock);
-}
-
-void
-ath10k_debug_tpc_stats_final_process(struct ath10k *ar,
-				     struct ath10k_tpc_stats_final *tpc_stats)
-{
-	spin_lock_bh(&ar->data_lock);
-
-	kfree(ar->debug.tpc_stats_final);
-	ar->debug.tpc_stats_final = tpc_stats;
 	complete(&ar->debug.tpc_complete);
 
 	spin_unlock_bh(&ar->data_lock);
@@ -2714,7 +2708,7 @@ static int ath10k_tpc_stats_final_open(struct inode *inode, struct file *file)
 		goto err_free;
 	}
 
-	ath10k_tpc_stats_fill(ar, ar->debug.tpc_stats, buf);
+	ath10k_tpc_stats_fill(ar, ar->debug.tpc_stats_final, buf);
 	file->private_data = buf;
 
 	mutex_unlock(&ar->conf_mutex);
@@ -2814,6 +2808,7 @@ void ath10k_debug_destroy(struct ath10k *ar)
 	ath10k_debug_fw_stats_reset(ar);
 
 	kfree(ar->debug.tpc_stats);
+	kfree(ar->debug.tpc_stats_final);
 }
 
 int ath10k_debug_register(struct ath10k *ar)
