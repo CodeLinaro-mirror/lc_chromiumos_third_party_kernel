@@ -531,33 +531,33 @@ u8 ath10k_wmi_tlv_tpc_final_get_rate(struct ath10k *ar,
 		if (pream == 4)
 			tpc = min_t(u8, tpc,
 				    ev->max_reg_allow_pow_agstbc
-				    [ch][stm_idx]);
+				    [ch - 1][stm_idx]);
 		else
 			tpc = min_t(u8, (min_t(u8, tpc,
 					       ev->max_reg_allow_pow_agstbc
-					       [ch][stm_idx])),
+					       [ch - 1][stm_idx])),
 				    ctl_tbl->ctl_pow_tbl[0][pream][stm_idx]);
 		break;
 	case WMI_TPC_TABLE_TYPE_TXBF:
 		if (pream == 4)
 			tpc = min_t(u8, tpc,
 				    ev->max_reg_allow_pow_agtxbf
-				    [ch][stm_idx]);
+				    [ch - 1][stm_idx]);
 		else
 			tpc = min_t(u8, (min_t(u8, tpc,
 					       ev->max_reg_allow_pow_agtxbf
-					       [ch][stm_idx])),
+					       [ch - 1][stm_idx])),
 				    ctl_tbl->ctl_pow_tbl[1][pream][stm_idx]);
 		break;
 	case WMI_TPC_TABLE_TYPE_CDD:
 		if (pream == 4)
 			tpc = min_t(u8, tpc,
 				    ev->max_reg_allow_pow_agcdd
-				    [ch][stm_idx]);
+				    [ch - 1][stm_idx]);
 		else
 			tpc = min_t(u8, (min_t(u8, tpc,
 					       ev->max_reg_allow_pow_agcdd
-					       [ch][stm_idx])),
+					       [ch - 1][stm_idx])),
 				    ctl_tbl->ctl_pow_tbl[0]
 				    [pream][stm_idx]);
 		break;
