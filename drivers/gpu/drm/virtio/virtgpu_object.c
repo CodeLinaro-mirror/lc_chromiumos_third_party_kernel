@@ -209,6 +209,9 @@ int virtio_gpu_object_create(struct virtio_gpu_device *vgdev,
 		goto err_free_gem;
 
 	bo->dumb = params->dumb;
+	bo->resource_v2 = params->resource_v2;
+	bo->guest_memory_type = params->guest_memory_type;
+	bo->caching_type = params->caching_type;
 
 	if (fence) {
 		ret = -ENOMEM;
