@@ -57,6 +57,9 @@ struct virtio_gpu_object_params {
 	bool dumb;
 	/* 3d */
 	bool virgl;
+	bool resource_v2;
+	enum virtio_gpu_memory_type guest_memory_type;
+	enum virtio_gpu_caching_type caching_type;
 	uint32_t target;
 	uint32_t bind;
 	uint32_t depth;
@@ -78,7 +81,10 @@ struct virtio_gpu_object {
 	uint32_t offsets[4];
 
 	bool dumb;
+	bool resource_v2;
 	bool created;
+	enum virtio_gpu_memory_type guest_memory_type;
+	enum virtio_gpu_caching_type caching_type;
 };
 #define gem_to_virtio_gpu_obj(gobj) \
 	container_of((gobj), struct virtio_gpu_object, base.base)
