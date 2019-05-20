@@ -3478,6 +3478,7 @@ static int ath10k_pci_probe(struct pci_dev *pdev,
 	int (*pci_soft_reset)(struct ath10k *ar);
 	int (*pci_hard_reset)(struct ath10k *ar);
 	u32 (*targ_cpu_to_ce_addr)(struct ath10k *ar, u32 addr);
+	int try_wake_cnt = 0;
 
 	switch (pci_dev->device) {
 	case QCA988X_2_0_DEVICE_ID_UBNT:
@@ -3573,14 +3574,22 @@ static int ath10k_pci_probe(struct pci_dev *pdev,
 		goto err_core_destroy;
 	}
 
-	ret = ath10k_pci_claim(ar);
-	if (ret) {
-		ath10k_err(ar, "failed to claim device: %d\n", ret);
-		goto err_free_pipes;
+	while (try_wake_cnt++ < 3) {
+		ret = ath10k_pci_claim(ar);
+		if (ret) {
+			ath10k_err(ar, "failed to claim device: %d\n", ret);
+			goto err_free_pipes;
+		}
+
+		ret = ath10k_pci_force_wake(ar);
+		if (!ret)
+			break;
+
+		ath10k_pci_sleep_sync(ar);
+		ath10k_pci_release(ar);
 	}
 
-	ret = ath10k_pci_force_wake(ar);
-	if (ret) {
+	if (try_wake_cnt == 3) {
 		ath10k_warn(ar, "failed to wake up device : %d\n", ret);
 		goto err_sleep;
 	}
