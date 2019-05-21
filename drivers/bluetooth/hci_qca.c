@@ -30,6 +30,7 @@
 
 #include <linux/kernel.h>
 #include <linux/clk.h>
+#include <linux/completion.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/devcoredump.h>
@@ -68,6 +69,7 @@
 
 enum qca_flags {
 	QCA_IBS_ENABLED,
+	QCA_DROP_VENDOR_EVENT,
 };
 
 /* Controller dump header */
@@ -153,6 +155,7 @@ struct qca_data {
 	struct qca_memdump_data *qca_memdump;
 	unsigned long flags;
 	enum qca_memdump_states memdump_state;
+	struct completion drop_ev_comp;
 
 	/* For debugging purpose */
 	u64 ibs_sent_wacks;
@@ -566,6 +569,7 @@ static int qca_open(struct hci_uart *hu)
 	INIT_WORK(&qca->ctrl_memdump_evt, qca_controller_memdump);
 
 	qca->hu = hu;
+	init_completion(&qca->drop_ev_comp);
 
 	/* Assume we start with both sides asleep -- extra wakes OK */
 	qca->tx_ibs_state = HCI_IBS_TX_ASLEEP;
@@ -1067,6 +1071,9 @@ int qca_controller_memdump_event(struct hci_dev *hdev, struct sk_buff *skb)
 
 static int qca_recv_event_data(struct hci_dev *hdev, struct sk_buff *skb)
 {
+        struct hci_uart *hu = hci_get_drvdata(hdev);
+        struct qca_data *qca = hu->priv;
+
 	/* We receive chip memory dump as an event packet, With a dedicated
 	 * handler followed by a hardware error event. When this event is
 	 * received we store dump into a file before closing hci. This
@@ -1075,6 +1082,27 @@ static int qca_recv_event_data(struct hci_dev *hdev, struct sk_buff *skb)
 	if ((skb->data[0] == HCI_VENDOR_PKT) &&
 	    (get_unaligned_be16((skb->data) + 2) == QCA_SSR_DUMP_HANDLE))
 		return qca_controller_memdump_event(hdev, skb);
+
+	if (test_bit(QCA_DROP_VENDOR_EVENT, &qca->flags)) {
+		struct hci_event_hdr *hdr = (void *)skb->data;
+
+		/* For the WCN3990 the vendor command for a baudrate change
+		 * isn't sent as synchronous HCI command, because the
+		 * controller sends the corresponding vendor event with the
+		 * new baudrate. The event is received and properly decoded
+		 * after changing the baudrate of the host port. It needs to
+		 * be dropped, otherwise it can be misinterpreted as
+		 * response to a later firmware download command (also a
+		 * vendor command).
+		 */
+
+		if (hdr->evt == HCI_EV_VENDOR)
+			complete(&qca->drop_ev_comp);
+
+		kfree(skb);
+
+		return 0;
+	}
 
 	return hci_recv_frame(hdev, skb);
 }
@@ -1298,6 +1326,7 @@ static int qca_check_speeds(struct hci_uart *hu)
 static int qca_set_speed(struct hci_uart *hu, enum qca_speed_type speed_type)
 {
 	unsigned int speed, qca_baudrate;
+	struct qca_data *qca = hu->priv;
 	int ret = 0;
 
 	if (speed_type == QCA_INIT_SPEED) {
@@ -1317,6 +1346,11 @@ static int qca_set_speed(struct hci_uart *hu, enum qca_speed_type speed_type)
 		if (qca_is_wcn399x(soc_type))
 			hci_uart_set_flow_control(hu, true);
 
+		if (soc_type == QCA_WCN3990) {
+			reinit_completion(&qca->drop_ev_comp);
+			set_bit(QCA_DROP_VENDOR_EVENT, &qca->flags);
+		}
+
 		qca_baudrate = qca_get_baudrate_value(speed);
 		bt_dev_dbg(hu->hdev, "Set UART speed to %d", speed);
 		ret = qca_set_baudrate(hu->hdev, qca_baudrate);
@@ -1328,6 +1362,20 @@ static int qca_set_speed(struct hci_uart *hu, enum qca_speed_type speed_type)
 error:
 		if (qca_is_wcn399x(soc_type))
 			hci_uart_set_flow_control(hu, false);
+
+		if (soc_type == QCA_WCN3990) {
+			/* Wait for the controller to send the vendor event
+			 * for the baudrate change command.
+			 */
+			if (!wait_for_completion_timeout(&qca->drop_ev_comp,
+						 msecs_to_jiffies(100))) {
+				bt_dev_err(hu->hdev,
+					   "Failed to change controller baudrate\n");
+				ret = -ETIMEDOUT;
+			}
+
+			clear_bit(QCA_DROP_VENDOR_EVENT, &qca->flags);
+		}
 	}
 
 	return ret;
