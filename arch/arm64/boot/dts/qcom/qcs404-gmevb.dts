@@ -582,3 +582,7 @@
 &wifi {
 	status = "okay";
 };
+
+&tz_usr_iface {
+	status = "ok";
+};
