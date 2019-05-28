@@ -224,6 +224,9 @@ struct virtio_gpu_device {
 	struct virtio_gpu_drv_capset *capsets;
 	uint32_t num_capsets;
 	struct list_head cap_cache;
+
+	struct idr request_idr;
+	spinlock_t request_idr_lock;
 };
 
 struct virtio_gpu_fpriv {
