@@ -5904,6 +5904,11 @@ struct wmi_10_4_host_swba_event {
 
 #define WMI_MAX_AP_VDEV 16
 
+struct wmi_10_4_host_tbtt_offset_event {
+	__le32 vdev_map;
+	__le32 tbttoffset_list[WMI_MAX_AP_VDEV];
+} __packed;
+
 struct wmi_tbtt_offset_event {
 	__le32 vdev_map;
 	__le32 tbttoffset_list[WMI_MAX_AP_VDEV];
@@ -6546,6 +6551,11 @@ struct wmi_vdev_start_ev_arg {
 
 struct wmi_peer_kick_ev_arg {
 	const u8 *mac_addr;
+};
+
+struct wmi_tbtt_offset_ev_arg {
+	__le32 vdev_map;
+	__le32 tbttoffset_list[WMI_MAX_AP_VDEV];
 };
 
 struct wmi_swba_ev_arg {
