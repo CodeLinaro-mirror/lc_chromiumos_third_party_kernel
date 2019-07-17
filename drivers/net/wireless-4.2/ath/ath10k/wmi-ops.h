@@ -35,6 +35,8 @@ struct wmi_ops {
 			       struct wmi_vdev_start_ev_arg *arg);
 	int (*pull_peer_kick)(struct ath10k *ar, struct sk_buff *skb,
 			      struct wmi_peer_kick_ev_arg *arg);
+	int (*pull_tbtt_offset)(struct ath10k *ar, struct sk_buff *skb,
+				struct wmi_tbtt_offset_ev_arg *arg);
 	int (*pull_swba)(struct ath10k *ar, struct sk_buff *skb,
 			 struct wmi_swba_ev_arg *arg);
 	int (*pull_phyerr_hdr)(struct ath10k *ar, struct sk_buff *skb,
@@ -301,6 +303,16 @@ ath10k_wmi_pull_peer_kick(struct ath10k *ar, struct sk_buff *skb,
 		return -EOPNOTSUPP;
 
 	return ar->wmi.ops->pull_peer_kick(ar, skb, arg);
+}
+
+static inline int
+ath10k_wmi_pull_tbtt_offset(struct ath10k *ar, struct sk_buff *skb,
+			    struct wmi_tbtt_offset_ev_arg *arg)
+{
+	if (!ar->wmi.ops->pull_tbtt_offset)
+		return -EOPNOTSUPP;
+
+	return ar->wmi.ops->pull_tbtt_offset(ar, skb, arg);
 }
 
 static inline int

@@ -64,6 +64,11 @@ bool ath10k_mac_is_peer_wep_key_set(struct ath10k *ar, const u8 *addr,
 int ath10k_mac_vif_chan(struct ieee80211_vif *vif,
 			struct cfg80211_chan_def *def);
 
+int ath10k_mac_setup_bcn_p2p_ie(struct ath10k_vif *arvif,
+				struct sk_buff *bcn);
+int ath10k_mac_remove_vendor_ie(struct sk_buff *skb, unsigned int oui,
+				u8 oui_type, size_t ie_offset);
+
 void ath10k_mac_handle_beacon(struct ath10k *ar, struct sk_buff *skb);
 void ath10k_mac_handle_beacon_miss(struct ath10k *ar, u32 vdev_id);
 void ath10k_mac_handle_tx_pause_vdev(struct ath10k *ar, u32 vdev_id,

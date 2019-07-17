@@ -1442,8 +1442,8 @@ static int ath10k_vdev_restart(struct ath10k_vif *arvif,
 	return ath10k_vdev_start_restart(arvif, def, true);
 }
 
-static int ath10k_mac_setup_bcn_p2p_ie(struct ath10k_vif *arvif,
-				       struct sk_buff *bcn)
+int ath10k_mac_setup_bcn_p2p_ie(struct ath10k_vif *arvif,
+				struct sk_buff *bcn)
 {
 	struct ath10k *ar = arvif->ar;
 	struct ieee80211_mgmt *mgmt;
@@ -1471,8 +1471,8 @@ static int ath10k_mac_setup_bcn_p2p_ie(struct ath10k_vif *arvif,
 	return 0;
 }
 
-static int ath10k_mac_remove_vendor_ie(struct sk_buff *skb, unsigned int oui,
-				       u8 oui_type, size_t ie_offset)
+int ath10k_mac_remove_vendor_ie(struct sk_buff *skb, unsigned int oui,
+				u8 oui_type, size_t ie_offset)
 {
 	size_t len;
 	const u8 *next;

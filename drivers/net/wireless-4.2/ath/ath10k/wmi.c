@@ -3540,6 +3540,30 @@ static int ath10k_wmi_10_2_4_op_pull_swba_ev(struct ath10k *ar,
 	return 0;
 }
 
+static int
+ath10k_wmi_10_4_op_pull_tbtt_offset_ev(struct ath10k *ar,
+				       struct sk_buff *skb,
+				       struct wmi_tbtt_offset_ev_arg *arg)
+{
+	struct wmi_10_4_host_tbtt_offset_event *ev = (void *)skb->data;
+	u32 map;
+	size_t i;
+
+	if (skb->len < sizeof(*ev))
+		return -EPROTO;
+
+	skb_pull(skb, sizeof(*ev));
+	arg->vdev_map = ev->vdev_map;
+
+	for (i = 0, map = __le32_to_cpu(ev->vdev_map); map; map >>= 1, i++) {
+		if (!(map & BIT(0)))
+			continue;
+		arg->tbttoffset_list[i] = ev->tbttoffset_list[i];
+	}
+
+	return 0;
+}
+
 static int ath10k_wmi_10_4_op_pull_swba_ev(struct ath10k *ar,
 					   struct sk_buff *skb,
 					   struct wmi_swba_ev_arg *arg)
@@ -3613,6 +3637,8 @@ void ath10k_wmi_event_host_swba(struct ath10k *ar, struct sk_buff *skb)
 	struct sk_buff *bcn;
 	dma_addr_t paddr;
 	int ret, vdev_id = 0;
+	struct ieee80211_mgmt *mgmt;
+	u64 adjusted_tsf;
 
 	ret = ath10k_wmi_pull_swba(ar, skb, &arg);
 	if (ret) {
@@ -3683,6 +3709,15 @@ void ath10k_wmi_event_host_swba(struct ath10k *ar, struct sk_buff *skb)
 		ath10k_wmi_update_tim(ar, arvif, bcn, tim_info);
 		ath10k_wmi_update_noa(ar, arvif, bcn, noa_info);
 
+		/* Make the TSF offset negative so beacons in the
+		 * same staggered batch have the same TSF.
+		 */
+		adjusted_tsf = cpu_to_le64(0ULL -
+					      arvif->tbttoffset_list[vdev_id]);
+		mgmt = (struct ieee80211_mgmt *)bcn->data;
+		memcpy(&mgmt->u.beacon.timestamp,
+		       &adjusted_tsf, sizeof(adjusted_tsf));
+
 		spin_lock_bh(&ar->data_lock);
 
 		if (arvif->beacon) {
@@ -3741,7 +3776,122 @@ skip:
 
 void ath10k_wmi_event_tbttoffset_update(struct ath10k *ar, struct sk_buff *skb)
 {
-	ath10k_dbg(ar, ATH10K_DBG_WMI, "WMI_TBTTOFFSET_UPDATE_EVENTID\n");
+	struct wmi_tbtt_offset_ev_arg arg = {};
+	u32 map;
+	int i = -1;
+	int ret, vdev_id = 0;
+	u64 adjusted_tsf;
+	u64 tx_delay = 0;
+	struct ath10k_vif *arvif;
+	struct sk_buff *bcn;
+	struct ieee80211_mutable_offsets offs = {};
+	struct ieee80211_chanctx_conf *conf = NULL;
+	struct ieee80211_mgmt *mgmt;
+
+	ret = ath10k_wmi_pull_tbtt_offset(ar, skb, &arg);
+	if (ret) {
+		ath10k_warn(ar, "failed to parse tbtt offset event: %d\n", ret);
+		return;
+	}
+	map = __le32_to_cpu(arg.vdev_map);
+
+	ath10k_dbg(ar, ATH10K_DBG_MGMT, "mgmt tbtt offset vdev_map 0x%x\n",
+		   map);
+	for (; map; map >>= 1, vdev_id++) {
+		if (!(map & 0x1))
+			continue;
+
+		i++;
+
+		if (i >= WMI_MAX_AP_VDEV) {
+			ath10k_warn(ar, "tbtt offset has corrupted vdev map\n");
+			break;
+		}
+
+		arvif = ath10k_get_arvif(ar, vdev_id);
+		if (!arvif) {
+			ath10k_warn(ar, "no vif for vdev_id %d found\n",
+				    vdev_id);
+			continue;
+		}
+
+		/* mac80211 would have already asked us to stop beaconing and
+		 * bring the vdev down, so continue in that case
+		 */
+		if (!arvif->is_up)
+			continue;
+
+		arvif->tbttoffset_list[vdev_id] = arg.tbttoffset_list[vdev_id];
+		conf = rcu_dereference(arvif->vif->chanctx_conf);
+		if (conf && conf->def.chan->band == IEEE80211_BAND_2GHZ) {
+			/* 1Mbps Beacon: */
+			/* 144 us ( LPREAMBLE) + 48 (PLCP Header)
+			 * + 192 (1Mbps, 24 ytes)
+			 * = 384 us + 2us(MAC/BB DELAY
+			 */
+			tx_delay = 386;
+		} else if (conf &&
+			   conf->def.chan->band == IEEE80211_BAND_5GHZ) {
+			/* 6Mbps Beacon: */
+			/*20(lsig)+2(service)+32(6mbps, 24 bytes)
+			 *= 54us + 2us(MAC/BB DELAY)
+			 */
+			tx_delay = 56;
+		}
+		arvif->tbttoffset_list[vdev_id] -= tx_delay;
+		/* Make the TSF offset negative so beacons in the same
+		 * staggered batch have the same TSF.
+		 */
+		adjusted_tsf = cpu_to_le64(0ULL -
+					      arvif->tbttoffset_list[vdev_id]);
+
+		if (!test_bit(WMI_SERVICE_BEACON_OFFLOAD, ar->wmi.svc_map))
+			continue;
+
+		if (arvif->vdev_type != WMI_VDEV_TYPE_AP &&
+		    arvif->vdev_type != WMI_VDEV_TYPE_IBSS)
+			continue;
+
+		bcn = ieee80211_beacon_get_template(ar->hw, arvif->vif, &offs);
+		if (!bcn) {
+			ath10k_warn(ar, "failed to get beacon template from mac80211\n");
+			continue;
+		}
+
+		ret = ath10k_mac_setup_bcn_p2p_ie(arvif, bcn);
+		if (ret) {
+			ath10k_warn(ar, "failed to setup p2p go bcn ie: %d\n",
+				    ret);
+			kfree_skb(bcn);
+			continue;
+		}
+
+		/* P2P IE is inserted by firmware automatically
+		 * (as configured above) so remove it from the
+		 * base beacon template to avoid duplicate P2P
+		 * IEs in beacon frames.
+		 */
+		ath10k_mac_remove_vendor_ie(bcn, WLAN_OUI_WFA,
+					    WLAN_OUI_TYPE_WFA_P2P,
+					    offsetof(struct ieee80211_mgmt,
+						     u.beacon.variable));
+
+		mgmt = (void *)bcn->data;
+		memcpy(&mgmt->u.beacon.timestamp,
+		       &adjusted_tsf, sizeof(adjusted_tsf));
+
+		ret = ath10k_wmi_bcn_tmpl(ar, arvif->vdev_id,
+					  offs.tim_offset, bcn, 0,
+					  0, NULL, 0);
+		kfree_skb(bcn);
+
+		if (ret) {
+			ath10k_warn(ar, "failed to submit beacon template command: %d\n",
+				    ret);
+			continue;
+		}
+	}
+	return;
 }
 
 static void ath10k_dfs_radar_report(struct ath10k *ar,
@@ -9010,6 +9160,7 @@ static const struct wmi_ops wmi_10_4_ops = {
 	.pull_vdev_start = ath10k_wmi_op_pull_vdev_start_ev,
 	.pull_peer_kick = ath10k_wmi_op_pull_peer_kick_ev,
 	.pull_swba = ath10k_wmi_10_4_op_pull_swba_ev,
+	.pull_tbtt_offset = ath10k_wmi_10_4_op_pull_tbtt_offset_ev,
 	.pull_phyerr_hdr = ath10k_wmi_10_4_op_pull_phyerr_ev_hdr,
 	.pull_phyerr = ath10k_wmi_10_4_op_pull_phyerr_ev,
 	.pull_svc_rdy = ath10k_wmi_main_op_pull_svc_rdy_ev,
