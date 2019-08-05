@@ -3243,6 +3243,69 @@ static const struct file_operations fops_ftm_resp = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_write_burst_enable(struct file *file,
+					 const char __user *user_buf,
+					 size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	int ret;
+	u8 enable;
+
+	if (kstrtou8_from_user(user_buf, count, 0, &enable))
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->burst_enabled == enable) {
+		ret = count;
+		goto exit;
+	}
+
+	if (ar->state != ATH10K_STATE_ON &&
+	    ar->state != ATH10K_STATE_RESTARTED) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	ret = ath10k_wmi_pdev_set_param(ar, ar->wmi.pdev_param->burst_enable,
+					enable);
+
+	if (ret) {
+		ath10k_warn(ar, "failed to set burst value %d\n",
+			    ret);
+		goto exit;
+	}
+	ar->burst_enabled = enable;
+
+	ret = count;
+
+exit:
+	mutex_unlock(&ar->conf_mutex);
+
+	return ret;
+}
+
+static ssize_t ath10k_read_burst_enable(struct file *file,
+					char __user *user_buf,
+					size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	size_t len;
+	char buf[32];
+
+	len = scnprintf(buf, sizeof(buf), "%d\n", ar->burst_enabled);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_burst_enable = {
+	.read = ath10k_read_burst_enable,
+	.write = ath10k_write_burst_enable,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 int ath10k_debug_register(struct ath10k *ar)
 {
 	ar->debug.debugfs_phy = debugfs_create_dir("ath10k",
@@ -3376,6 +3439,9 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("ftm_resp", 0600,
 			    ar->debug.debugfs_phy, ar, &fops_ftm_resp);
+
+	debugfs_create_file("burst_enable", 0600, ar->debug.debugfs_phy, ar,
+			    &fops_burst_enable);
 
 	ath10k_txdelay_debugfs_register(ar);
 
