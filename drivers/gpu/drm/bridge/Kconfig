@@ -48,6 +48,13 @@ config DRM_DISPLAY_CONNECTOR
 	  on ARM-based platforms. Saying Y here when this driver is not needed
 	  will not cause any issue.
 
+config DRM_ITE_IT6505
+	tristate "ITE IT6505 DP bridge"
+	depends on OF
+	select DRM_KMS_HELPER
+	help
+	  ITE IT6505 DP bridge chip driver.
+
 config DRM_LVDS_CODEC
 	tristate "Transparent LVDS encoders and decoders support"
 	depends on OF
