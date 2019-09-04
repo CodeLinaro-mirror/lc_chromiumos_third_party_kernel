@@ -195,6 +195,8 @@ config DRM_VRAM_HELPER
 	help
 	  Helpers for VRAM memory management
 
+source "drivers/gpu/drm/ttm/Kconfig"
+
 config DRM_TTM_HELPER
 	tristate
 	depends on DRM
