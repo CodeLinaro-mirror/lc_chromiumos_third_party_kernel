@@ -31,6 +31,7 @@
 #include "hw.h"
 #include "hif.h"
 #include "fwlog.h"
+#include "txrx.h"
 
 #define ATH10K_WMI_BARRIER_ECHO_ID 0xBA991E9
 #define ATH10K_WMI_BARRIER_TIMEOUT_HZ (3 * HZ)
@@ -1931,10 +1932,13 @@ ath10k_wmi_op_gen_mgmt_tx(struct ath10k *ar, struct sk_buff *msdu)
 	struct wmi_mgmt_tx_cmd *cmd;
 	struct ieee80211_hdr *hdr;
 	struct sk_buff *skb;
+	struct ath10k_peer *peer;
 	int len;
 	u32 vdev_id;
 	u32 buf_len = msdu->len;
 	u16 fc;
+	const u8 *peer_addr;
+	int cipher;
 
 	hdr = (struct ieee80211_hdr *)msdu->data;
 	fc = le16_to_cpu(hdr->frame_control);
@@ -1955,8 +1959,27 @@ ath10k_wmi_op_gen_mgmt_tx(struct ath10k *ar, struct sk_buff *msdu)
 	     ieee80211_is_deauth(hdr->frame_control) ||
 	     ieee80211_is_disassoc(hdr->frame_control)) &&
 	     ieee80211_has_protected(hdr->frame_control)) {
-		len += IEEE80211_CCMP_MIC_LEN;
-		buf_len += IEEE80211_CCMP_MIC_LEN;
+		peer_addr = hdr->addr1;
+
+		spin_lock_bh(&ar->data_lock);
+		peer = ath10k_peer_find(ar, vdev_id, peer_addr);
+		spin_unlock_bh(&ar->data_lock);
+
+		if (!peer) {
+			ath10k_warn(ar, "failed to tx mgmt pkt for non-existent peer %pM\n",
+				    peer_addr);
+			return ERR_PTR(-EINVAL);
+		}
+
+		cipher = ath10k_cipher_find(ar, peer);
+		if (cipher == WLAN_CIPHER_SUITE_GCMP ||
+		    cipher == WLAN_CIPHER_SUITE_GCMP_256) {
+			len += IEEE80211_GCMP_MIC_LEN;
+			buf_len += IEEE80211_GCMP_MIC_LEN;
+		} else {
+			len += IEEE80211_CCMP_MIC_LEN;
+			buf_len += IEEE80211_CCMP_MIC_LEN;
+		}
 	}
 
 	len = round_up(len, 4);
