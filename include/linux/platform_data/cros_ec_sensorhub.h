@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Chrome OS EC MEMS Sensor Hub driver.
+ * cros_ec_sensorhub- Chrome OS EC MEMS Sensor Hub driver.
  *
- * Copyright 2019 Google LLC
+ * Copyright (C) 2019 Google, Inc
  */
 
 #ifndef __LINUX_PLATFORM_DATA_CROS_EC_SENSORHUB_H
@@ -13,7 +13,15 @@
 #include <linux/notifier.h>
 #include <linux/platform_data/cros_ec_commands.h>
 
-struct iio_dev;
+/* Maximal number of sensors supported by the EC. */
+#define CROS_EC_SENSOR_MAX 16
+
+/*
+ * Maximal number of sensors supported by the hub:
+ * We add one for the lid angle inclinometer sensor,
+ * and cros_ec_sensor_ring device.
+ */
+#define CROS_EC_SENSOR_PDEV_MAX (CROS_EC_SENSOR_MAX + 2)
 
 /**
  * struct cros_ec_sensor_platform - ChromeOS EC sensor platform information.
@@ -23,12 +31,14 @@ struct cros_ec_sensor_platform {
 	u8 sensor_num;
 };
 
+struct iio_dev;
+
 /**
  * typedef cros_ec_sensorhub_push_data_cb_t - Callback function to send datum
- *					      to specific sensors.
+ *     to specific sensors
  *
  * @indio_dev: The IIO device that will process the sample.
- * @data: Vector array of the ring sample.
+ * @data: vector array of the ring sample.
  * @timestamp: Timestamp in host timespace when the sample was acquired by
  *             the EC.
  */
@@ -45,6 +55,11 @@ enum {
 	CROS_EC_SENSOR_LAST_TS,
 	CROS_EC_SENSOR_NEW_TS,
 	CROS_EC_SENSOR_ALL_TS
+};
+
+struct __ec_todo_packed cros_ec_fifo_info {
+	struct ec_response_motion_sense_fifo_info info;
+	u16    lost[CROS_EC_SENSOR_MAX];
 };
 
 struct cros_ec_sensors_ring_sample {
@@ -114,35 +129,40 @@ struct cros_ec_sensors_ts_batch_state {
 /*
  * struct cros_ec_sensorhub - Sensor Hub device data.
  *
- * @dev: Device object, mostly used for logging.
- * @ec: Embedded Controller where the hub is located.
- * @sensor_num: Number of MEMS sensors present in the EC.
+ * @dev:          Device object, mostly used for logging.
+ * @ec:           Embedded Controller where the hub is located.
  * @msg: Structure to send FIFO requests.
- * @params: Pointer to parameters in msg.
- * @resp: Pointer to responses in msg.
- * @cmd_lock : Lock for sending msg.
+ * @params: pointer to parameters in msg.
+ * @resp: pointer to responses in msg.
+ * @cmd_lock : lock for sending msg.
  * @notifier: Notifier to kick the FIFO interrupt.
  * @ring: Preprocessed ring to store events.
- * @fifo_timestamp: Array for event timestamp and spreading.
- * @fifo_info: Copy of FIFO information coming from the EC.
- * @fifo_size: Size of the ring.
- * @batch_state: Per sensor information of the last batches received.
- * @overflow_a: For handling timestamp overflow for a time (sensor events)
- * @overflow_b: For handling timestamp overflow for b time (ec interrupts)
- * @filter: Medium fileter structure.
+ * @fifo_timestamp: array for event timestamp and spreading.
+ * @fifo_info: copy of FIFO information coming from the EC.
+ * @fifo_size: size of the ring.
+ *
+ * @penultimate_batch_timestamp: array of last but one batch timestamps.
+ *  Used for timestamp spreading calculations when a batch shows up.
+ * @penultimate_batch_len: array of last but one batch length.
+ * @last_batch_timestamp: last batch timestamp array.
+ * @last_batch_len: last batch length array.
+ * @newest_sensor_event: last sensor timestamp.
+ * @overflow_a: for handling timestamp overflow for a time (sensor events)
+ * @overflow_b: for handling timestamp overflow for b time (ec interrupts)
+ * @filter: medium fileter structure.
  * @tight_timestamps: Set to truen when EC support tight timestamping:
- *		      The timestamps reported from the EC have low jitter.
- *		      Timestamps also come before every sample. Set either
- *		      by feature bits coming from the EC or userspace.
- * @future_timestamp_count: Statistics used to compute shaved time.
- *			    This occurs when timestamp interpolation from EC
- *			    time to AP time accidentally puts timestamps in
- *			    the future. These timestamps are clamped to
- *			    `now` and these count/total_ns maintain the
- *			    statistics for how much time was removed in a
- *			    given period.
+ *  The timestamps reported from the EC have low jitter.
+ *  Timestamps also come before every sample.
+ *  Set either by feature bits coming from the EC or userspace.
+ *
+ * @future_timestamp_count : Statistics used to compute shaved time.
+ *  This occures when timestamp interpolation from EC time to AP time
+ *  accidentally puts timestamps in the future. These timestamps are clamped
+ *  to `now` and these count/total_ns maintain the statistics for
+ *  how much time was removed in a given period.
  * @future_timestamp_total_ns: Total amount of time shaved.
- * @push_data: Array of callback to send datums to iio sensor object.
+ *
+ * @push_data: array of callback to send datums to iio sensor object.
  */
 struct cros_ec_sensorhub {
 	struct device *dev;
@@ -185,6 +205,19 @@ int cros_ec_sensorhub_register_push_data(struct cros_ec_sensorhub *sensorhub,
 void cros_ec_sensorhub_unregister_push_data(struct cros_ec_sensorhub *sensorhub,
 					    u8 sensor_num);
 
+#if IS_ENABLED(CONFIG_IIO_CROS_EC_SENSORS_RING)
+#define CROS_EC_SENSOR_BROADCAST (CROS_EC_SENSOR_PDEV_MAX - 1)
+typedef int (*cros_ec_sensorhub_push_samples_cb_t)(
+		struct iio_dev *indio_dev,
+		struct cros_ec_sensors_ring_sample *sample);
+
+int cros_ec_sensorhub_register_push_sample(
+		struct cros_ec_sensorhub *sensor_hub,
+		struct iio_dev *indio_dev,
+		cros_ec_sensorhub_push_samples_cb_t cb);
+void cros_ec_sensorhub_unregister_push_sample(
+		struct cros_ec_sensorhub *sensor_hub);
+#endif
 int cros_ec_sensorhub_ring_allocate(struct cros_ec_sensorhub *sensorhub);
 int cros_ec_sensorhub_ring_add(struct cros_ec_sensorhub *sensorhub);
 void cros_ec_sensorhub_ring_remove(void *arg);
