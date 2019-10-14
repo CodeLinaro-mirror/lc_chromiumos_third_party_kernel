@@ -151,6 +151,8 @@
 #define QCA8K_PORT_MIB_COUNTER(_i)			(0x1000 + (_i) * 0x100)
 
 /* QCA specific MII registers */
+#define QCA8K_MII_MMD_ADDR		0xd
+#define QCA8K_MII_MMD_DATA		0xe
 #define QCA8K_MII_DBG_ADDR		0x1d
 #define QCA8K_MII_DBG_DATA		0x1e
 

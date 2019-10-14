@@ -486,128 +486,6 @@ qca8k_port_set_status(struct qca8k_priv *priv, int port, int enable)
 		qca8k_reg_clear(priv, QCA8K_REG_PORT_STATUS(port), mask);
 }
 
-static int
-qca8k_hw_init(struct dsa_switch *ds)
-{
-	struct qca8k_priv *priv = (struct qca8k_priv *)ds->priv;
-	int ret, i, phy_mode = -1;
-	u32 mask;
-
-	/* Initialize CPU port pad mode (xMII type, delays...) */
-	phy_mode = of_get_phy_mode(ds->dst->cpu_dp->dn);
-	if (phy_mode < 0) {
-		pr_err("Can't find phy-mode for master device\n");
-		return phy_mode;
-	}
-	ret = qca8k_set_pad_ctrl(priv, QCA8K_CPU_PORT, phy_mode);
-	if (ret < 0)
-		return ret;
-
-	/* Enable CPU Port, force it to maximum bandwidth and full-duplex */
-	mask = QCA8K_PORT_STATUS_SPEED_1000 | QCA8K_PORT_STATUS_TXFLOW |
-	       QCA8K_PORT_STATUS_RXFLOW | QCA8K_PORT_STATUS_DUPLEX;
-	qca8k_write(priv, QCA8K_REG_PORT_STATUS(QCA8K_CPU_PORT), mask);
-	qca8k_reg_set(priv, QCA8K_REG_GLOBAL_FW_CTRL0,
-		      QCA8K_GLOBAL_FW_CTRL0_CPU_PORT_EN);
-	qca8k_port_set_status(priv, QCA8K_CPU_PORT, 1);
-	priv->port_sts[QCA8K_CPU_PORT].enabled = 1;
-
-	/* Disable AZ */
-	qca8k_write(priv, QCA8K_REG_EEE_CTRL, 0);
-
-	/* Enable MIB counters */
-	qca8k_mib_init(priv);
-
-	/* Enable QCA header mode on the cpu port */
-	qca8k_write(priv, QCA8K_REG_PORT_HDR_CTRL(QCA8K_CPU_PORT),
-		    QCA8K_PORT_HDR_CTRL_ALL << QCA8K_PORT_HDR_CTRL_TX_S |
-		    QCA8K_PORT_HDR_CTRL_ALL << QCA8K_PORT_HDR_CTRL_RX_S);
-
-	/* Disable forwarding by default on all ports */
-	for (i = 0; i < QCA8K_NUM_PORTS; i++)
-		qca8k_rmw(priv, QCA8K_PORT_LOOKUP_CTRL(i),
-			  QCA8K_PORT_LOOKUP_MEMBER, 0);
-
-	/* Disable MAC by default on all user ports */
-	for (i = 1; i < QCA8K_NUM_PORTS; i++)
-		if (ds->enabled_port_mask & BIT(i))
-			qca8k_port_set_status(priv, i, 0);
-
-	/* Forward all unknown frames to CPU port for Linux processing */
-	qca8k_write(priv, QCA8K_REG_GLOBAL_FW_CTRL1,
-		    BIT(0) << QCA8K_GLOBAL_FW_CTRL1_IGMP_DP_S |
-		    BIT(0) << QCA8K_GLOBAL_FW_CTRL1_BC_DP_S |
-		    BIT(0) << QCA8K_GLOBAL_FW_CTRL1_MC_DP_S |
-		    BIT(0) << QCA8K_GLOBAL_FW_CTRL1_UC_DP_S);
-
-	/* Setup connection between CPU port & user ports */
-	for (i = 0; i < DSA_MAX_PORTS; i++) {
-		/* CPU port gets connected to all user ports of the switch */
-		if (dsa_is_cpu_port(ds, i)) {
-			qca8k_rmw(priv, QCA8K_PORT_LOOKUP_CTRL(QCA8K_CPU_PORT),
-				  QCA8K_PORT_LOOKUP_MEMBER,
-				  ds->enabled_port_mask);
-		}
-
-		/* Invividual user ports get connected to CPU port only */
-		if (ds->enabled_port_mask & BIT(i)) {
-			int shift = 16 * (i % 2);
-
-			qca8k_rmw(priv, QCA8K_PORT_LOOKUP_CTRL(i),
-				  QCA8K_PORT_LOOKUP_MEMBER,
-				  BIT(QCA8K_CPU_PORT));
-
-			/* Enable ARP Auto-learning by default */
-			qca8k_reg_set(priv, QCA8K_PORT_LOOKUP_CTRL(i),
-				      QCA8K_PORT_LOOKUP_LEARN);
-
-			/* For port based vlans to work we need to set the
-			 * default egress vid
-			 */
-			qca8k_rmw(priv, QCA8K_EGRESS_VLAN(i),
-				  0xffff << shift, 1 << shift);
-			qca8k_write(priv, QCA8K_REG_PORT_VLAN_CTRL0(i),
-				    QCA8K_PORT_VLAN_CVID(1) |
-				    QCA8K_PORT_VLAN_SVID(1));
-		}
-	}
-
-	/* Flush the FDB table */
-	qca8k_fdb_flush(priv);
-
-	return 0;
-}
-
-static int
-qca8k_setup(struct dsa_switch *ds)
-{
-	struct qca8k_priv *priv = (struct qca8k_priv *)ds->priv;
-	int ret;
-
-	/* Make sure that port 0 is the cpu port */
-	if (!dsa_is_cpu_port(ds, 0)) {
-		pr_err("port 0 is not the CPU port\n");
-		return -EINVAL;
-	}
-
-	mutex_init(&priv->reg_mutex);
-
-	/* Start by setting up the register mapping */
-	priv->regmap = devm_regmap_init(ds->dev, NULL, priv,
-					&qca8k_regmap_config);
-	if (IS_ERR(priv->regmap))
-		pr_warn("regmap initialization failed");
-
-	ret = qca8k_hw_init(ds);
-	if (ret)
-		return ret;
-
-	schedule_delayed_work(&priv->link_polling_task,
-			      msecs_to_jiffies(QCA8K_LINK_POLLING_DELAY));
-
-	return 0;
-}
-
 static void
 qca8k_adjust_link(struct dsa_switch *ds, int port, struct phy_device *phy)
 {
@@ -690,6 +568,21 @@ qca8k_phy_dbg_write(struct dsa_switch *ds, int phy,
 	mutex_lock(&bus->mdio_lock);
 	bus->write(bus, phy, QCA8K_MII_DBG_ADDR, regnum);
 	bus->write(bus, phy, QCA8K_MII_DBG_DATA, val);
+	mutex_unlock(&bus->mdio_lock);
+
+	return 0;
+}
+
+static int
+qca8k_phy_mmd_write(struct dsa_switch *ds, int phy,
+		    int regnum, u16 val)
+{
+	struct qca8k_priv *priv = (struct qca8k_priv *)ds->priv;
+	struct mii_bus *bus = priv->bus;
+
+	mutex_lock(&bus->mdio_lock);
+	bus->write(bus, phy, QCA8K_MII_MMD_ADDR, regnum);
+	bus->write(bus, phy, QCA8K_MII_MMD_DATA, val);
 	mutex_unlock(&bus->mdio_lock);
 
 	return 0;
@@ -788,6 +681,19 @@ qca8k_phy_poll_reset(struct mii_bus *bus)
 }
 
 static void
+qca8k_phy_fixup(struct qca8k_priv *priv, int phy_addr)
+{
+	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x7, 0x3c);
+	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4007, 0x0);
+	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x3, 0x800d);
+	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4003, 0x803f);
+
+	qca8k_phy_dbg_write(priv->ds, phy_addr, 0x3d, 0x6860);
+	qca8k_phy_dbg_write(priv->ds, phy_addr, 0x5, 0x2c46);
+	qca8k_phy_dbg_write(priv->ds, phy_addr, 0x3c, 0x6000);
+}
+
+static void
 qca8k_phy_init(struct qca8k_priv *priv)
 {
 	int i;
@@ -796,6 +702,9 @@ qca8k_phy_init(struct qca8k_priv *priv)
 
 	bus = priv->bus;
 	for (i = 0; i < QCA8K_NUM_PHYS; i++) {
+		/* phy fixup */
+		qca8k_phy_fixup(priv, i);
+
 		/* initialize the port itself */
 		mdiobus_write(bus, i, MII_ADVERTISE, adv);
 
@@ -805,6 +714,132 @@ qca8k_phy_init(struct qca8k_priv *priv)
 	}
 
 	qca8k_phy_poll_reset(bus);
+}
+
+static int
+qca8k_hw_init(struct dsa_switch *ds)
+{
+	struct qca8k_priv *priv = (struct qca8k_priv *)ds->priv;
+	int ret, i, phy_mode = -1;
+	u32 mask;
+
+	qca8k_phy_powerdown(priv);
+
+	/* Initialize CPU port pad mode (xMII type, delays...) */
+	phy_mode = of_get_phy_mode(ds->dst->cpu_dp->dn);
+	if (phy_mode < 0) {
+		pr_err("Can't find phy-mode for master device\n");
+		return phy_mode;
+	}
+	ret = qca8k_set_pad_ctrl(priv, QCA8K_CPU_PORT, phy_mode);
+	if (ret < 0)
+		return ret;
+
+	/* Enable CPU Port, force it to maximum bandwidth and full-duplex */
+	mask = QCA8K_PORT_STATUS_SPEED_1000 | QCA8K_PORT_STATUS_TXFLOW |
+	       QCA8K_PORT_STATUS_RXFLOW | QCA8K_PORT_STATUS_DUPLEX;
+	qca8k_write(priv, QCA8K_REG_PORT_STATUS(QCA8K_CPU_PORT), mask);
+	qca8k_reg_set(priv, QCA8K_REG_GLOBAL_FW_CTRL0,
+		      QCA8K_GLOBAL_FW_CTRL0_CPU_PORT_EN);
+	qca8k_port_set_status(priv, QCA8K_CPU_PORT, 1);
+	priv->port_sts[QCA8K_CPU_PORT].enabled = 1;
+
+	/* Disable AZ */
+	qca8k_write(priv, QCA8K_REG_EEE_CTRL, 0);
+
+	/* Enable MIB counters */
+	qca8k_mib_init(priv);
+
+	/* Enable QCA header mode on the cpu port */
+	qca8k_write(priv, QCA8K_REG_PORT_HDR_CTRL(QCA8K_CPU_PORT),
+		    QCA8K_PORT_HDR_CTRL_ALL << QCA8K_PORT_HDR_CTRL_TX_S |
+		    QCA8K_PORT_HDR_CTRL_ALL << QCA8K_PORT_HDR_CTRL_RX_S);
+
+	/* Disable forwarding by default on all ports */
+	for (i = 0; i < QCA8K_NUM_PORTS; i++)
+		qca8k_rmw(priv, QCA8K_PORT_LOOKUP_CTRL(i),
+			  QCA8K_PORT_LOOKUP_MEMBER, 0);
+
+	/* Disable MAC by default on all user ports */
+	for (i = 1; i < QCA8K_NUM_PORTS; i++)
+		if (ds->enabled_port_mask & BIT(i))
+			qca8k_port_set_status(priv, i, 0);
+
+	/* Forward all unknown frames to CPU port for Linux processing */
+	qca8k_write(priv, QCA8K_REG_GLOBAL_FW_CTRL1,
+		    BIT(0) << QCA8K_GLOBAL_FW_CTRL1_IGMP_DP_S |
+		    BIT(0) << QCA8K_GLOBAL_FW_CTRL1_BC_DP_S |
+		    BIT(0) << QCA8K_GLOBAL_FW_CTRL1_MC_DP_S |
+		    BIT(0) << QCA8K_GLOBAL_FW_CTRL1_UC_DP_S);
+
+	/* Setup connection between CPU port & user ports */
+	for (i = 0; i < DSA_MAX_PORTS; i++) {
+		/* CPU port gets connected to all user ports of the switch */
+		if (dsa_is_cpu_port(ds, i)) {
+			qca8k_rmw(priv, QCA8K_PORT_LOOKUP_CTRL(QCA8K_CPU_PORT),
+				  QCA8K_PORT_LOOKUP_MEMBER,
+				  ds->enabled_port_mask);
+		}
+
+		/* Invividual user ports get connected to CPU port only */
+		if (ds->enabled_port_mask & BIT(i)) {
+			int shift = 16 * (i % 2);
+
+			qca8k_rmw(priv, QCA8K_PORT_LOOKUP_CTRL(i),
+				  QCA8K_PORT_LOOKUP_MEMBER,
+				  BIT(QCA8K_CPU_PORT));
+
+			/* Enable ARP Auto-learning by default */
+			qca8k_reg_set(priv, QCA8K_PORT_LOOKUP_CTRL(i),
+				      QCA8K_PORT_LOOKUP_LEARN);
+
+			/* For port based vlans to work we need to set the
+			 * default egress vid
+			 */
+			qca8k_rmw(priv, QCA8K_EGRESS_VLAN(i),
+				  0xffff << shift, 1 << shift);
+			qca8k_write(priv, QCA8K_REG_PORT_VLAN_CTRL0(i),
+				    QCA8K_PORT_VLAN_CVID(1) |
+				    QCA8K_PORT_VLAN_SVID(1));
+		}
+	}
+
+	/* Flush the FDB table */
+	qca8k_fdb_flush(priv);
+
+	qca8k_phy_init(priv);
+
+	return 0;
+}
+
+static int
+qca8k_setup(struct dsa_switch *ds)
+{
+	struct qca8k_priv *priv = (struct qca8k_priv *)ds->priv;
+	int ret;
+
+	/* Make sure that port 0 is the cpu port */
+	if (!dsa_is_cpu_port(ds, 0)) {
+		pr_err("port 0 is not the CPU port\n");
+		return -EINVAL;
+	}
+
+	mutex_init(&priv->reg_mutex);
+
+	/* Start by setting up the register mapping */
+	priv->regmap = devm_regmap_init(ds->dev, NULL, priv,
+					&qca8k_regmap_config);
+	if (IS_ERR(priv->regmap))
+		pr_warn("regmap initialization failed");
+
+	ret = qca8k_hw_init(ds);
+	if (ret)
+		return ret;
+
+	schedule_delayed_work(&priv->link_polling_task,
+			      msecs_to_jiffies(QCA8K_LINK_POLLING_DELAY));
+
+	return 0;
 }
 
 static int
