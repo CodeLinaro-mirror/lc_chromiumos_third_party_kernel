@@ -112,7 +112,8 @@ void sdhci_dumpregs(struct sdhci_host *host)
 				   sdhci_readl(host, SDHCI_ADMA_ADDRESS));
 		}
 	}
-
+	/* BUGON when someting goes wrong with sdhci */
+	BUG_ON(1);
 	SDHCI_DUMP("============================================\n");
 }
 EXPORT_SYMBOL_GPL(sdhci_dumpregs);
