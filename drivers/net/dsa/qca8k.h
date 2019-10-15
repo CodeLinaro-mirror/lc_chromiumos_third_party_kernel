@@ -156,12 +156,6 @@
 #define QCA8K_MII_DBG_ADDR		0x1d
 #define QCA8K_MII_DBG_DATA		0x1e
 
-#define QCA8K_LINK_POLLING_DELAY	100
-#define QCA8K_PORT_LINK_UP 1
-#define QCA8K_PORT_LINK_DOWN 0
-#define QCA8K_QM_NOT_EMPTY  1
-#define QCA8K_QM_EMPTY  0
-
 #define QCA8K_PHY_SPEC_STATUS 0x11
 #define   QCA8K_PHY_SPEC_STATUS_LINK		BIT(10)
 #define   QCA8K_PHY_SPEC_STATUS_DUPLEX	BIT(13)
@@ -227,12 +221,7 @@ struct qca8k_priv {
 	struct dsa_switch *ds;
 	struct mutex reg_mutex;
 	struct device *dev;
-	struct mutex link_polling_lock; /* lock for link polling task */
-	struct delayed_work link_polling_task; /* task for link polling */
-	u32 port_link_up[QCA8K_NUM_PORTS];
-	u32 port_old_link[QCA8K_NUM_PORTS];
-	u32 port_old_speed[QCA8K_NUM_PORTS];
-	u32 port_old_duplex[QCA8K_NUM_PORTS];
+	struct mutex link_lock; /* lock for link adjust */
 };
 
 struct qca8k_mib_desc {

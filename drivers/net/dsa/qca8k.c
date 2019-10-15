@@ -486,47 +486,6 @@ qca8k_port_set_status(struct qca8k_priv *priv, int port, int enable)
 		qca8k_reg_clear(priv, QCA8K_REG_PORT_STATUS(port), mask);
 }
 
-static void
-qca8k_adjust_link(struct dsa_switch *ds, int port, struct phy_device *phy)
-{
-	struct qca8k_priv *priv = ds->priv;
-	u32 reg;
-
-	/* Force fixed-link setting for CPU port, skip others. */
-	if (!phy_is_pseudo_fixed_link(phy))
-		return;
-
-	/* Set port speed */
-	switch (phy->speed) {
-	case 10:
-		reg = QCA8K_PORT_STATUS_SPEED_10;
-		break;
-	case 100:
-		reg = QCA8K_PORT_STATUS_SPEED_100;
-		break;
-	case 1000:
-		reg = QCA8K_PORT_STATUS_SPEED_1000;
-		break;
-	default:
-		dev_dbg(priv->dev, "port%d link speed %dMbps not supported.\n",
-			port, phy->speed);
-		return;
-	}
-
-	/* Set duplex mode */
-	if (phy->duplex == DUPLEX_FULL)
-		reg |= QCA8K_PORT_STATUS_DUPLEX;
-
-	/* Force flow control */
-	if (dsa_is_cpu_port(ds, port))
-		reg |= QCA8K_PORT_STATUS_RXFLOW | QCA8K_PORT_STATUS_TXFLOW;
-
-	/* Force link down before changing MAC options */
-	qca8k_port_set_status(priv, port, 0);
-	qca8k_write(priv, QCA8K_REG_PORT_STATUS(port), reg);
-	qca8k_port_set_status(priv, port, 1);
-}
-
 static int
 qca8k_phy_read(struct dsa_switch *ds, int phy, int regnum)
 {
@@ -836,20 +795,12 @@ qca8k_setup(struct dsa_switch *ds)
 	if (ret)
 		return ret;
 
-	schedule_delayed_work(&priv->link_polling_task,
-			      msecs_to_jiffies(QCA8K_LINK_POLLING_DELAY));
-
 	return 0;
 }
 
 static int
 qca8k_qm_err_recovery(struct qca8k_priv *priv)
 {
-	memset(priv->port_link_up, 0, sizeof(priv->port_link_up));
-	memset(priv->port_old_link, 0, sizeof(priv->port_old_link));
-	memset(priv->port_old_speed, 0, sizeof(priv->port_old_speed));
-	memset(priv->port_old_duplex, 0, sizeof(priv->port_old_duplex));
-
 	qca8k_phy_powerdown(priv);
 	qca8k_hw_soft_reset(priv);
 	qca8k_hw_init(priv->ds);
@@ -938,74 +889,11 @@ qca8k_force_mac_speed_duplex(struct qca8k_priv *priv,
 }
 
 static void
-qca8k_sw_port_link_change(struct qca8k_priv *priv,
-			  u32 port_id, u32 link,
-				  u32 speed, u32 duplex)
+qca8k_link_sync_function(struct qca8k_priv *priv, int port,
+			 struct phy_device *phy)
 {
-	u32 qm_buffer = 0;
-	/* Up --> Down */
-	if (priv->port_old_link[port_id] == QCA8K_PORT_LINK_UP &&
-	    link == QCA8K_PORT_LINK_DOWN) {
-		/* LINK_EN disable(MAC force mode) */
-		qca8k_force_mac_status(priv, port_id, false);
-
-		qca8k_phy_manu_ctrl_en(priv, port_id - 1, false);
-
-		/* Check queue buffer */
-		qca8k_get_qm_status(priv, port_id, &qm_buffer);
-		if (qm_buffer == 0) {
-			qca8k_force_mac_speed_duplex(priv, port_id,
-						     QCA8K_PORT_SPEED_1000M,
-						      QCA8K_DUPLEX_FULL);
-		}
-	} else if ((priv->port_old_link[port_id] == QCA8K_PORT_LINK_DOWN) &&
-		   (link == QCA8K_PORT_LINK_UP)) {
-		/* Down --> Up */
-		if (priv->port_link_up[port_id] < 1) {
-			/* linkup need to wait for next cycle */
-			++priv->port_link_up[port_id];
-			qca8k_get_qm_status(priv, port_id, &qm_buffer);
-			if (qm_buffer) {
-				qca8k_qm_err_recovery(priv);
-				return;
-			}
-		} else {
-			priv->port_link_up[port_id] = 0;
-			qca8k_force_mac_speed_duplex(priv, port_id,
-						     speed, duplex);
-			usleep_range(100, 200);
-			qca8k_force_mac_status(priv, port_id, true);
-
-			if (speed == QCA8K_PORT_SPEED_100M) {
-				/* PHY is link up 100M */
-				qca8k_phy_manu_ctrl_en(priv, port_id - 1,
-						       true);
-			}
-		}
-	}
-}
-
-static void
-qca8k_phy_status_get(struct qca8k_priv *priv, u32 port_id,
-		     u32 *speed, u32 *link, u32 *duplex)
-{
-	int port_phy_status;
-	struct mii_bus *bus = priv->bus;
-
-	port_phy_status = mdiobus_read(bus, port_id - 1,
-				       QCA8K_PHY_SPEC_STATUS);
-
-	*speed = ((port_phy_status & QCA8K_PHY_SPEC_STATUS_SPEED) >> 14);
-	*link = ((port_phy_status & QCA8K_PHY_SPEC_STATUS_LINK) >> 10);
-	*duplex = ((port_phy_status & QCA8K_PHY_SPEC_STATUS_DUPLEX) >> 13);
-}
-
-static void
-qca8k_link_sync_function(struct qca8k_priv *priv)
-{
-	u32 port_id = 0;
 	u32 value = 0;
-	u32 link = 0, speed = 0, duplex = 0;
+	u32 qm_buffer = 0;
 
 	/* if QM error, then do SW recovery, check link the next time */
 	value = qca8k_qm_error_check(priv);
@@ -1014,35 +902,91 @@ qca8k_link_sync_function(struct qca8k_priv *priv)
 		return;
 	}
 
-	for (port_id = 1; port_id < QCA8K_NUM_PORTS - 1; port_id++) {
-		qca8k_phy_status_get(priv, port_id, &speed, &link, &duplex);
+	/* Up --> Down */
+	if (!phy->link) {
+		/* LINK_EN disable(MAC force mode) */
+		qca8k_force_mac_status(priv, port, false);
 
-		if (link != priv->port_old_link[port_id]) {
-			qca8k_sw_port_link_change(priv, port_id,
-						  link, speed, duplex);
+		qca8k_phy_manu_ctrl_en(priv, phy->mdio.addr, false);
 
-			if (priv->port_link_up[port_id] == 0) {
-				/* Save the current status */
-				priv->port_old_speed[port_id] = speed;
-				priv->port_old_link[port_id] = link;
-				priv->port_old_duplex[port_id] = duplex;
-			}
+		/* Check queue buffer */
+		qca8k_get_qm_status(priv, port, &qm_buffer);
+		if (qm_buffer == 0) {
+			qca8k_force_mac_speed_duplex(priv, port,
+						     QCA8K_PORT_SPEED_1000M,
+						      QCA8K_DUPLEX_FULL);
+		}
+	} else {
+		/* Down --> Up */
+		qca8k_force_mac_speed_duplex(priv, port,
+					     phy->speed,
+					     phy->duplex);
+		usleep_range(100, 200);
+		qca8k_force_mac_status(priv, port, true);
+
+		if (phy->speed == QCA8K_PORT_SPEED_100M) {
+			/* PHY is link up 100M */
+			qca8k_phy_manu_ctrl_en(priv, phy->mdio.addr,
+					       true);
+		}
+		qca8k_get_qm_status(priv, port, &qm_buffer);
+		if (qm_buffer) {
+			qca8k_qm_err_recovery(priv);
+			return;
 		}
 	}
+
 }
 
 static void
-qca8k_link_polling_task(struct work_struct *work)
+qca8k_cpuport_setup(struct dsa_switch *ds, int port, struct phy_device *phy)
 {
-	struct qca8k_priv *priv;
+	struct qca8k_priv *priv = ds->priv;
+	u32 reg;
 
-	priv = container_of(work, struct qca8k_priv, link_polling_task.work);
-	mutex_lock(&priv->link_polling_lock);
-	qca8k_link_sync_function(priv);
-	mutex_unlock(&priv->link_polling_lock);
+	switch (phy->speed) {
+	case 10:
+		reg = QCA8K_PORT_STATUS_SPEED_10;
+		break;
+	case 100:
+		reg = QCA8K_PORT_STATUS_SPEED_100;
+		break;
+	case 1000:
+		reg = QCA8K_PORT_STATUS_SPEED_1000;
+		break;
+	default:
+		dev_dbg(priv->dev, "port%d link speed %dMbps not supported.\n",
+			port, phy->speed);
+		return;
+	}
 
-	schedule_delayed_work(&priv->link_polling_task,
-			      msecs_to_jiffies(QCA8K_LINK_POLLING_DELAY));
+	/* Set duplex mode */
+	if (phy->duplex == DUPLEX_FULL)
+		reg |= QCA8K_PORT_STATUS_DUPLEX;
+
+	/* Force flow control */
+	reg |= QCA8K_PORT_STATUS_RXFLOW | QCA8K_PORT_STATUS_TXFLOW;
+
+	/* Force link down before changing MAC options */
+	qca8k_port_set_status(priv, port, 0);
+	qca8k_write(priv, QCA8K_REG_PORT_STATUS(port), reg);
+	qca8k_port_set_status(priv, port, 1);
+}
+
+static void
+qca8k_adjust_link(struct dsa_switch *ds, int port, struct phy_device *phy)
+{
+	struct qca8k_priv *priv = ds->priv;
+
+	/* Force fixed-link setting for CPU port. */
+	if (phy_is_pseudo_fixed_link(phy) && dsa_is_cpu_port(ds, port)) {
+		qca8k_cpuport_setup(ds, port, phy);
+		return;
+	}
+
+	mutex_lock(&priv->link_lock);
+	qca8k_link_sync_function(priv, port, phy);
+	mutex_unlock(&priv->link_lock);
 }
 
 static void
@@ -1329,9 +1273,7 @@ qca8k_sw_probe(struct mdio_device *mdiodev)
 	mutex_init(&priv->reg_mutex);
 	dev_set_drvdata(&mdiodev->dev, priv);
 
-	mutex_init(&priv->link_polling_lock);
-	INIT_DELAYED_WORK(&priv->link_polling_task,
-			  qca8k_link_polling_task);
+	mutex_init(&priv->link_lock);
 
 	return dsa_register_switch(priv->ds);
 }
@@ -1341,8 +1283,6 @@ qca8k_sw_remove(struct mdio_device *mdiodev)
 {
 	struct qca8k_priv *priv = dev_get_drvdata(&mdiodev->dev);
 	int i;
-
-	cancel_delayed_work_sync(&priv->link_polling_task);
 
 	for (i = 0; i < QCA8K_NUM_PORTS; i++)
 		qca8k_port_set_status(priv, i, 0);
