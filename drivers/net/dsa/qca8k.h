@@ -191,6 +191,13 @@
 #define QCA8K_NUM_PHYS	5
 
 enum {
+	QCA8K_PHY_MII = 0,
+	QCA8K_PHY_DBG,
+	QCA8K_PHY_MMD3,
+	QCA8K_PHY_MMD7,
+};
+
+enum {
 	QCA8K_PORT_SPEED_10M = 0,
 	QCA8K_PORT_SPEED_100M = 1,
 	QCA8K_PORT_SPEED_1000M = 2,
@@ -222,6 +229,9 @@ struct qca8k_priv {
 	struct mutex reg_mutex;
 	struct device *dev;
 	struct mutex link_lock; /* lock for link adjust */
+	struct dentry *top_dentry;
+	struct dentry *phy_write_dentry;
+	struct dentry *phy_read_dentry;
 };
 
 struct qca8k_mib_desc {

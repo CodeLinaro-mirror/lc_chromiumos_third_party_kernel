@@ -24,6 +24,7 @@
 #include <linux/delay.h>
 #include <linux/mdio.h>
 #include <linux/etherdevice.h>
+#include <linux/debugfs.h>
 
 #include "qca8k.h"
 
@@ -548,6 +549,22 @@ qca8k_phy_mmd_write(struct dsa_switch *ds, int phy,
 }
 
 static int
+qca8k_phy_mmd_read(struct dsa_switch *ds, int phy,
+		   int regnum)
+{
+	struct qca8k_priv *priv = (struct qca8k_priv *)ds->priv;
+	struct mii_bus *bus = priv->bus;
+	int val;
+
+	mutex_lock(&bus->mdio_lock);
+	bus->write(bus, phy, QCA8K_MII_MMD_ADDR, regnum);
+	val = bus->read(bus, phy, QCA8K_MII_MMD_DATA);
+	mutex_unlock(&bus->mdio_lock);
+
+	return val;
+}
+
+static int
 qca8k_qm_error_check(struct qca8k_priv *priv)
 {
 	u32 value, qm_err_int;
@@ -667,7 +684,8 @@ qca8k_phy_init(struct qca8k_priv *priv)
 		/* initialize the port itself */
 		mdiobus_write(bus, i, MII_ADVERTISE, adv);
 
-		mdiobus_write(bus, i, MII_CTRL1000, ADVERTISE_1000FULL);
+		mdiobus_write(bus, i, MII_CTRL1000,
+			      ADVERTISE_1000FULL | BIT(10));
 
 		mdiobus_write(bus, i, MII_BMCR, BMCR_RESET | BMCR_ANENABLE);
 	}
@@ -722,7 +740,7 @@ qca8k_hw_init(struct dsa_switch *ds)
 	/* Disable MAC by default on all user ports */
 	for (i = 1; i < QCA8K_NUM_PORTS; i++)
 		if (ds->enabled_port_mask & BIT(i))
-			qca8k_port_set_status(priv, i, 0);
+			qca8k_write(priv, QCA8K_REG_PORT_STATUS(i), BIT(12));
 
 	/* Forward all unknown frames to CPU port for Linux processing */
 	qca8k_write(priv, QCA8K_REG_GLOBAL_FW_CTRL1,
@@ -918,6 +936,11 @@ qca8k_link_sync_function(struct qca8k_priv *priv, int port,
 		}
 	} else {
 		/* Down --> Up */
+		qca8k_get_qm_status(priv, port, &qm_buffer);
+		if (qm_buffer) {
+			qca8k_qm_err_recovery(priv);
+			return;
+		}
 		qca8k_force_mac_speed_duplex(priv, port,
 					     phy->speed,
 					     phy->duplex);
@@ -928,11 +951,6 @@ qca8k_link_sync_function(struct qca8k_priv *priv, int port,
 			/* PHY is link up 100M */
 			qca8k_phy_manu_ctrl_en(priv, phy->mdio.addr,
 					       true);
-		}
-		qca8k_get_qm_status(priv, port, &qm_buffer);
-		if (qm_buffer) {
-			qca8k_qm_err_recovery(priv);
-			return;
 		}
 	}
 
@@ -1137,10 +1155,14 @@ qca8k_port_enable(struct dsa_switch *ds, int port,
 {
 	struct qca8k_priv *priv = (struct qca8k_priv *)ds->priv;
 
-	qca8k_port_set_status(priv, port, 1);
+	if (dsa_is_cpu_port(ds, port))
+		qca8k_port_set_status(priv, port, 1);
 	priv->port_sts[port].enabled = 1;
 
 	phy->advertising |= (ADVERTISED_Pause | ADVERTISED_Asym_Pause);
+
+	if (!dsa_is_cpu_port(ds, port))
+		genphy_restart_aneg(phy);
 
 	return 0;
 }
@@ -1241,11 +1263,208 @@ static const struct dsa_switch_ops qca8k_switch_ops = {
 	.port_fdb_dump		= qca8k_port_fdb_dump,
 };
 
+static ssize_t qca8k_phy_read_reg_set(struct file *fp,
+				      const char __user *ubuf,
+				      size_t sz, loff_t *ppos)
+{
+	struct qca8k_priv *priv = fp->private_data;
+	char lbuf[32];
+	size_t lbuf_size;
+	char *options = lbuf;
+	char *this_opt;
+	u32 phy_addr, type, reg_addr;
+	int val = 0;
+
+	if (!priv)
+		return -EFAULT;
+
+	lbuf_size = min(sz, (sizeof(lbuf) - 1));
+	if (copy_from_user(lbuf, ubuf, lbuf_size))
+		return -EFAULT;
+	lbuf[lbuf_size] = 0;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	kstrtouint(this_opt, 0, &phy_addr);
+	if ((options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	kstrtouint(this_opt, 0, &type);
+	if ((options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	kstrtouint(this_opt, 0, &reg_addr);
+
+	if (phy_addr > (QCA8K_NUM_PHYS - 1))
+		goto fail;
+
+	if (type > QCA8K_PHY_MMD7)
+		goto fail;
+
+	switch (type) {
+	case QCA8K_PHY_MII:
+		val = qca8k_phy_read(priv->ds, phy_addr, reg_addr);
+		break;
+	case QCA8K_PHY_DBG:
+		val = qca8k_phy_dbg_read(priv->ds, phy_addr, reg_addr);
+		break;
+	case QCA8K_PHY_MMD3:
+		qca8k_phy_mmd_write(priv->ds, phy_addr, 3, reg_addr);
+		val = qca8k_phy_mmd_read(priv->ds, phy_addr, 0x4003);
+		break;
+	case QCA8K_PHY_MMD7:
+		qca8k_phy_mmd_write(priv->ds, phy_addr, 7, reg_addr);
+		val = qca8k_phy_mmd_read(priv->ds, phy_addr, 0x4007);
+		break;
+	default:
+		break;
+	}
+
+	pr_info("\nval = 0x%x\n", (u32)val);
+	return lbuf_size;
+
+fail:
+	pr_err("Format: phy_addr type reg_addr\n");
+	return -EINVAL;
+}
+
+static ssize_t qca8k_phy_write_reg_set(struct file *fp,
+				       const char __user *ubuf,
+				       size_t sz, loff_t *ppos)
+{
+	struct qca8k_priv *priv = (struct qca8k_priv *)fp->private_data;
+	char lbuf[32];
+	size_t lbuf_size;
+	char *options = lbuf;
+	char *this_opt;
+	u32 phy_addr, type, reg_addr, val;
+
+	if (!priv)
+		return -EFAULT;
+
+	lbuf_size = min(sz, (sizeof(lbuf) - 1));
+	if (copy_from_user(lbuf, ubuf, lbuf_size))
+		return -EFAULT;
+	lbuf[lbuf_size] = 0;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	kstrtouint(this_opt, 0, &phy_addr);
+	if ((options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	kstrtouint(this_opt, 0, &type);
+	if ((options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	kstrtouint(this_opt, 0, &reg_addr);
+	if ((options - lbuf) >= (lbuf_size - 1))
+		goto fail;
+
+	this_opt = strsep(&options, " ");
+	if (!this_opt)
+		goto fail;
+
+	kstrtouint(this_opt, 0, &val);
+
+	if (phy_addr > (QCA8K_NUM_PHYS - 1))
+		return -EINVAL;
+
+	if (type > QCA8K_PHY_MMD7)
+		return -EINVAL;
+
+	switch (type) {
+	case QCA8K_PHY_MII:
+		qca8k_phy_write(priv->ds, phy_addr, reg_addr, val);
+		break;
+	case QCA8K_PHY_DBG:
+		qca8k_phy_dbg_write(priv->ds, phy_addr, reg_addr, val);
+		break;
+	case QCA8K_PHY_MMD3:
+		qca8k_phy_mmd_write(priv->ds, phy_addr, 3, reg_addr);
+		qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4003, val);
+		break;
+	case QCA8K_PHY_MMD7:
+		qca8k_phy_mmd_write(priv->ds, phy_addr, 7, reg_addr);
+		qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4007, val);
+		break;
+	default:
+		break;
+	}
+
+	return lbuf_size;
+
+fail:
+	pr_err("Format: phy_addr type reg_addr value\n");
+	return -EINVAL;
+}
+
+static const struct file_operations qca8k_phy_write_reg_ops = {
+	.open = simple_open,
+	.write = qca8k_phy_write_reg_set,
+	.llseek = no_llseek,
+};
+
+static const struct file_operations qca8k_phy_read_reg_ops = {
+	.open = simple_open,
+	.write = qca8k_phy_read_reg_set,
+	.llseek = no_llseek,
+};
+
+static int
+qca8k_init_debugfs_entries(struct qca8k_priv *priv)
+{
+	priv->top_dentry = debugfs_create_dir("qca8k", NULL);
+	if (!priv->top_dentry)
+		return -ENOMEM;
+
+	priv->phy_write_dentry = debugfs_create_file("phy-write-reg", 0600,
+						     priv->top_dentry,
+						     priv,
+						     &qca8k_phy_write_reg_ops);
+	if (!priv->phy_write_dentry)
+		goto fail;
+
+	priv->phy_read_dentry = debugfs_create_file("phy-read-reg", 0600,
+						    priv->top_dentry,
+						    priv,
+						    &qca8k_phy_read_reg_ops);
+	if (!priv->phy_read_dentry)
+		goto fail;
+
+	return 0;
+
+fail:
+	debugfs_remove_recursive(priv->top_dentry);
+	return -ENOMEM;
+}
+
 static int
 qca8k_sw_probe(struct mdio_device *mdiodev)
 {
 	struct qca8k_priv *priv;
 	u32 id;
+	int ret;
 
 	/* allocate the private data struct so that we can probe the switches
 	 * ID register
@@ -1275,7 +1494,11 @@ qca8k_sw_probe(struct mdio_device *mdiodev)
 
 	mutex_init(&priv->link_lock);
 
-	return dsa_register_switch(priv->ds);
+	ret = dsa_register_switch(priv->ds);
+	if (!ret)
+		qca8k_init_debugfs_entries(priv);
+
+	return ret;
 }
 
 static void
@@ -1286,6 +1509,8 @@ qca8k_sw_remove(struct mdio_device *mdiodev)
 
 	for (i = 0; i < QCA8K_NUM_PORTS; i++)
 		qca8k_port_set_status(priv, i, 0);
+
+	debugfs_remove_recursive(priv->top_dentry);
 
 	dsa_unregister_switch(priv->ds);
 }
