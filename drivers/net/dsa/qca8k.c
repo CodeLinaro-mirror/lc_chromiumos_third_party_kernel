@@ -1263,6 +1263,23 @@ static const struct dsa_switch_ops qca8k_switch_ops = {
 	.port_fdb_dump		= qca8k_port_fdb_dump,
 };
 
+static ssize_t qca8k_phy_read_reg_get(struct file *fp,
+				      char __user *ubuf,
+				      size_t sz, loff_t *ppos)
+{
+	struct qca8k_priv *priv = fp->private_data;
+	char lbuf[40];
+
+	if (!priv)
+		return -EFAULT;
+
+	snprintf(lbuf, sizeof(lbuf), "reg_val: 0x%x\n",
+		 priv->reg_val);
+
+	return simple_read_from_buffer(ubuf, sz, ppos,
+					lbuf, strlen(lbuf));
+}
+
 static ssize_t qca8k_phy_read_reg_set(struct file *fp,
 				      const char __user *ubuf,
 				      size_t sz, loff_t *ppos)
@@ -1330,7 +1347,7 @@ static ssize_t qca8k_phy_read_reg_set(struct file *fp,
 		break;
 	}
 
-	pr_info("\nval = 0x%x\n", (u32)val);
+	priv->reg_val = (u32)val;
 	return lbuf_size;
 
 fail:
@@ -1427,6 +1444,7 @@ static const struct file_operations qca8k_phy_write_reg_ops = {
 
 static const struct file_operations qca8k_phy_read_reg_ops = {
 	.open = simple_open,
+	.read = qca8k_phy_read_reg_get,
 	.write = qca8k_phy_read_reg_set,
 	.llseek = no_llseek,
 };

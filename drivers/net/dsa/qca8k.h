@@ -232,6 +232,7 @@ struct qca8k_priv {
 	struct dentry *top_dentry;
 	struct dentry *phy_write_dentry;
 	struct dentry *phy_read_dentry;
+	u32 reg_val;
 };
 
 struct qca8k_mib_desc {
