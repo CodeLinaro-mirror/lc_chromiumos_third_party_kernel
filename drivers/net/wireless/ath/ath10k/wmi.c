@@ -1968,25 +1968,29 @@ ath10k_wmi_op_gen_mgmt_tx(struct ath10k *ar, struct sk_buff *msdu)
 	     ieee80211_is_disassoc(hdr->frame_control)) &&
 	     ieee80211_has_protected(hdr->frame_control)) {
 		peer_addr = hdr->addr1;
-
-		spin_lock_bh(&ar->data_lock);
-		peer = ath10k_peer_find(ar, vdev_id, peer_addr);
-		spin_unlock_bh(&ar->data_lock);
-
-		if (!peer) {
-			ath10k_warn(ar, "failed to tx mgmt pkt for non-existent peer %pM\n",
-				    peer_addr);
-			return ERR_PTR(-EINVAL);
-		}
-
-		cipher = ath10k_cipher_find(ar, peer);
-		if (cipher == WLAN_CIPHER_SUITE_GCMP ||
-		    cipher == WLAN_CIPHER_SUITE_GCMP_256) {
-			len += IEEE80211_GCMP_MIC_LEN;
-			buf_len += IEEE80211_GCMP_MIC_LEN;
+		if (is_multicast_ether_addr(peer_addr)) {
+			len += sizeof(struct ieee80211_mmie_16);
+			buf_len += sizeof(struct ieee80211_mmie_16);
 		} else {
-			len += IEEE80211_CCMP_MIC_LEN;
-			buf_len += IEEE80211_CCMP_MIC_LEN;
+			spin_lock_bh(&ar->data_lock);
+			peer = ath10k_peer_find(ar, vdev_id, peer_addr);
+			if (!peer) {
+				spin_unlock_bh(&ar->data_lock);
+				ath10k_warn(ar, "non-existent peer %pM\n",
+					    peer_addr);
+				return ERR_PTR(-EINVAL);
+			}
+
+			cipher = ath10k_cipher_find(ar, peer);
+			spin_unlock_bh(&ar->data_lock);
+			if (cipher == WLAN_CIPHER_SUITE_GCMP ||
+			    cipher == WLAN_CIPHER_SUITE_GCMP_256) {
+				len += IEEE80211_GCMP_MIC_LEN;
+				buf_len += IEEE80211_GCMP_MIC_LEN;
+			} else {
+				len += IEEE80211_CCMP_MIC_LEN;
+				buf_len += IEEE80211_CCMP_MIC_LEN;
+			}
 		}
 	}
 
