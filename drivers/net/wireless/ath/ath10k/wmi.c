@@ -36,6 +36,9 @@
 #define ATH10K_WMI_BARRIER_TIMEOUT_HZ (3 * HZ)
 #define ATH10K_WMI_DFS_CONF_TIMEOUT_HZ (HZ / 6)
 
+#define ATH10K_WMI_STA_KICKOUT_TIMEOUT_MS	5000
+#define ATH10K_WMI_STA_KICKOUT_LIMIT	100
+
 /* MAIN WMI cmd track */
 static struct wmi_cmd_map wmi_cmd_map = {
 	.init_cmdid = WMI_INIT_CMDID,
@@ -3473,6 +3476,7 @@ void ath10k_wmi_event_peer_sta_kickout(struct ath10k *ar, struct sk_buff *skb)
 {
 	struct wmi_peer_kick_ev_arg arg = {};
 	struct ieee80211_sta *sta;
+	struct ath10k_sta *arsta;
 	int ret;
 
 	ret = ath10k_wmi_pull_peer_kick(ar, skb, &arg);
@@ -3489,6 +3493,20 @@ void ath10k_wmi_event_peer_sta_kickout(struct ath10k *ar, struct sk_buff *skb)
 		ath10k_warn(ar, "Spurious quick kickout for STA %pM\n",
 			    arg.mac_addr);
 		goto exit;
+	}
+
+	arsta = (struct ath10k_sta *)sta->drv_priv;
+	arsta->sta_kickout++;
+	if (arsta->sta_kickout < ATH10K_WMI_STA_KICKOUT_LIMIT) {
+		if (!arsta->sta_kickout_timeout ||
+		    time_after(jiffies, arsta->sta_kickout_timeout)) {
+			arsta->sta_kickout_timeout = (jiffies +
+			msecs_to_jiffies(ATH10K_WMI_STA_KICKOUT_TIMEOUT_MS));
+		} else {
+			goto exit;
+		}
+	} else {
+		WARN_ON_ONCE(1);
 	}
 
 	if (arg.reason_code_valid &&

@@ -475,6 +475,8 @@ struct ath10k_sta {
 	u8 ampdu_subframe_count;
 	struct ath10k_cfr_capture cfr_capture;
 	struct work_struct tid_config_wk;
+	u8 sta_kickout;
+	unsigned long sta_kickout_timeout;
 };
 
 #define ATH10K_VDEV_SETUP_TIMEOUT_HZ	(5 * HZ)
