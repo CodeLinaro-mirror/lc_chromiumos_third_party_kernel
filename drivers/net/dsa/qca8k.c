@@ -700,8 +700,6 @@ qca8k_hw_init(struct dsa_switch *ds)
 	int ret, i, phy_mode = -1;
 	u32 mask;
 
-	qca8k_phy_powerdown(priv);
-
 	/* Initialize CPU port pad mode (xMII type, delays...) */
 	phy_mode = of_get_phy_mode(ds->dst->cpu_dp->dn);
 	if (phy_mode < 0) {
@@ -784,8 +782,6 @@ qca8k_hw_init(struct dsa_switch *ds)
 	/* Flush the FDB table */
 	qca8k_fdb_flush(priv);
 
-	qca8k_phy_init(priv);
-
 	return 0;
 }
 
@@ -809,9 +805,12 @@ qca8k_setup(struct dsa_switch *ds)
 	if (IS_ERR(priv->regmap))
 		pr_warn("regmap initialization failed");
 
+	qca8k_phy_powerdown(priv);
+	qca8k_hw_soft_reset(priv);
 	ret = qca8k_hw_init(ds);
 	if (ret)
 		return ret;
+	qca8k_phy_init(priv);
 
 	return 0;
 }
