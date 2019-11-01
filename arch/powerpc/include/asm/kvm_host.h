@@ -41,9 +41,6 @@
 #define KVM_USER_MEM_SLOTS 32
 #define KVM_MEM_SLOTS_NUM KVM_USER_MEM_SLOTS
 
-#ifdef CONFIG_KVM_MMIO
-#define KVM_COALESCED_MMIO_PAGE_OFFSET 1
-#endif
 #define KVM_HALT_POLL_NS_DEFAULT 500000
 
 /* These values are internal and can be increased later */
@@ -250,6 +247,7 @@ struct kvm_arch {
 #ifdef CONFIG_PPC_BOOK3S_64
 	struct list_head spapr_tce_tables;
 	struct list_head rtas_tokens;
+	struct mutex rtas_token_lock;
 	DECLARE_BITMAP(enabled_hcalls, MAX_HCALL_OPCODE/4 + 1);
 #endif
 #ifdef CONFIG_KVM_MPIC

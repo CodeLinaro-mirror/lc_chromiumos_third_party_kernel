@@ -485,6 +485,7 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_ONE_REG:
 	case KVM_CAP_IOEVENTFD:
 	case KVM_CAP_DEVICE_CTRL:
+	case KVM_CAP_IMMEDIATE_EXIT:
 		r = 1;
 		break;
 	case KVM_CAP_PPC_PAIRED_SINGLES:
@@ -496,11 +497,6 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 		/* We support this only for PR */
 		r = !hv_enabled;
 		break;
-#ifdef CONFIG_KVM_MMIO
-	case KVM_CAP_COALESCED_MMIO:
-		r = KVM_COALESCED_MMIO_PAGE_OFFSET;
-		break;
-#endif
 #ifdef CONFIG_KVM_MPIC
 	case KVM_CAP_IRQ_MPIC:
 		r = 1;
@@ -1029,7 +1025,10 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 #endif
 	}
 
-	r = kvmppc_vcpu_run(run, vcpu);
+	if (run->immediate_exit)
+		r = -EINTR;
+	else
+		r = kvmppc_vcpu_run(run, vcpu);
 
 	if (vcpu->sigset_active)
 		sigprocmask(SIG_SETMASK, &sigsaved, NULL);

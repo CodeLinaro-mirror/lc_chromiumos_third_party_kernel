@@ -401,7 +401,7 @@ struct kvm {
 	struct kvm_vm_stat stat;
 	struct kvm_arch arch;
 	atomic_t users_count;
-#ifdef KVM_COALESCED_MMIO_PAGE_OFFSET
+#ifdef CONFIG_KVM_MMIO
 	struct kvm_coalesced_mmio_ring *coalesced_mmio_ring;
 	spinlock_t ring_lock;
 	struct list_head coalesced_zones;
@@ -872,40 +872,23 @@ static inline void kvm_iommu_unmap_pages(struct kvm *kvm,
 /* must be called with irqs disabled */
 static inline void __kvm_guest_enter(void)
 {
-	guest_enter();
-	/* KVM does not hold any references to rcu protected data when it
-	 * switches CPU into a guest mode. In fact switching to a guest mode
-	 * is very similar to exiting to userspace from rcu point of view. In
-	 * addition CPU may stay in a guest mode for quite a long time (up to
-	 * one time slice). Lets treat guest mode as quiescent state, just like
-	 * we do with user-mode execution.
-	 */
-	if (!context_tracking_cpu_is_enabled())
-		rcu_virt_note_context_switch(smp_processor_id());
+	guest_enter_irqoff();
 }
 
 /* must be called with irqs disabled */
 static inline void __kvm_guest_exit(void)
 {
-	guest_exit();
+	guest_exit_irqoff();
 }
 
 static inline void kvm_guest_enter(void)
 {
-	unsigned long flags;
-
-	local_irq_save(flags);
-	__kvm_guest_enter();
-	local_irq_restore(flags);
+	guest_enter();
 }
 
 static inline void kvm_guest_exit(void)
 {
-	unsigned long flags;
-
-	local_irq_save(flags);
-	__kvm_guest_exit();
-	local_irq_restore(flags);
+	guest_exit();
 }
 
 /*

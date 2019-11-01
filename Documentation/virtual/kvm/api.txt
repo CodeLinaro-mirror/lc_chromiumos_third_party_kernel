@@ -13,7 +13,7 @@ of a virtual machine.  The ioctls belong to three classes
 
  - VM ioctls: These query and set attributes that affect an entire virtual
    machine, for example memory layout.  In addition a VM ioctl is used to
-   create virtual cpus (vcpus).
+   create virtual cpus (vcpus) and devices.
 
    Only run VM ioctls from the same process (address space) that was used
    to create the VM.
@@ -24,6 +24,11 @@ of a virtual machine.  The ioctls belong to three classes
    Only run vcpu ioctls from the same thread that was used to create the
    vcpu.
 
+ - device ioctls: These query and set attributes that control the operation
+   of a single device.
+
+   device ioctls must be issued from the same process (address space) that
+   was used to create the VM.
 
 2. File descriptors
 -------------------
@@ -32,10 +37,11 @@ The kvm API is centered around file descriptors.  An initial
 open("/dev/kvm") obtains a handle to the kvm subsystem; this handle
 can be used to issue system ioctls.  A KVM_CREATE_VM ioctl on this
 handle will create a VM file descriptor which can be used to issue VM
-ioctls.  A KVM_CREATE_VCPU ioctl on a VM fd will create a virtual cpu
-and return a file descriptor pointing to it.  Finally, ioctls on a vcpu
-fd can be used to control the vcpu, including the important task of
-actually running guest code.
+ioctls.  A KVM_CREATE_VCPU or KVM_CREATE_DEVICE ioctl on a VM fd will
+create a virtual cpu or device and return a file descriptor pointing to
+the new resource.  Finally, ioctls on a vcpu or device fd can be used
+to control the vcpu or device.  For vcpus, this includes the important
+task of actually running guest code.
 
 In general file descriptors can be migrated among processes by means
 of fork() and the SCM_RIGHTS facility of unix domain socket.  These
@@ -3030,6 +3036,34 @@ Returns: 0 on success, -1 on error
 
 Queues an SMI on the thread's vcpu.
 
+4.116 KVM_(UN)REGISTER_COALESCED_MMIO
+
+Capability: KVM_CAP_COALESCED_MMIO (for coalesced mmio)
+	    KVM_CAP_COALESCED_PIO (for coalesced pio)
+Architectures: all
+Type: vm ioctl
+Parameters: struct kvm_coalesced_mmio_zone
+Returns: 0 on success, < 0 on error
+
+Coalesced I/O is a performance optimization that defers hardware
+register write emulation so that userspace exits are avoided.  It is
+typically used to reduce the overhead of emulating frequently accessed
+hardware registers.
+
+When a hardware register is configured for coalesced I/O, write accesses
+do not exit to userspace and their value is recorded in a ring buffer
+that is shared between kernel and userspace.
+
+Coalesced I/O is used if one or more write accesses to a hardware
+register can be deferred until a read or a write to another hardware
+register on the same device.  This last access will cause a vmexit and
+userspace will process accesses from the ring buffer before emulating
+it. That will avoid exiting to userspace on repeated writes.
+
+Coalesced pio is based on coalesced mmio. There is little difference
+between coalesced mmio and pio except that coalesced pio records accesses
+to I/O ports.
+
 5. The kvm_run structure
 ------------------------
 
@@ -3046,7 +3080,18 @@ struct kvm_run {
 Request that KVM_RUN return when it becomes possible to inject external
 interrupts into the guest.  Useful in conjunction with KVM_INTERRUPT.
 
-	__u8 padding1[7];
+	__u8 immediate_exit;
+
+This field is polled once when KVM_RUN starts; if non-zero, KVM_RUN
+exits immediately, returning -EINTR.  In the common scenario where a
+signal is used to "kick" a VCPU out of KVM_RUN, this field can be used
+to avoid usage of KVM_SET_SIGNAL_MASK, which has worse scalability.
+Rather than blocking the signal outside KVM_RUN, userspace can set up
+a signal handler that sets run->immediate_exit to a non-zero value.
+
+This field is ignored if KVM_CAP_IMMEDIATE_EXIT is not available.
+
+	__u8 padding1[6];
 
 	/* out */
 	__u32 exit_reason;
