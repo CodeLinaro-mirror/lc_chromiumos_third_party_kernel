@@ -200,6 +200,11 @@
 						120000 183
 						125000 161>;
 	};
+
+	mtk_fsource: fsource {
+		compatible = "mtk-fsource";
+		vfsource-supply = <&mt6358_vefuse_reg>;
+	};
 };
 
 &afe {
