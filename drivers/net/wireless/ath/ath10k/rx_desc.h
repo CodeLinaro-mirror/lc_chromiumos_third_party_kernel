@@ -210,6 +210,10 @@ struct rx_frag_info {
 	u8 ring1_more_count;
 	u8 ring2_more_count;
 	u8 ring3_more_count;
+	u8 ring4_more_count;
+	u8 ring5_more_count;
+	u8 ring6_more_count;
+	u8 ring7_more_count;
 } __packed;
 
 /*
