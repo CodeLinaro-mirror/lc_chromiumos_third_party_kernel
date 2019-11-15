@@ -540,7 +540,6 @@ static void fastrpc_release(struct dma_buf *dmabuf)
 }
 
 static int fastrpc_dma_buf_attach(struct dma_buf *dmabuf,
-				  struct device *dev,
 				  struct dma_buf_attachment *attachment)
 {
 	struct fastrpc_dma_buf_attachment *a;
@@ -613,7 +612,6 @@ static const struct dma_buf_ops fastrpc_dma_buf_ops = {
 	.unmap_dma_buf = fastrpc_unmap_dma_buf,
 	.mmap = fastrpc_mmap,
 	.map = fastrpc_kmap,
-	.map_atomic = fastrpc_kmap,
 	.vmap = fastrpc_vmap,
 	.release = fastrpc_release,
 };
