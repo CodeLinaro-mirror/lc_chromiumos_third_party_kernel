@@ -3024,6 +3024,7 @@ out_unlock:
 	ufshcd_release(hba);
 	return err;
 }
+EXPORT_SYMBOL_GPL(ufshcd_query_flag);
 
 /**
  * ufshcd_query_attr - API function for sending attribute requests
@@ -3087,6 +3088,7 @@ out_unlock:
 	ufshcd_release(hba);
 	return err;
 }
+EXPORT_SYMBOL_GPL(ufshcd_query_attr);
 
 /**
  * ufshcd_query_attr_retry() - API function for sending query
@@ -3219,6 +3221,7 @@ int ufshcd_query_descriptor_retry(struct ufs_hba *hba,
 
 	return err;
 }
+EXPORT_SYMBOL_GPL(ufshcd_query_descriptor_retry);
 
 /**
  * ufshcd_map_desc_id_to_length - map descriptor IDN to its length
