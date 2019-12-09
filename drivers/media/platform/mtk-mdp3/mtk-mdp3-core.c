@@ -130,6 +130,7 @@ static int mdp_probe(struct platform_device *pdev)
 				   &rproc_phandle);
 	if (ret) {
 		dev_err(&pdev->dev, "Could not get scp device\n");
+		ret = -ENODEV;
 		goto err_destroy_clock_wq;
 	}
 
@@ -139,6 +140,7 @@ static int mdp_probe(struct platform_device *pdev)
 
 	if (!mdp->rproc_handle) {
 		dev_err(&pdev->dev, "Could not get MDP's rproc_handle\n");
+		ret = -ENODEV;
 		goto err_destroy_clock_wq;
 	}
 
