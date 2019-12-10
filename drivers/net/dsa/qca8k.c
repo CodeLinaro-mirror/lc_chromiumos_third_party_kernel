@@ -661,6 +661,8 @@ qca8k_phy_fixup(struct qca8k_priv *priv, int phy_addr)
 {
 	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x7, 0x3c);
 	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4007, 0x0);
+	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x7, 0x801a);
+	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4007, 0x382a);
 	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x3, 0x800d);
 	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4003, 0x803f);
 
