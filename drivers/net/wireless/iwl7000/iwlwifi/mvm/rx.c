@@ -8,7 +8,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -225,7 +225,7 @@ static u32 iwl_mvm_set_mac80211_rx_flag(struct iwl_mvm *mvm,
 		    !(rx_pkt_status & RX_MPDU_RES_STATUS_TTAK_OK))
 			return 0;
 		*crypt_len = IEEE80211_TKIP_IV_LEN;
-		/* fall through if TTAK OK */
+		/* fall through */
 
 	case RX_MPDU_RES_STATUS_SEC_WEP_ENC:
 		if (!(rx_pkt_status & RX_MPDU_RES_STATUS_ICV_OK))
@@ -351,7 +351,6 @@ void iwl_mvm_rx_rx_mpdu(struct iwl_mvm *mvm, struct napi_struct *napi,
 	u32 rate_n_flags;
 	u32 rx_pkt_status;
 	u8 crypt_len = 0;
-	bool take_ref;
 
 	phy_info = &mvm->last_phy_info;
 	rx_res = (struct iwl_rx_mpdu_res_start *)pkt->data;
@@ -562,34 +561,12 @@ void iwl_mvm_rx_rx_mpdu(struct iwl_mvm *mvm, struct napi_struct *napi,
 		     mvm->sched_scan_pass_all == SCHED_SCAN_PASS_ALL_ENABLED))
 		mvm->sched_scan_pass_all = SCHED_SCAN_PASS_ALL_FOUND;
 
-#ifdef CPTCFG_IWLMVM_TOF_TSF_WA
-	if (fw_has_capa(&mvm->fw->ucode_capa, IWL_UCODE_TLV_CAPA_TOF_SUPPORT) &&
-	    (ieee80211_is_beacon(hdr->frame_control) ||
-	     ieee80211_is_probe_resp(hdr->frame_control)))
-		iwl_mvm_tof_update_tsf(mvm, hdr,
-				       le32_to_cpu(phy_info->system_timestamp));
-#endif
-
 	if (unlikely(ieee80211_is_beacon(hdr->frame_control) ||
 		     ieee80211_is_probe_resp(hdr->frame_control)))
 		rx_status->boottime_ns = ktime_get_boot_ns();
 
-	/* Take a reference briefly to kick off a d0i3 entry delay so
-	 * we can handle bursts of RX packets without toggling the
-	 * state too often.  But don't do this for beacons if we are
-	 * going to idle because the beacon filtering changes we make
-	 * cause the firmware to send us collateral beacons. */
-	take_ref = !(test_bit(STATUS_TRANS_GOING_IDLE, &mvm->trans->status) &&
-		     ieee80211_is_beacon(hdr->frame_control));
-
-	if (take_ref)
-		iwl_mvm_ref(mvm, IWL_MVM_REF_RX);
-
 	iwl_mvm_pass_packet_to_mac80211(mvm, sta, napi, skb, hdr, len,
 					crypt_len, rxb);
-
-	if (take_ref)
-		iwl_mvm_unref(mvm, IWL_MVM_REF_RX);
 }
 
 struct iwl_mvm_stat_data {

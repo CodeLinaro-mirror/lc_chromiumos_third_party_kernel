@@ -8,7 +8,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -605,11 +605,12 @@ static void iwl_mvm_skb_prepare_status(struct sk_buff *skb,
 }
 
 static int iwl_mvm_get_ctrl_vif_queue(struct iwl_mvm *mvm,
-				      struct ieee80211_tx_info *info, __le16 fc)
+				      struct ieee80211_tx_info *info,
+				      struct ieee80211_hdr *hdr)
 {
-	struct iwl_mvm_vif *mvmvif;
-
-	mvmvif = iwl_mvm_vif_from_mac80211(info->control.vif);
+	struct iwl_mvm_vif *mvmvif =
+		iwl_mvm_vif_from_mac80211(info->control.vif);
+	__le16 fc = hdr->frame_control;
 
 	switch (info->control.vif->type) {
 	case NL80211_IFTYPE_AP:
@@ -628,7 +629,9 @@ static int iwl_mvm_get_ctrl_vif_queue(struct iwl_mvm *mvm,
 		    (!ieee80211_is_bufferable_mmpdu(fc) ||
 		     ieee80211_is_deauth(fc) || ieee80211_is_disassoc(fc)))
 			return mvm->probe_queue;
-		if (info->hw_queue == info->control.vif->cab_queue)
+
+		if (!ieee80211_has_order(fc) && !ieee80211_is_probe_req(fc) &&
+		    is_multicast_ether_addr(hdr->addr1))
 			return mvmvif->cab_queue;
 
 		WARN_ONCE(info->control.vif->type != NL80211_IFTYPE_ADHOC,
@@ -637,8 +640,6 @@ static int iwl_mvm_get_ctrl_vif_queue(struct iwl_mvm *mvm,
 	case NL80211_IFTYPE_P2P_DEVICE:
 		if (ieee80211_is_mgmt(fc))
 			return mvm->p2p_dev_queue;
-		if (info->hw_queue == info->control.vif->cab_queue)
-			return mvmvif->cab_queue;
 
 		WARN_ON_ONCE(1);
 		return mvm->p2p_dev_queue;
@@ -716,16 +717,19 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 	u8 sta_id;
 	int hdrlen = ieee80211_hdrlen(hdr->frame_control);
 	__le16 fc = hdr->frame_control;
+	bool offchannel = IEEE80211_SKB_CB(skb)->flags &
+		IEEE80211_TX_CTL_TX_OFFCHAN;
 	int queue = -1;
+
+	if (IWL_MVM_NON_TRANSMITTING_AP && ieee80211_is_probe_resp(fc))
+		return -1;
 
 	memcpy(&info, skb->cb, sizeof(info));
 
-	if (WARN_ON_ONCE(info.flags & IEEE80211_TX_CTL_AMPDU))
+	if (WARN_ON_ONCE(skb->len > IEEE80211_MAX_DATA_LEN + hdrlen))
 		return -1;
 
-	if (WARN_ON_ONCE(info.flags & IEEE80211_TX_CTL_SEND_AFTER_DTIM &&
-			 (!info.control.vif ||
-			  info.hw_queue != info.control.vif->cab_queue)))
+	if (WARN_ON_ONCE(info.flags & IEEE80211_TX_CTL_AMPDU))
 		return -1;
 
 	if (info.control.vif) {
@@ -740,14 +744,12 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 			else
 				sta_id = mvmvif->mcast_sta.sta_id;
 
-			queue = iwl_mvm_get_ctrl_vif_queue(mvm, &info,
-							   hdr->frame_control);
-
+			queue = iwl_mvm_get_ctrl_vif_queue(mvm, &info, hdr);
 		} else if (info.control.vif->type == NL80211_IFTYPE_MONITOR) {
 			queue = mvm->snif_queue;
 			sta_id = mvm->snif_sta.sta_id;
 		} else if (info.control.vif->type == NL80211_IFTYPE_STATION &&
-			   info.hw_queue == IWL_MVM_OFFCHANNEL_QUEUE) {
+			   offchannel) {
 			/*
 			 * IWL_MVM_OFFCHANNEL_QUEUE is used for ROC packets
 			 * that can be used in 2 different types of vifs, P2P &
@@ -761,8 +763,10 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 		}
 	}
 
-	if (queue < 0)
+	if (queue < 0) {
+		IWL_ERR(mvm, "No queue was found. Dropping TX\n");
 		return -1;
+	}
 
 	if (unlikely(ieee80211_is_probe_resp(fc)))
 		iwl_mvm_probe_resp_set_noa(mvm, skb);
@@ -784,6 +788,35 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 	return 0;
 }
 
+unsigned int iwl_mvm_max_amsdu_size(struct iwl_mvm *mvm,
+				    struct ieee80211_sta *sta, unsigned int tid)
+{
+	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
+	enum nl80211_band band = mvmsta->vif->bss_conf.chandef.chan->band;
+	u8 ac = tid_to_mac80211_ac[tid];
+	unsigned int txf;
+	int lmac = IWL_LMAC_24G_INDEX;
+
+	if (iwl_mvm_is_cdb_supported(mvm) &&
+	    band == NL80211_BAND_5GHZ)
+		lmac = IWL_LMAC_5G_INDEX;
+
+	/* For HE redirect to trigger based fifos */
+	if (sta->he_cap.has_he && !WARN_ON(!iwl_mvm_has_new_tx_api(mvm)))
+		ac += 4;
+
+	txf = iwl_mvm_mac_ac_to_tx_fifo(mvm, ac);
+
+	/*
+	 * Don't send an AMSDU that will be longer than the TXF.
+	 * Add a security margin of 256 for the TX command + headers.
+	 * We also want to have the start of the next packet inside the
+	 * fifo to be able to send bursts.
+	 */
+	return min_t(unsigned int, mvmsta->max_amsdu_len,
+		     mvm->fwrt.smem_cfg.lmac[lmac].txfifo_size[txf] - 256);
+}
+
 #ifdef CONFIG_INET
 
 static int
@@ -798,6 +831,7 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
 	unsigned int tcp_payload_len;
 	unsigned int mss = skb_shinfo(skb)->gso_size;
 	bool ipv4 = (skb->protocol == htons(ETH_P_IP));
+	bool qos = ieee80211_is_data_qos(hdr->frame_control);
 	u16 ip_base_id = ipv4 ? ntohs(ip_hdr(skb)->id) : 0;
 
 	skb_shinfo(skb)->gso_size = num_subframes * mss;
@@ -831,7 +865,7 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
 		if (tcp_payload_len > mss) {
 			skb_shinfo(tmp)->gso_size = mss;
 		} else {
-			if (ieee80211_is_data_qos(hdr->frame_control)) {
+			if (qos) {
 				u8 *qc;
 
 				if (ipv4)
@@ -853,36 +887,6 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
 	return 0;
 }
 
-static unsigned int iwl_mvm_max_amsdu_size(struct iwl_mvm *mvm,
-					   struct ieee80211_sta *sta,
-					   unsigned int tid)
-{
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	enum nl80211_band band = mvmsta->vif->bss_conf.chandef.chan->band;
-	u8 ac = tid_to_mac80211_ac[tid];
-	unsigned int txf;
-	int lmac = IWL_LMAC_24G_INDEX;
-
-	if (iwl_mvm_is_cdb_supported(mvm) &&
-	    band == NL80211_BAND_5GHZ)
-		lmac = IWL_LMAC_5G_INDEX;
-
-	/* For HE redirect to trigger based fifos */
-	if (sta->he_cap.has_he && !WARN_ON(!iwl_mvm_has_new_tx_api(mvm)))
-		ac += 4;
-
-	txf = iwl_mvm_mac_ac_to_tx_fifo(mvm, ac);
-
-	/*
-	 * Don't send an AMSDU that will be longer than the TXF.
-	 * Add a security margin of 256 for the TX command + headers.
-	 * We also want to have the start of the next packet inside the
-	 * fifo to be able to send bursts.
-	 */
-	return min_t(unsigned int, mvmsta->max_amsdu_len,
-		     mvm->fwrt.smem_cfg.lmac[lmac].txfifo_size[txf] - 256);
-}
-
 static int iwl_mvm_tx_tso(struct iwl_mvm *mvm, struct sk_buff *skb,
 			  struct ieee80211_tx_info *info,
 			  struct ieee80211_sta *sta,
@@ -893,18 +897,15 @@ static int iwl_mvm_tx_tso(struct iwl_mvm *mvm, struct sk_buff *skb,
 	unsigned int mss = skb_shinfo(skb)->gso_size;
 	unsigned int num_subframes, tcp_payload_len, subf_len, max_amsdu_len;
 	u16 snap_ip_tcp, pad;
-	unsigned int dbg_max_amsdu_len;
 	netdev_features_t netdev_flags = NETIF_F_CSUM_MASK | NETIF_F_SG;
 	u8 tid;
 
 	snap_ip_tcp = 8 + skb_transport_header(skb) - skb_network_header(skb) +
 		tcp_hdrlen(skb);
 
-	dbg_max_amsdu_len = READ_ONCE(mvm->max_amsdu_len);
-
 	if (!mvmsta->max_amsdu_len ||
 	    !ieee80211_is_data_qos(hdr->frame_control) ||
-	    (!mvmsta->amsdu_enabled && !dbg_max_amsdu_len))
+	    !mvmsta->amsdu_enabled)
 		return iwl_mvm_tx_tso_segment(skb, 1, netdev_flags, mpdus_skb);
 
 	/*
@@ -934,11 +935,12 @@ static int iwl_mvm_tx_tso(struct iwl_mvm *mvm, struct sk_buff *skb,
 	    !(mvmsta->amsdu_enabled & BIT(tid)))
 		return iwl_mvm_tx_tso_segment(skb, 1, netdev_flags, mpdus_skb);
 
-	max_amsdu_len = iwl_mvm_max_amsdu_size(mvm, sta, tid);
-
-	if (unlikely(dbg_max_amsdu_len))
-		max_amsdu_len = min_t(unsigned int, max_amsdu_len,
-				      dbg_max_amsdu_len);
+	/*
+	 * Take the min of ieee80211 station and mvm station
+	 */
+	max_amsdu_len =
+		min_t(unsigned int, sta->max_amsdu_len,
+		      iwl_mvm_max_amsdu_size(mvm, sta, tid));
 
 	/*
 	 * Limit A-MSDU in A-MPDU to 4095 bytes when VHT is not
@@ -1005,34 +1007,6 @@ static int iwl_mvm_tx_tso(struct iwl_mvm *mvm, struct sk_buff *skb,
 }
 #endif
 
-static void iwl_mvm_tx_add_stream(struct iwl_mvm *mvm,
-				  struct iwl_mvm_sta *mvm_sta, u8 tid,
-				  struct sk_buff *skb)
-{
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
-	u8 mac_queue = info->hw_queue;
-	struct sk_buff_head *deferred_tx_frames;
-
-	lockdep_assert_held(&mvm_sta->lock);
-
-	mvm_sta->deferred_traffic_tid_map |= BIT(tid);
-	set_bit(mvm_sta->sta_id, mvm->sta_deferred_frames);
-
-	deferred_tx_frames = &mvm_sta->tid_data[tid].deferred_tx_frames;
-
-	skb_queue_tail(deferred_tx_frames, skb);
-
-	/*
-	 * The first deferred frame should've stopped the MAC queues, so we
-	 * should never get a second deferred frame for the RA/TID.
-	 * In case of GSO the first packet may have been split, so don't warn.
-	 */
-	if (skb_queue_len(deferred_tx_frames) == 1) {
-		iwl_mvm_stop_mac_queues(mvm, BIT(mac_queue));
-		schedule_work(&mvm->add_stream_wk);
-	}
-}
-
 /* Check if there are any timed-out TIDs on a given shared TXQ */
 static bool iwl_mvm_txq_should_update(struct iwl_mvm *mvm, int txq_id)
 {
@@ -1091,7 +1065,9 @@ static int iwl_mvm_tx_pkt_queued(struct iwl_mvm *mvm,
 }
 
 /*
- * Sets the fields in the Tx cmd that are crypto related
+ * Sets the fields in the Tx cmd that are crypto related.
+ *
+ * This function must be called with BHs disabled.
  */
 static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 			   struct ieee80211_tx_info *info,
@@ -1103,13 +1079,16 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 	__le16 fc;
 	u16 seq_number = 0;
 	u8 tid = IWL_MAX_TID_COUNT;
-	u16 txq_id = info->hw_queue;
+	u16 txq_id;
 	bool is_ampdu = false;
 	int hdrlen;
 
 	mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	fc = hdr->frame_control;
 	hdrlen = ieee80211_hdrlen(fc);
+
+	if (IWL_MVM_NON_TRANSMITTING_AP && ieee80211_is_probe_resp(fc))
+		return -1;
 
 	if (WARN_ON_ONCE(!mvmsta))
 		return -1;
@@ -1140,12 +1119,14 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 	 */
 	if (ieee80211_is_data_qos(fc) && !ieee80211_is_qos_nullfunc(fc)) {
 		tid = ieee80211_get_tid(hdr);
-		if (WARN_ON_ONCE(tid >= IWL_MAX_TID_COUNT))
+		if (WARN_ONCE(tid >= IWL_MAX_TID_COUNT, "Invalid TID %d", tid))
 			goto drop_unlock_sta;
 
 		is_ampdu = info->flags & IEEE80211_TX_CTL_AMPDU;
-		if (WARN_ON_ONCE(is_ampdu &&
-				 mvmsta->tid_data[tid].state != IWL_AGG_ON))
+		if (WARN_ONCE(is_ampdu &&
+			      mvmsta->tid_data[tid].state != IWL_AGG_ON,
+			      "Invalid internal agg state %d for TID %d",
+			       mvmsta->tid_data[tid].state, tid))
 			goto drop_unlock_sta;
 
 		seq_number = mvmsta->tid_data[tid].seq_number;
@@ -1167,14 +1148,7 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 
 	WARN_ON_ONCE(info->flags & IEEE80211_TX_CTL_SEND_AFTER_DTIM);
 
-	/* Check if TXQ needs to be allocated or re-activated */
-	if (unlikely(txq_id == IWL_MVM_INVALID_QUEUE)) {
-		iwl_mvm_tx_add_stream(mvm, mvmsta, tid, skb);
-
-		/*
-		 * The frame is now deferred, and the worker scheduled
-		 * will re-allocate it, so we can free it for now.
-		 */
+	if (WARN_ONCE(txq_id == IWL_MVM_INVALID_QUEUE, "Invalid TXQ id")) {
 		iwl_trans_free_tx_cmd(mvm->trans, dev_cmd);
 		spin_unlock(&mvmsta->lock);
 		return 0;
@@ -1200,8 +1174,9 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 			schedule_work(&mvm->add_stream_wk);
 	}
 
-	IWL_DEBUG_TX(mvm, "TX to [%d|%d] Q:%d - seq: 0x%x\n", mvmsta->sta_id,
-		     tid, txq_id, IEEE80211_SEQ_TO_SN(seq_number));
+	IWL_DEBUG_TX(mvm, "TX to [%d|%d] Q:%d - seq: 0x%x len %d\n",
+		     mvmsta->sta_id, tid, txq_id,
+		     IEEE80211_SEQ_TO_SN(seq_number), skb->len);
 
 	/* From now on, we cannot access info->control */
 	iwl_mvm_skb_prepare_status(skb, dev_cmd);
@@ -1224,6 +1199,7 @@ drop_unlock_sta:
 	iwl_trans_free_tx_cmd(mvm->trans, dev_cmd);
 	spin_unlock(&mvmsta->lock);
 drop:
+	IWL_DEBUG_TX(mvm, "TX to [%d|%d] dropped\n", mvmsta->sta_id, tid);
 	return -1;
 }
 

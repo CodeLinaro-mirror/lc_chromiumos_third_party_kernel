@@ -38,11 +38,13 @@ enum dce_version resource_parse_asic_id(
 
 struct resource_caps {
 	int num_timing_generator;
+	int num_opp;
 	int num_video_plane;
 	int num_audio;
 	int num_stream_encoder;
 	int num_pll;
 	int num_dwb;
+	int num_ddc;
 };
 
 struct resource_straps {

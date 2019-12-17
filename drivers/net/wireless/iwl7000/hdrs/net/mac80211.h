@@ -6,7 +6,7 @@
  * Copyright 2007-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright (C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018        Intel Corporation
+ * Copyright (C) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -309,6 +309,8 @@ struct ieee80211_vif_chanctx_switch {
  * @BSS_CHANGED_KEEP_ALIVE: keep alive options (idle period or protected
  *	keep alive) changed.
  * @BSS_CHANGED_MCAST_RATE: Multicast Rate setting changed for this interface
+ * @BSS_CHANGED_FTM_RESPONDER: fime timing reasurement request responder
+ *	functionality changed for this BSS (AP mode).
  *
  */
 enum ieee80211_bss_change {
@@ -338,6 +340,7 @@ enum ieee80211_bss_change {
 	BSS_CHANGED_MU_GROUPS		= 1<<23,
 	BSS_CHANGED_KEEP_ALIVE		= 1<<24,
 	BSS_CHANGED_MCAST_RATE		= 1<<25,
+	BSS_CHANGED_FTM_RESPONDER	= 1<<26,
 
 	/* when adding here, make sure to change ieee80211_reconfig */
 };
@@ -466,6 +469,21 @@ struct ieee80211_mu_group_data {
 };
 
 /**
+ * struct ieee80211_ftm_responder_params - FTM responder parameters
+ *
+ * @lci: LCI subelement content
+ * @civicloc: CIVIC location subelement content
+ * @lci_len: LCI data length
+ * @civicloc_len: Civic data length
+ */
+struct ieee80211_ftm_responder_params {
+	const u8 *lci;
+	const u8 *civicloc;
+	size_t lci_len;
+	size_t civicloc_len;
+};
+
+/**
  * struct ieee80211_bss_conf - holds the BSS's changing parameters
  *
  * This structure keeps information about a BSS (and an association
@@ -480,6 +498,8 @@ struct ieee80211_mu_group_data {
  * @uora_ocw_range: UORA element's OCW Range field
  * @frame_time_rts_th: HE duration RTS threshold, in units of 32us
  * @he_support: does this BSS support HE
+ * @twt_requester: does this BSS support TWT requester (relevant for managed
+ *	mode only, set if the AP advertises TWT responder role)
  * @assoc: association status
  * @ibss_joined: indicates whether this station is part of an IBSS
  *	or not
@@ -564,6 +584,17 @@ struct ieee80211_mu_group_data {
  * @protected_keep_alive: if set, indicates that the station should send an RSN
  *	protected frame to the AP to reset the idle timer at the AP for the
  *	station.
+ * @ftm_responder: whether to enable or disable fine timing measurement FTM
+ *	responder functionality.
+ * @ftmr_params: configurable lci/civic parameter when enabling FTM responder.
+ * @nontransmitted: this BSS is a nontransmitted BSS profile
+ * @transmitter_bssid: the address of transmitter AP
+ * @bssid_index: index inside the multiple BSSID set
+ * @bssid_indicator: 2^bssid_indicator is the maximum number of APs in set
+ * @ema_ap: AP supports enhancements of discovery and advertisement of
+ *	nontransmitted BSSIDs
+ * @profile_periodicity: the least number of beacon frames need to be received
+ *	in order to discover all the nontransmitted BSSIDs in the set.
  */
 struct ieee80211_bss_conf {
 	const u8 *bssid;
@@ -575,6 +606,7 @@ struct ieee80211_bss_conf {
 	u8 uora_ocw_range;
 	u16 frame_time_rts_th;
 	bool he_support;
+	bool twt_requester;
 	/* association related data */
 	bool assoc, ibss_joined;
 	bool ibss_creator;
@@ -614,6 +646,15 @@ struct ieee80211_bss_conf {
 	bool allow_p2p_go_ps;
 	u16 max_idle_period;
 	bool protected_keep_alive;
+	bool ftm_responder;
+	struct ieee80211_ftm_responder_params *ftmr_params;
+	/* Multiple BSSID data */
+	bool nontransmitted;
+	u8 transmitter_bssid[ETH_ALEN];
+	u8 bssid_index;
+	u8 bssid_indicator;
+	bool ema_ap;
+	u8 profile_periodicity;
 };
 
 /**
@@ -1450,6 +1491,9 @@ struct ieee80211_conf {
  *	scheduled channel switch, as indicated by the AP.
  * @chandef: the new channel to switch to
  * @count: the number of TBTT's until the channel switch event
+ * @delay: maximum delay between the time the AP transmitted the last beacon in
+  *	current channel and the expected time of the first beacon in the new
+  *	channel, expressed in TU.
  */
 struct ieee80211_channel_switch {
 	u64 timestamp;
@@ -1457,6 +1501,7 @@ struct ieee80211_channel_switch {
 	bool block_tx;
 	struct cfg80211_chan_def chandef;
 	u8 count;
+	u32 delay;
 };
 
 /**
@@ -2170,6 +2215,11 @@ struct ieee80211_txq {
  *	MMPDUs on station interfaces. This of course requires the driver to use
  *	TXQs to start with.
  *
+ * @IEEE80211_HW_SUPPORTS_MULTI_BSSID: Hardware supports multi BSSID
+ *
+ * @IEEE80211_HW_SUPPORTS_ONLY_HE_MULTI_BSSID: Hardware supports multi BSSID
+ *	only for HE APs. Applies if @IEEE80211_HW_SUPPORTS_MULTI_BSSID is set.
+ *
  * @NUM_IEEE80211_HW_FLAGS: number of hardware flags, used for sizing arrays
  */
 enum ieee80211_hw_flags {
@@ -2218,6 +2268,8 @@ enum ieee80211_hw_flags {
 	IEEE80211_HW_BUFF_MMPDU_TXQ,
 	IEEE80211_HW_SUPPORTS_VHT_EXT_NSS_BW,
 	IEEE80211_HW_STA_MMPDU_TXQ,
+	IEEE80211_HW_SUPPORTS_MULTI_BSSID,
+	IEEE80211_HW_SUPPORTS_ONLY_HE_MULTI_BSSID,
 
 	/* keep last, obviously */
 	NUM_IEEE80211_HW_FLAGS
@@ -3249,6 +3301,11 @@ enum ieee80211_reconfig_type {
  *	When the scan finishes, ieee80211_scan_completed() must be called;
  *	note that it also must be called when the scan cannot finish due to
  *	any error unless this callback returned a negative error code.
+ *	This callback is also allowed to return the special return value 1,
+ *	this indicates that hardware scan isn't desirable right now and a
+ *	software scan should be done instead. A driver wishing to use this
+ *	capability must ensure its (hardware) scan capabilities aren't
+ *	advertised as more capable than mac80211's software scan is.
  *	The callback can sleep.
  *
  * @cancel_hw_scan: Ask the low-level tp cancel the active hw scan.
@@ -3577,7 +3634,12 @@ enum ieee80211_reconfig_type {
  * @post_channel_switch: This is an optional callback that is called
  *	after a channel switch procedure is completed, allowing the
  *	driver to go back to a normal configuration.
- *
+ * @abort_channel_switch: This is an optional callback that is called
+ *	when channel switch procedure was completed, allowing the
+ *	driver to go back to a normal configuration.
+ * @channel_switch_rx_beacon: This is an optional callback that is called
+ *	when channel switch procedure is in progress and additional beacon with
+ *	CSA IE was received, allowing driver to track changes in count.
  * @join_ibss: Join an IBSS (on an IBSS interface); this is called after all
  *	information in bss_conf is set up and the beacon can be retrieved. A
  *	channel context is bound before this is called.
@@ -3613,12 +3675,6 @@ enum ieee80211_reconfig_type {
  *	pending frames that were received prior to the control path action
  *	currently taken (e.g. disassociation) but are not processed yet.
  *
- * @perform_ftm: Perform a Fine Timing Measurement with the given request
- *	parameters. The given request can only be used within the function call.
- * @abort_ftm: Abort a Fine Timing Measurement request. The given cookie must
- *	match that of the active FTM request.
- * @start_ftm_responder: Start FTM responder and configure its parameters.
- *
  * @start_nan: join an existing NAN cluster, or create a new one.
  * @stop_nan: leave the NAN cluster.
  * @nan_change_conf: change NAN configuration. The data in cfg80211_nan_conf
@@ -3637,6 +3693,11 @@ enum ieee80211_reconfig_type {
  *	aggregating two specific frames in the same A-MSDU. The relation
  *	between the skbs should be symmetric and transitive. Note that while
  *	skb is always a real frame, head may or may not be an A-MSDU.
+ * @get_ftm_responder_stats: Retrieve FTM responder statistics, if available.
+ *	Statistics should be cumulative, currently no way to reset is provided.
+ *
+ * @start_pmsr: start peer measurement (e.g. FTM) (this call can sleep)
+ * @abort_pmsr: abort peer measurement (this call can sleep)
  */
 struct ieee80211_ops {
 	void (*tx)(struct ieee80211_hw *hw,
@@ -3881,6 +3942,11 @@ struct ieee80211_ops {
 
 	int (*post_channel_switch)(struct ieee80211_hw *hw,
 				   struct ieee80211_vif *vif);
+	void (*abort_channel_switch)(struct ieee80211_hw *hw,
+				     struct ieee80211_vif *vif);
+	void (*channel_switch_rx_beacon)(struct ieee80211_hw *hw,
+					 struct ieee80211_vif *vif,
+					 struct ieee80211_channel_switch *ch_switch);
 
 	int (*join_ibss)(struct ieee80211_hw *hw, struct ieee80211_vif *vif);
 	void (*leave_ibss)(struct ieee80211_hw *hw, struct ieee80211_vif *vif);
@@ -3905,17 +3971,6 @@ struct ieee80211_ops {
 			      struct ieee80211_txq *txq);
 	void (*sync_rx_queues)(struct ieee80211_hw *hw);
 
-	int (*perform_ftm)(struct ieee80211_hw *hw, u64 cookie,
-			   struct ieee80211_vif *vif,
-			   struct cfg80211_ftm_request *ftm_req);
-	int (*abort_ftm)(struct ieee80211_hw *hw, u64 cookie);
-	int (*start_ftm_responder)(struct ieee80211_hw *hw,
-				   struct ieee80211_vif *vif,
-				   struct cfg80211_ftm_responder_params *params);
-	int (*get_ftm_responder_stats)(struct ieee80211_hw *hw,
-				       struct ieee80211_vif *vif,
-				struct cfg80211_ftm_responder_stats *ftm_stats);
-
 	int (*start_nan)(struct ieee80211_hw *hw,
 			 struct ieee80211_vif *vif,
 			 struct cfg80211_nan_conf *conf);
@@ -3933,6 +3988,13 @@ struct ieee80211_ops {
 	bool (*can_aggregate_in_amsdu)(struct ieee80211_hw *hw,
 				       struct sk_buff *head,
 				       struct sk_buff *skb);
+	int (*get_ftm_responder_stats)(struct ieee80211_hw *hw,
+				       struct ieee80211_vif *vif,
+				       struct cfg80211_ftm_responder_stats *ftm_stats);
+	int (*start_pmsr)(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			  struct cfg80211_pmsr_request *request);
+	void (*abort_pmsr)(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			   struct cfg80211_pmsr_request *request);
 };
 
 /**
@@ -4400,6 +4462,21 @@ void ieee80211_get_tx_rates(struct ieee80211_vif *vif,
  */
 void ieee80211_sta_set_expected_throughput(struct ieee80211_sta *pubsta,
 					   u32 thr);
+
+/**
+ * ieee80211_tx_rate_update - transmit rate update callback
+ *
+ * Drivers should call this functions with a non-NULL pub sta
+ * This function can be used in drivers that does not have provision
+ * in updating the tx rate in data path.
+ *
+ * @hw: the hardware the frame was transmitted by
+ * @pubsta: the station to update the tx rate for.
+ * @info: tx status information
+ */
+void ieee80211_tx_rate_update(struct ieee80211_hw *hw,
+			      struct ieee80211_sta *pubsta,
+			      struct ieee80211_tx_info *info);
 
 /**
  * ieee80211_tx_status - transmit status callback
@@ -5807,29 +5884,6 @@ static inline int rate_supported(struct ieee80211_sta *sta,
 	return (sta == NULL || sta->supp_rates[band] & BIT(index));
 }
 
-/**
- * rate_control_send_low - helper for drivers for management/no-ack frames
- *
- * Rate control algorithms that agree to use the lowest rate to
- * send management frames and NO_ACK data with the respective hw
- * retries should use this in the beginning of their mac80211 get_rate
- * callback. If true is returned the rate control can simply return.
- * If false is returned we guarantee that sta and sta and priv_sta is
- * not null.
- *
- * Rate control algorithms wishing to do more intelligent selection of
- * rate for multicast/broadcast frames may choose to not use this.
- *
- * @sta: &struct ieee80211_sta pointer to the target destination. Note
- * 	that this may be null.
- * @priv_sta: private rate control structure. This may be null.
- * @txrc: rate control information we sholud populate for mac80211.
- */
-bool rate_control_send_low(struct ieee80211_sta *sta,
-			   void *priv_sta,
-			   struct ieee80211_tx_rate_control *txrc);
-
-
 static inline s8
 rate_lowest_index(struct ieee80211_supported_band *sband,
 		  struct ieee80211_sta *sta)
@@ -6098,6 +6152,14 @@ void ieee80211_unreserve_tid(struct ieee80211_sta *sta, u8 tid);
  * @txq: pointer obtained from station or virtual interface
  *
  * Returns the skb if successful, %NULL if no frame was available.
+ *
+ * Note that this must be called in an rcu_read_lock() critical section,
+ * which can only be released after the SKB was handled. Some pointers in
+ * skb->cb, e.g. the key pointer, are protected by by RCU and thus the
+ * critical section must persist not just for the duration of this call
+ * but for the duration of the frame handling.
+ * However, also note that while in the wake_tx_queue() method,
+ * rcu_read_lock() is already held.
  */
 struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 				     struct ieee80211_txq *txq);

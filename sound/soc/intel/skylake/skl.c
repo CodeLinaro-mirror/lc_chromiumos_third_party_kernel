@@ -309,7 +309,7 @@ static int skl_suspend(struct device *dev)
 	struct pci_dev *pci = to_pci_dev(dev);
 	struct hdac_bus *bus = pci_get_drvdata(pci);
 	struct skl *skl  = bus_to_skl(bus);
-	int ret = 0;
+	int ret;
 
 	/*
 	 * Do not suspend if streams which are marked ignore suspend are
@@ -331,14 +331,7 @@ static int skl_suspend(struct device *dev)
 		skl->skl_sst->fw_loaded = false;
 	}
 
-	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI)) {
-		ret = snd_hdac_display_power(bus, false);
-		if (ret < 0)
-			dev_err(bus->dev,
-				"Cannot turn OFF display power on i915\n");
-	}
-
-	return ret;
+	return 0;
 }
 
 static int skl_resume(struct device *dev)
@@ -348,16 +341,6 @@ static int skl_resume(struct device *dev)
 	struct skl *skl  = bus_to_skl(bus);
 	struct hdac_ext_link *hlink = NULL;
 	int ret;
-
-	/* Turned OFF in HDMI codec driver after codec reconfiguration */
-	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI)) {
-		ret = snd_hdac_display_power(bus, true);
-		if (ret < 0) {
-			dev_err(bus->dev,
-				"Cannot turn on display power on i915\n");
-			return ret;
-		}
-	}
 
 	/*
 	 * resume only when we are not in suspend active, otherwise need to
@@ -451,8 +434,10 @@ static int skl_free(struct hdac_bus *bus)
 	snd_hdac_ext_bus_exit(bus);
 
 	cancel_work_sync(&skl->probe_work);
-	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI))
+	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI)) {
+		snd_hdac_display_power(bus, HDA_CODEC_IDX_CONTROLLER, false);
 		snd_hdac_i915_exit(bus);
+	}
 
 	return 0;
 }
@@ -515,7 +500,7 @@ static int skl_find_machine(struct skl *skl, void *driver_data)
 
 	if (pdata) {
 		skl->use_tplg_pcm = pdata->use_tplg_pcm;
-		pdata->dmic_num = skl_get_dmic_geo(skl);
+		mach->mach_params.dmic_num = skl_get_dmic_geo(skl);
 	}
 
 	return 0;
@@ -534,6 +519,16 @@ static int skl_machine_device_register(struct skl *skl)
 		return -EIO;
 	}
 
+	mach->mach_params.platform = dev_name(bus->dev);
+	mach->mach_params.codec_mask = bus->codec_mask;
+
+	ret = platform_device_add_data(pdev, (const void *)mach, sizeof(*mach));
+	if (ret) {
+		dev_err(bus->dev, "failed to add machine device platform data\n");
+		platform_device_put(pdev);
+		return ret;
+	}
+
 	ret = platform_device_add(pdev);
 	if (ret) {
 		dev_err(bus->dev, "failed to add machine device\n");
@@ -541,9 +536,6 @@ static int skl_machine_device_register(struct skl *skl)
 		return -EIO;
 	}
 
-	mach->mach_params.platform = dev_name(bus->dev);
-	mach->mach_params.codec_mask = bus->codec_mask;
-	dev_set_drvdata(&pdev->dev, mach);
 
 	skl->i2s_dev = pdev;
 
@@ -763,11 +755,9 @@ static int skl_i915_init(struct hdac_bus *bus)
 	if (err < 0)
 		return err;
 
-	err = snd_hdac_display_power(bus, true);
-	if (err < 0)
-		dev_err(bus->dev, "Cannot turn on display power on i915\n");
+	snd_hdac_display_power(bus, HDA_CODEC_IDX_CONTROLLER, true);
 
-	return err;
+	return 0;
 }
 
 static void skl_probe_work(struct work_struct *work)
@@ -800,7 +790,7 @@ static void skl_probe_work(struct work_struct *work)
 	err = skl_platform_register(bus->dev);
 	if (err < 0) {
 		dev_err(bus->dev, "platform register failed: %d\n", err);
-		return;
+		goto out_err;
 	}
 
 	if (bus->ppcap) {
@@ -817,14 +807,8 @@ static void skl_probe_work(struct work_struct *work)
 	list_for_each_entry(hlink, &bus->hlink_list, list)
 		snd_hdac_ext_bus_link_put(bus, hlink);
 
-	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI)) {
-		err = snd_hdac_display_power(bus, false);
-		if (err < 0) {
-			dev_err(bus->dev, "Cannot turn off display power on i915\n");
-			skl_machine_device_unregister(skl);
-			return;
-		}
-	}
+	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI))
+		snd_hdac_display_power(bus, HDA_CODEC_IDX_CONTROLLER, false);
 
 	/* configure PM */
 	pm_runtime_put_noidle(bus->dev);
@@ -835,7 +819,7 @@ static void skl_probe_work(struct work_struct *work)
 
 out_err:
 	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI))
-		err = snd_hdac_display_power(bus, false);
+		snd_hdac_display_power(bus, HDA_CODEC_IDX_CONTROLLER, false);
 }
 
 /*

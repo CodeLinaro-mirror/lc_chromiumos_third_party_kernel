@@ -768,6 +768,28 @@ skip_epp:
 	wrmsrl_on_cpu(cpu, MSR_HWP_REQUEST, value);
 }
 
+static void intel_pstate_hwp_force_min_perf(int cpu)
+{
+	u64 cap;
+	u64 value;
+	int min_perf;
+
+	rdmsrl_on_cpu(cpu, MSR_HWP_REQUEST, &value);
+	value &= ~GENMASK_ULL(31, 0);
+	rdmsrl_on_cpu(cpu, MSR_HWP_CAPABILITIES, &cap);
+	min_perf = HWP_LOWEST_PERF(cap);
+
+	/* Set hwp_max = hwp_min */
+	value |= HWP_MAX_PERF(min_perf);
+	value |= HWP_MIN_PERF(min_perf);
+
+	/* Set EPP to min */
+	if (static_cpu_has(X86_FEATURE_HWP_EPP))
+		value |= HWP_ENERGY_PERF_PREFERENCE(HWP_EPP_POWERSAVE);
+
+	wrmsrl_on_cpu(cpu, MSR_HWP_REQUEST, value);
+}
+
 static int intel_pstate_hwp_save_state(struct cpufreq_policy *policy)
 {
 	struct cpudata *cpu_data = all_cpu_data[policy->cpu];
@@ -811,7 +833,7 @@ static void intel_pstate_update_policies(void)
 /************************** sysfs begin ************************/
 #define show_one(file_name, object)					\
 	static ssize_t show_##file_name					\
-	(struct kobject *kobj, struct attribute *attr, char *buf)	\
+	(struct kobject *kobj, struct kobj_attribute *attr, char *buf)	\
 	{								\
 		return sprintf(buf, "%u\n", global.object);		\
 	}
@@ -820,7 +842,7 @@ static ssize_t intel_pstate_show_status(char *buf);
 static int intel_pstate_update_status(const char *buf, size_t size);
 
 static ssize_t show_status(struct kobject *kobj,
-			   struct attribute *attr, char *buf)
+			   struct kobj_attribute *attr, char *buf)
 {
 	ssize_t ret;
 
@@ -831,7 +853,7 @@ static ssize_t show_status(struct kobject *kobj,
 	return ret;
 }
 
-static ssize_t store_status(struct kobject *a, struct attribute *b,
+static ssize_t store_status(struct kobject *a, struct kobj_attribute *b,
 			    const char *buf, size_t count)
 {
 	char *p = memchr(buf, '\n', count);
@@ -845,7 +867,7 @@ static ssize_t store_status(struct kobject *a, struct attribute *b,
 }
 
 static ssize_t show_turbo_pct(struct kobject *kobj,
-				struct attribute *attr, char *buf)
+				struct kobj_attribute *attr, char *buf)
 {
 	struct cpudata *cpu;
 	int total, no_turbo, turbo_pct;
@@ -871,7 +893,7 @@ static ssize_t show_turbo_pct(struct kobject *kobj,
 }
 
 static ssize_t show_num_pstates(struct kobject *kobj,
-				struct attribute *attr, char *buf)
+				struct kobj_attribute *attr, char *buf)
 {
 	struct cpudata *cpu;
 	int total;
@@ -892,7 +914,7 @@ static ssize_t show_num_pstates(struct kobject *kobj,
 }
 
 static ssize_t show_no_turbo(struct kobject *kobj,
-			     struct attribute *attr, char *buf)
+			     struct kobj_attribute *attr, char *buf)
 {
 	ssize_t ret;
 
@@ -914,7 +936,7 @@ static ssize_t show_no_turbo(struct kobject *kobj,
 	return ret;
 }
 
-static ssize_t store_no_turbo(struct kobject *a, struct attribute *b,
+static ssize_t store_no_turbo(struct kobject *a, struct kobj_attribute *b,
 			      const char *buf, size_t count)
 {
 	unsigned int input;
@@ -961,7 +983,7 @@ static ssize_t store_no_turbo(struct kobject *a, struct attribute *b,
 	return count;
 }
 
-static ssize_t store_max_perf_pct(struct kobject *a, struct attribute *b,
+static ssize_t store_max_perf_pct(struct kobject *a, struct kobj_attribute *b,
 				  const char *buf, size_t count)
 {
 	unsigned int input;
@@ -991,7 +1013,7 @@ static ssize_t store_max_perf_pct(struct kobject *a, struct attribute *b,
 	return count;
 }
 
-static ssize_t store_min_perf_pct(struct kobject *a, struct attribute *b,
+static ssize_t store_min_perf_pct(struct kobject *a, struct kobj_attribute *b,
 				  const char *buf, size_t count)
 {
 	unsigned int input;
@@ -1625,7 +1647,7 @@ static const struct pstate_funcs bxt_funcs = {
 static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 	ICPU(INTEL_FAM6_SANDYBRIDGE, 		core_funcs),
 	ICPU(INTEL_FAM6_SANDYBRIDGE_X,		core_funcs),
-	ICPU(INTEL_FAM6_ATOM_SILVERMONT1,	silvermont_funcs),
+	ICPU(INTEL_FAM6_ATOM_SILVERMONT,	silvermont_funcs),
 	ICPU(INTEL_FAM6_IVYBRIDGE,		core_funcs),
 	ICPU(INTEL_FAM6_HASWELL_CORE,		core_funcs),
 	ICPU(INTEL_FAM6_BROADWELL_CORE,		core_funcs),
@@ -1642,7 +1664,7 @@ static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 	ICPU(INTEL_FAM6_XEON_PHI_KNL,		knl_funcs),
 	ICPU(INTEL_FAM6_XEON_PHI_KNM,		knl_funcs),
 	ICPU(INTEL_FAM6_ATOM_GOLDMONT,		bxt_funcs),
-	ICPU(INTEL_FAM6_ATOM_GEMINI_LAKE,       bxt_funcs),
+	ICPU(INTEL_FAM6_ATOM_GOLDMONT_PLUS,     bxt_funcs),
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, intel_pstate_cpu_ids);
@@ -1869,10 +1891,12 @@ static void intel_pstate_stop_cpu(struct cpufreq_policy *policy)
 	pr_debug("CPU %d exiting\n", policy->cpu);
 
 	intel_pstate_clear_update_util_hook(policy->cpu);
-	if (hwp_active)
+	if (hwp_active) {
 		intel_pstate_hwp_save_state(policy);
-	else
+		intel_pstate_hwp_force_min_perf(policy->cpu);
+	} else {
 		intel_cpufreq_stop_cpu(policy);
+	}
 }
 
 static int intel_pstate_cpu_exit(struct cpufreq_policy *policy)

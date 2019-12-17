@@ -52,6 +52,11 @@
 #include "dm_helpers.h"
 #include "mem_input.h"
 #include "hubp.h"
+
+#include "dc_link_dp.h"
+
+#include "dce/dce_i2c.h"
+
 #define DC_LOGGER \
 	dc->ctx->logger
 
@@ -169,6 +174,22 @@ failed_alloc:
 	return false;
 }
 
+/**
+ *****************************************************************************
+ *  Function: dc_stream_adjust_vmin_vmax
+ *
+ *  @brief
+ *     Looks up the pipe context of dc_stream_state and updates the
+ *     vertical_total_min and vertical_total_max of the DRR, Dynamic Refresh
+ *     Rate, which is a power-saving feature that targets reducing panel
+ *     refresh rate while the screen is static
+ *
+ *  @param [in] dc: dc reference
+ *  @param [in] stream: Initial dc stream state
+ *  @param [in] adjust: Updated parameters for vertical_total_min and
+ *  vertical_total_max
+ *****************************************************************************
+ */
 bool dc_stream_adjust_vmin_vmax(struct dc *dc,
 		struct dc_stream_state **streams, int num_streams,
 		int vmin, int vmax)
@@ -403,8 +424,17 @@ void dc_link_set_preferred_link_settings(struct dc *dc,
 					 struct dc_link_settings *link_setting,
 					 struct dc_link *link)
 {
-	link->preferred_link_setting = *link_setting;
-	dp_retrain_link_dp_test(link, link_setting, false);
+	struct dc_link_settings store_settings = *link_setting;
+	struct dc_stream_state *link_stream =
+		link->dc->current_state->res_ctx.pipe_ctx[0].stream;
+
+	link->preferred_link_setting = store_settings;
+	if (link_stream)
+		decide_link_settings(link_stream, &store_settings);
+
+	if ((store_settings.lane_count != LANE_COUNT_UNKNOWN) &&
+		(store_settings.link_rate != LINK_RATE_UNKNOWN))
+		dp_retrain_link_dp_test(link, &store_settings, false);
 }
 
 void dc_link_enable_hpd(const struct dc_link *link)
@@ -451,9 +481,6 @@ static void destruct(struct dc *dc)
 	if (dc->ctx->created_bios)
 		dal_bios_parser_destroy(&dc->ctx->dc_bios);
 
-	if (dc->ctx->logger)
-		dal_logger_destroy(&dc->ctx->logger);
-
 	kfree(dc->ctx);
 	dc->ctx = NULL;
 
@@ -476,7 +503,6 @@ static void destruct(struct dc *dc)
 static bool construct(struct dc *dc,
 		const struct dc_init_data *init_params)
 {
-	struct dal_logger *logger;
 	struct dc_context *dc_ctx;
 	struct bw_calcs_dceip *dc_dceip;
 	struct bw_calcs_vbios *dc_vbios;
@@ -530,6 +556,7 @@ static bool construct(struct dc *dc,
 	dc_ctx->driver_context = init_params->driver;
 	dc_ctx->dc = dc;
 	dc_ctx->asic_id = init_params->asic_id;
+	dc_ctx->dc_sink_id_count = 0;
 	dc->ctx = dc_ctx;
 
 	dc->current_state = dc_create_state();
@@ -540,14 +567,7 @@ static bool construct(struct dc *dc,
 	}
 
 	/* Create logger */
-	logger = dal_logger_create(dc_ctx, init_params->log_mask);
 
-	if (!logger) {
-		/* can *not* call logger. call base driver 'print error' */
-		dm_error("%s: failed to create Logger!\n", __func__);
-		goto fail;
-	}
-	dc_ctx->logger = logger;
 	dc_ctx->dce_environment = init_params->dce_environment;
 
 	dc_version = resource_parse_asic_id(init_params->asic_id);
@@ -966,9 +986,7 @@ bool dc_commit_state(struct dc *dc, struct dc_state *context)
 	for (i = 0; i < context->stream_count; i++) {
 		struct dc_stream_state *stream = context->streams[i];
 
-		dc_stream_log(stream,
-				dc->ctx->logger,
-				LOG_DC);
+		dc_stream_log(dc, stream);
 	}
 
 	result = dc_commit_state_no_check(dc, context);
@@ -992,12 +1010,7 @@ bool dc_post_update_surfaces_to_stream(struct dc *dc)
 
 	dc->optimized_required = false;
 
-	/* 3rd param should be true, temp w/a for RV*/
-#if defined(CONFIG_DRM_AMD_DC_DCN1_0)
-	dc->hwss.set_bandwidth(dc, context, dc->ctx->dce_version < DCN_VERSION_1_0);
-#else
 	dc->hwss.set_bandwidth(dc, context, true);
-#endif
 	return true;
 }
 
@@ -1591,9 +1604,8 @@ bool dc_submit_i2c(
 
 	struct dc_link *link = dc->links[link_index];
 	struct ddc_service *ddc = link->ddc;
-
-	return dal_i2caux_submit_i2c_command(
-		ddc->ctx->i2caux,
+	return dce_i2c_submit_command(
+		dc->res_pool,
 		ddc->ddc_pin,
 		cmd);
 }
@@ -1622,7 +1634,7 @@ struct dc_sink *dc_link_add_remote_sink(
 	struct dc_sink *dc_sink;
 	enum dc_edid_status edid_status;
 
-	if (len > MAX_EDID_BUFFER_SIZE) {
+	if (len > DC_MAX_EDID_BUFFER_SIZE) {
 		dm_error("Max EDID buffer size breached!\n");
 		return NULL;
 	}

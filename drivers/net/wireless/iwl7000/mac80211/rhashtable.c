@@ -173,8 +173,7 @@ static struct bucket_table *bucket_table_alloc(struct rhashtable *ht,
 	int i;
 
 	size = sizeof(*tbl) + nbuckets * sizeof(tbl->buckets[0]);
-	if (gfp == GFP_KERNEL)
-		tbl = vzalloc(size);
+	tbl = kvzalloc(size, gfp);
 
 	size = nbuckets;
 
@@ -1180,8 +1179,7 @@ struct rhash_head __rcu **rht_bucket_nested(const struct bucket_table *tbl,
 					    unsigned int hash)
 {
 	const unsigned int shift = PAGE_SHIFT - ilog2(sizeof(void *));
-	static struct rhash_head __rcu *rhnull =
-		(struct rhash_head __rcu *)NULLS_MARKER(0);
+	static struct rhash_head __rcu *rhnull;
 	unsigned int index = hash & ((1 << tbl->nest) - 1);
 	unsigned int size = tbl->size >> tbl->nest;
 	unsigned int subhash = hash;
@@ -1199,8 +1197,11 @@ struct rhash_head __rcu **rht_bucket_nested(const struct bucket_table *tbl,
 		subhash >>= shift;
 	}
 
-	if (!ntbl)
+	if (!ntbl) {
+		if (!rhnull)
+			INIT_RHT_NULLS_HEAD(rhnull);
 		return &rhnull;
+	}
 
 	return &ntbl[subhash].bucket;
 

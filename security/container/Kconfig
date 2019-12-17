@@ -1,6 +1,7 @@
 config SECURITY_CONTAINER_MONITOR
 	bool "Monitor containerized processes"
 	depends on SECURITY
+	depends on MMU
 	depends on VSOCKETS=y
 	select SECURITYFS
 	help
@@ -12,15 +13,5 @@ config SECURITY_CONTAINER_MONITOR_DEBUG
 	depends on SECURITY_CONTAINER_MONITOR
 	help
 	  Define DEBUG for CSM files to compile verbose debugging messages.
-
-	  Only for debugging/testing do not enable for production.
-
-config SECURITY_CONTAINER_MONITOR_DEBUG_CONFIG
-    bool "Allow user-mode to set collector configuration"
-	depends on SECURITY_CONTAINER_MONITOR
-	default n
-	help
-	  This configuration option adds a sysfs config file to test configuration
-	  parsing without a fully enabled VMM backend.
 
 	  Only for debugging/testing do not enable for production.

@@ -2623,10 +2623,16 @@ struct rt6_info *rt6_add_dflt_router(const struct in6_addr *gwaddr,
 	return rt6_get_dflt_router(gwaddr, dev);
 }
 
-int rt6_addrconf_purge(struct rt6_info *rt, void *arg) {
+int rt6_addrconf_purge(struct rt6_info *rt, void *arg)
+{
+	struct inet6_dev *idev = rt->rt6i_idev;
+
 	if (rt->rt6i_flags & (RTF_DEFAULT | RTF_ADDRCONF) &&
-	    (!rt->rt6i_idev || rt->rt6i_idev->cnf.accept_ra != 2))
+	    (!idev || idev->cnf.accept_ra != 2)) {
+		/* Delete this route. See fib6_clean_tree() */
 		return -1;
+	}
+	/* Continue walking */
 	return 0;
 }
 
@@ -2995,6 +3001,10 @@ static int rtm_to_fib6_config(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (tb[RTA_GATEWAY]) {
 		cfg->fc_gateway = nla_get_in6_addr(tb[RTA_GATEWAY]);
 		cfg->fc_flags |= RTF_GATEWAY;
+	}
+	if (tb[RTA_VIA]) {
+		NL_SET_ERR_MSG(extack, "IPv6 does not support RTA_VIA attribute");
+		goto errout;
 	}
 
 	if (tb[RTA_DST]) {
@@ -3463,7 +3473,7 @@ static int rt6_fill_node(struct net *net,
 		table = rt->rt6i_table->tb6_id;
 	else
 		table = RT6_TABLE_UNSPEC;
-	rtm->rtm_table = table;
+	rtm->rtm_table = table < 256 ? table : RT_TABLE_COMPAT;
 	if (nla_put_u32(skb, RTA_TABLE, table))
 		goto nla_put_failure;
 	if (rt->rt6i_flags & RTF_REJECT) {

@@ -1215,7 +1215,7 @@ static void drm_dp_add_port(struct drm_dp_mst_branch *mstb,
 		     port->pdt == DP_PEER_DEVICE_SST_SINK) &&
 		    port->port_num >= DP_MST_LOGICAL_PORT_0) {
 			port->cached_edid = drm_get_edid(port->connector, &port->aux.ddc);
-			drm_mode_connector_set_tile_property(port->connector);
+			drm_connector_set_tile_property(port->connector);
 		}
 		(*mstb->mgr->cbs->register_connector)(port->connector);
 	}
@@ -2562,7 +2562,7 @@ struct edid *drm_dp_mst_get_edid(struct drm_connector *connector, struct drm_dp_
 		edid = drm_edid_duplicate(port->cached_edid);
 	else {
 		edid = drm_get_edid(connector, &port->aux.ddc);
-		drm_mode_connector_set_tile_property(connector);
+		drm_connector_set_tile_property(connector);
 	}
 	port->has_audio = drm_detect_monitor_audio(edid);
 	drm_dp_put_port(port);
@@ -3278,6 +3278,7 @@ static int drm_dp_mst_i2c_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs
 		msg.u.i2c_read.transactions[i].i2c_dev_id = msgs[i].addr;
 		msg.u.i2c_read.transactions[i].num_bytes = msgs[i].len;
 		msg.u.i2c_read.transactions[i].bytes = msgs[i].buf;
+		msg.u.i2c_read.transactions[i].no_stop_bit = !(msgs[i].flags & I2C_M_STOP);
 	}
 	msg.u.i2c_read.read_i2c_device_id = msgs[num - 1].addr;
 	msg.u.i2c_read.num_bytes_read = msgs[num - 1].len;

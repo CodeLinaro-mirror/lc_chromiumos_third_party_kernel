@@ -3,7 +3,7 @@
  * Copyright 2006-2007	Jiri Benc <jbenc@suse.cz>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright (C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 Intel Corporation
+ * Copyright (C) 2018-2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -394,6 +394,47 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 
 	for (i = 0; i < IEEE80211_NUM_TIDS; i++)
 		sta->last_seq_ctrl[i] = cpu_to_le16(USHRT_MAX);
+
+	for (i = 0; i < NUM_NL80211_BANDS; i++) {
+		u32 mandatory = 0;
+		int r;
+
+		if (!hw->wiphy->bands[i])
+			continue;
+
+		switch (i) {
+		case NL80211_BAND_2GHZ:
+			/*
+			 * We use both here, even if we cannot really know for
+			 * sure the station will support both, but the only use
+			 * for this is when we don't know anything yet and send
+			 * management frames, and then we'll pick the lowest
+			 * possible rate anyway.
+			 * If we don't include _G here, we cannot find a rate
+			 * in P2P, and thus trigger the WARN_ONCE() in rate.c
+			 */
+			mandatory = IEEE80211_RATE_MANDATORY_B |
+				    IEEE80211_RATE_MANDATORY_G;
+			break;
+		case NL80211_BAND_5GHZ:
+			mandatory = IEEE80211_RATE_MANDATORY_A;
+			break;
+		case NL80211_BAND_60GHZ:
+			WARN_ON(1);
+			mandatory = 0;
+			break;
+		}
+
+		for (r = 0; r < hw->wiphy->bands[i]->n_bitrates; r++) {
+			struct ieee80211_rate *rate;
+
+			rate = &hw->wiphy->bands[i]->bitrates[r];
+
+			if (!(rate->flags & mandatory))
+				continue;
+			sta->sta.supp_rates[i] |= BIT(r);
+		}
+	}
 
 	sta->sta.smps_mode = IEEE80211_SMPS_OFF;
 	if (sdata->vif.type == NL80211_IFTYPE_AP ||
@@ -2018,7 +2059,7 @@ static void sta_stats_decode_rate(struct ieee80211_local *local, u32 rate,
 		break;
 		}
 	case STA_STATS_RATE_TYPE_HE:
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+#if CFG80211_VERSION >= KERNEL_VERSION(4,19,0)
 		rinfo->flags |= RATE_INFO_FLAGS_HE_MCS;
 		rinfo->mcs = STA_STATS_GET(HE_MCS, rate);
 		rinfo->nss = STA_STATS_GET(HE_NSS, rate);
@@ -2261,11 +2302,8 @@ void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo,
 	}
 
 	if (tidstats && !cfg80211_sinfo_alloc_tid_stats(sinfo, GFP_KERNEL)) {
-		for (i = 0; i < IEEE80211_NUM_TIDS + 1; i++) {
-			struct cfg80211_tid_stats *tidstats = &sinfo->pertid[i];
-
-			sta_set_tidstats(sta, tidstats, i);
-		}
+		for (i = 0; i < IEEE80211_NUM_TIDS + 1; i++)
+			sta_set_tidstats(sta, &sinfo->pertid[i], i);
 	}
 
 	if (ieee80211_vif_is_mesh(&sdata->vif)) {
@@ -2275,7 +2313,8 @@ void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo,
 				 BIT_ULL(NL80211_STA_INFO_PLINK_STATE) |
 				 BIT_ULL(NL80211_STA_INFO_LOCAL_PM) |
 				 BIT_ULL(NL80211_STA_INFO_PEER_PM) |
-				 BIT_ULL(NL80211_STA_INFO_NONPEER_PM);
+				 BIT_ULL(NL80211_STA_INFO_NONPEER_PM) |
+				 BIT_ULL(NL80211_STA_INFO_CONNECTED_TO_GATE);
 
 		sinfo->llid = sta->mesh->llid;
 		sinfo->plid = sta->mesh->plid;
@@ -2287,6 +2326,7 @@ void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo,
 		sinfo->local_pm = sta->mesh->local_pm;
 		sinfo->peer_pm = sta->mesh->peer_pm;
 		sinfo->nonpeer_pm = sta->mesh->nonpeer_pm;
+		sinfo->connected_to_gate = sta->mesh->connected_to_gate;
 #endif
 	}
 

@@ -324,7 +324,7 @@ static int i915_getparam(struct drm_device *dev, void *data,
 		value = i915_modparams.semaphores;
 		break;
 	case I915_PARAM_HAS_SECURE_BATCHES:
-		value = capable(CAP_SYS_ADMIN);
+		value = HAS_SECURE_BATCHES(dev_priv) && capable(CAP_SYS_ADMIN);
 		break;
 	case I915_PARAM_CMD_PARSER_VERSION:
 		value = i915_cmd_parser_get_version(dev_priv);
@@ -1288,7 +1288,8 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 	int ret;
 
 	/* Enable nuclear pageflip on ILK+ */
-	if (!i915_modparams.nuclear_pageflip && match_info->gen < 5)
+	if ((!i915_modparams.nuclear_pageflip && match_info->gen < 5) ||
+			match_info->platform == INTEL_BROADWELL)
 		driver.driver_features &= ~DRIVER_ATOMIC;
 
 	ret = -ENOMEM;

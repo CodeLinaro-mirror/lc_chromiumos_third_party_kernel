@@ -201,12 +201,18 @@ struct adv_info {
 
 #define HCI_MAX_SHORT_NAME_LENGTH	10
 
+/* Min encryption key size to match with SMP */
+#define HCI_MIN_ENC_KEY_SIZE		7
+
 /* Default LE RPA expiry time, 15 minutes */
 #define HCI_DEFAULT_RPA_TIMEOUT		(15 * 60)
 
 /* Default min/max age of connection information (1s/3s) */
 #define DEFAULT_CONN_INFO_MIN_AGE	1000
 #define DEFAULT_CONN_INFO_MAX_AGE	3000
+
+#define MAX_BLOCKED_LTKS		8
+#define LTK_LENGTH			16
 
 struct amp_assoc {
 	__u16	len;
@@ -217,6 +223,15 @@ struct amp_assoc {
 };
 
 #define HCI_MAX_PAGES	3
+
+#define CONTROLLER_ID(vendor, product) \
+	.idVendor = (vendor), \
+	.idProduct = (product)
+
+struct controller_id_t {
+	__u16	idVendor;
+	__u16	idProduct;
+};
 
 struct hci_dev {
 	struct list_head list;
@@ -285,6 +300,8 @@ struct hci_dev {
 	__u8		ssp_debug_mode;
 	__u8		hw_error_code;
 	__u32		clock;
+	struct controller_id_t controller_id;
+	__u8		wide_band_speech;
 
 	__u16		devid_source;
 	__u16		devid_vendor;
@@ -324,6 +341,9 @@ struct hci_dev {
 	unsigned int	sco_cnt;
 	unsigned int	le_cnt;
 
+	unsigned int	count_adv_change_in_progress;
+	unsigned int	count_scan_change_in_progress;
+
 	unsigned int	acl_mtu;
 	unsigned int	sco_mtu;
 	unsigned int	le_mtu;
@@ -358,7 +378,8 @@ struct hci_dev {
 	struct work_struct	cmd_work;
 	struct work_struct	tx_work;
 
-	struct work_struct	discov_update;
+	struct work_struct	start_discov_update;
+	struct work_struct	stop_discov_update;
 	struct work_struct	bg_scan_update;
 	struct work_struct	scan_update;
 	struct work_struct	connectable_update;
@@ -416,6 +437,8 @@ struct hci_dev {
 	__u8			adv_data_len;
 	__u8			scan_rsp_data[HCI_MAX_AD_LENGTH];
 	__u8			scan_rsp_data_len;
+	/* These long term keys shouldn't be used */
+	__u8			blocked_ltks[MAX_BLOCKED_LTKS][LTK_LENGTH];
 
 	struct list_head	adv_instances;
 	unsigned int		adv_instance_cnt;
@@ -1564,6 +1587,8 @@ void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __le64 rand,
 
 void hci_copy_identity_address(struct hci_dev *hdev, bdaddr_t *bdaddr,
 			       u8 *bdaddr_type);
+
+bool is_ltk_blocked(struct smp_ltk *key, struct hci_dev *hdev);
 
 #define SCO_AIRMODE_MASK       0x0003
 #define SCO_AIRMODE_CVSD       0x0000

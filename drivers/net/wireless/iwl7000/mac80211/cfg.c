@@ -4,7 +4,7 @@
  * Copyright 2006-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2015  Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018 Intel Corporation
+ * Copyright (C) 2018-2019 Intel Corporation
  *
  * This file is GPLv2 as found in COPYING.
  */
@@ -136,7 +136,8 @@ struct vif_params *params)
 	struct ieee80211_sub_if_data *sdata;
 	int err;
 
-	err = ieee80211_if_add(local, name, name_assign_type, &wdev, type, params);
+	err = ieee80211_if_add(local, name, name_assign_type, &wdev, type,
+			       mon_opts_params(params));
 	if (err)
 		return ERR_PTR(err);
 
@@ -469,7 +470,7 @@ static int ieee80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 	case NL80211_IFTYPE_AP:
 	case NL80211_IFTYPE_AP_VLAN:
 		/* Keys without a station are used for TX only */
-		if (key->sta && test_sta_flag(key->sta, WLAN_STA_MFP))
+		if (sta && test_sta_flag(sta, WLAN_STA_MFP))
 			key->conf.flags |= IEEE80211_KEY_FLAG_RX_MGMT;
 		break;
 	case NL80211_IFTYPE_ADHOC:
@@ -855,6 +856,50 @@ static int ieee80211_set_probe_resp(struct ieee80211_sub_if_data *sdata,
 	return 0;
 }
 
+#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+static int ieee80211_set_ftm_responder_params(
+				struct ieee80211_sub_if_data *sdata,
+				const u8 *lci, size_t lci_len,
+				const u8 *civicloc, size_t civicloc_len)
+{
+	struct ieee80211_ftm_responder_params *new, *old;
+	struct ieee80211_bss_conf *bss_conf;
+	u8 *pos;
+	int len;
+
+	if (!lci_len && !civicloc_len)
+		return 0;
+
+	bss_conf = &sdata->vif.bss_conf;
+	old = bss_conf->ftmr_params;
+	len = lci_len + civicloc_len;
+
+	new = kzalloc(sizeof(*new) + len, GFP_KERNEL);
+	if (!new)
+		return -ENOMEM;
+
+	pos = (u8 *)(new + 1);
+	if (lci_len) {
+		new->lci_len = lci_len;
+		new->lci = pos;
+		memcpy(pos, lci, lci_len);
+		pos += lci_len;
+	}
+
+	if (civicloc_len) {
+		new->civicloc_len = civicloc_len;
+		new->civicloc = pos;
+		memcpy(pos, civicloc, civicloc_len);
+		pos += civicloc_len;
+	}
+
+	bss_conf->ftmr_params = new;
+	kfree(old);
+
+	return 0;
+}
+#endif
+
 static int ieee80211_assign_beacon(struct ieee80211_sub_if_data *sdata,
 				   struct cfg80211_beacon_data *params,
 				   const struct ieee80211_csa_settings *csa)
@@ -927,6 +972,22 @@ static int ieee80211_assign_beacon(struct ieee80211_sub_if_data *sdata,
 		return err;
 	if (err == 0)
 		changed |= BSS_CHANGED_AP_PROBE_RESP;
+
+#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+	if (params->ftm_responder != -1) {
+		sdata->vif.bss_conf.ftm_responder = params->ftm_responder;
+		err = ieee80211_set_ftm_responder_params(sdata,
+							 params->lci,
+							 beacon_ftm_len(params, lci_len),
+							 params->civicloc,
+							 beacon_ftm_len(params, civicloc_len));
+
+		if (err < 0)
+			return err;
+
+		changed |= BSS_CHANGED_FTM_RESPONDER;
+	}
+#endif
 
 	rcu_assign_pointer(sdata->u.ap.beacon, new);
 
@@ -1127,6 +1188,9 @@ static int ieee80211_stop_ap(struct wiphy *wiphy, struct net_device *dev)
 	if (old_probe_resp)
 		kfree_rcu(old_probe_resp, rcu_head);
 	sdata->u.ap.driver_smps_mode = IEEE80211_SMPS_OFF;
+
+	kfree(sdata->vif.bss_conf.ftmr_params);
+	sdata->vif.bss_conf.ftmr_params = NULL;
 
 	__sta_info_flush(sdata, true);
 	ieee80211_free_keys(sdata, true);
@@ -1418,7 +1482,7 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 	if (params->listen_interval >= 0)
 		sta->listen_interval = params->listen_interval;
 
-	if (params->supported_rates) {
+	if (params->supported_rates && params->supported_rates_len) {
 		ieee80211_parse_bitrates(&sdata->vif.bss_conf.chandef,
 					 sband, params->supported_rates,
 					 params->supported_rates_len,
@@ -1434,7 +1498,7 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 		ieee80211_vht_cap_ie_to_sta_vht_cap(sdata, sband,
 						    params->vht_capa, sta);
 
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+#if CFG80211_VERSION >= KERNEL_VERSION(4,19,0)
 	if (params->he_capa)
 		ieee80211_he_cap_ie_to_sta_he_cap(sdata, sband,
 						  (void *)params->he_capa,
@@ -2052,6 +2116,9 @@ static int ieee80211_update_mesh_config(struct wiphy *wiphy,
 			nconf->dot11MeshAwakeWindowDuration;
 	if (_chg_mesh_attr(NL80211_MESHCONF_PLINK_TIMEOUT, mask))
 		conf->plink_timeout = nconf->plink_timeout;
+	if (_chg_mesh_attr(NL80211_MESHCONF_CONNECTED_TO_GATE, mask))
+		conf->dot11MeshConnectedToMeshGate =
+			nconf->dot11MeshConnectedToMeshGate;
 	ieee80211_mbss_info_change_notify(sdata, BSS_CHANGED_BEACON);
 	return 0;
 }
@@ -2934,7 +3001,8 @@ cfg80211_beacon_dup(struct cfg80211_beacon_data *beacon)
 
 	len = beacon->head_len + beacon->tail_len + beacon->beacon_ies_len +
 	      beacon->proberesp_ies_len + beacon->assocresp_ies_len +
-	      beacon->probe_resp_len;
+	      beacon->probe_resp_len + beacon_ftm_len(beacon, lci_len) + beacon_ftm_len(beacon,
+											civicloc_len);
 
 	new_beacon = kzalloc(sizeof(*new_beacon) + len, GFP_KERNEL);
 	if (!new_beacon)
@@ -2977,6 +3045,29 @@ cfg80211_beacon_dup(struct cfg80211_beacon_data *beacon)
 		memcpy(pos, beacon->probe_resp, beacon->probe_resp_len);
 		pos += beacon->probe_resp_len;
 	}
+
+	/* might copy -1, meaning no changes requested */
+#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+	new_beacon->ftm_responder = beacon->ftm_responder;
+#endif
+#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+	if (beacon->lci) {
+		new_beacon->lci_len = beacon_ftm_len(beacon, lci_len);
+		new_beacon->lci = pos;
+		memcpy(pos, beacon->lci, beacon_ftm_len(beacon, lci_len));
+		pos += beacon_ftm_len(beacon, lci_len);
+	}
+#endif
+#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+	if (beacon->civicloc) {
+		new_beacon->civicloc_len = beacon_ftm_len(beacon,
+							  civicloc_len);
+		new_beacon->civicloc = pos;
+		memcpy(pos, beacon->civicloc,
+		       beacon_ftm_len(beacon, civicloc_len));
+		pos += beacon_ftm_len(beacon, civicloc_len);
+	}
+#endif
 
 	return new_beacon;
 }
@@ -3714,90 +3805,6 @@ static int ieee80211_del_tx_ts(struct wiphy *wiphy, struct net_device *dev,
 }
 #endif
 
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-static u64 ieee80211_msrment_cookie(struct ieee80211_local *local,
-				    enum nl80211_msrment_type type)
-{
-	ASSERT_RTNL();
-
-	local->msrment_cookie_counter++;
-	if (local->msrment_cookie_counter == (1ULL << 48))
-		local->msrment_cookie_counter = 1;
-
-	return ((u64)type << 48) | local->msrment_cookie_counter;
-}
-#endif
-
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-static int ieee80211_perform_msrment(struct wiphy *wiphy,
-				     struct wireless_dev *wdev,
-				     struct cfg80211_msrment_request *request,
-				     u64 *cookie)
-{
-	struct ieee80211_local *local = wiphy_priv(wiphy);
-	struct ieee80211_vif *vif = wdev_to_ieee80211_vif(wdev);
-
-	*cookie = ieee80211_msrment_cookie(local, request->type);
-
-	switch (request->type) {
-	case NL80211_MSRMENT_TYPE_FTM:
-		if (!local->ops->perform_ftm)
-			return -EOPNOTSUPP;
-		return local->ops->perform_ftm(&local->hw, *cookie, vif,
-					       &request->u.ftm);
-	default:
-		break;
-	}
-
-	return -EOPNOTSUPP;
-}
-#endif
-
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-static int ieee80211_abort_msrment(struct wiphy *wiphy,
-				   struct wireless_dev *wdev, u64 cookie)
-{
-	struct ieee80211_local *local = wiphy_priv(wiphy);
-
-	enum nl80211_msrment_type type = cookie >> 48;
-
-	switch (type) {
-	case NL80211_MSRMENT_TYPE_FTM:
-		if (!local->ops->abort_ftm)
-			return -EOPNOTSUPP;
-		return local->ops->abort_ftm(&local->hw, cookie);
-	default:
-		break;
-	}
-
-	return -EOPNOTSUPP;
-}
-#endif
-
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-static int ieee80211_start_ftm_responder(struct wiphy *wiphy,
-					 struct net_device *dev,
-			       struct cfg80211_ftm_responder_params *params)
-{
-	struct ieee80211_local *local = wiphy_priv(wiphy);
-	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
-
-	return drv_start_ftm_responder(local, sdata, params);
-}
-#endif
-
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-static int ieee80211_get_ftm_responder_stats(struct wiphy *wiphy,
-					    struct net_device *dev,
-			       struct cfg80211_ftm_responder_stats *ftm_stats)
-{
-	struct ieee80211_local *local = wiphy_priv(wiphy);
-	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
-
-	return drv_get_ftm_responder_stats(local, sdata, ftm_stats);
-}
-#endif
-
 #if CFG80211_VERSION < KERNEL_VERSION(4,9,0)
 void ieee80211_nan_func_terminated(struct ieee80211_vif *vif, u8 inst_id,
 				   enum nl80211_nan_func_term_reason reason,
@@ -3985,6 +3992,43 @@ out:
 }
 #endif /* CFG80211_VERSION >= KERNEL_VERSION(4,18,0) */
 
+#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+static int
+ieee80211_get_ftm_responder_stats(struct wiphy *wiphy,
+				  struct net_device *dev,
+				  struct cfg80211_ftm_responder_stats *ftm_stats)
+{
+	struct ieee80211_local *local = wiphy_priv(wiphy);
+	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
+
+	return drv_get_ftm_responder_stats(local, sdata, ftm_stats);
+}
+#endif
+
+#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+static int
+ieee80211_start_pmsr(struct wiphy *wiphy, struct wireless_dev *dev,
+		     struct cfg80211_pmsr_request *request)
+{
+	struct ieee80211_local *local = wiphy_priv(wiphy);
+	struct ieee80211_sub_if_data *sdata = IEEE80211_WDEV_TO_SUB_IF(dev);
+
+	return drv_start_pmsr(local, sdata, request);
+}
+#endif
+
+#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+static void
+ieee80211_abort_pmsr(struct wiphy *wiphy, struct wireless_dev *dev,
+		     struct cfg80211_pmsr_request *request)
+{
+	struct ieee80211_local *local = wiphy_priv(wiphy);
+	struct ieee80211_sub_if_data *sdata = IEEE80211_WDEV_TO_SUB_IF(dev);
+
+	return drv_abort_pmsr(local, sdata, request);
+}
+#endif
+
 #if CFG80211_VERSION < KERNEL_VERSION(3,14,0)
 static int _wrap_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 			 struct ieee80211_channel *chan, bool offchan,
@@ -4024,18 +4068,6 @@ const struct cfg80211_ops mac80211_config_ops = {
 	.get_station = ieee80211_get_station,
 	.dump_station = ieee80211_dump_station,
 	.dump_survey = ieee80211_dump_survey,
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-	.perform_msrment = ieee80211_perform_msrment,
-#endif
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-	.abort_msrment = ieee80211_abort_msrment,
-#endif
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-	.start_ftm_responder = ieee80211_start_ftm_responder,
-#endif
-#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-	.get_ftm_responder_stats = ieee80211_get_ftm_responder_stats,
-#endif
 #ifdef CPTCFG_MAC80211_MESH
 	.add_mpath = ieee80211_add_mpath,
 	.del_mpath = ieee80211_del_mpath,
@@ -4154,5 +4186,14 @@ const struct cfg80211_ops mac80211_config_ops = {
 #endif
 #if CFG80211_VERSION >= KERNEL_VERSION(4,18,0)
 	.get_txq_stats = ieee80211_get_txq_stats,
+#endif
+#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+	.get_ftm_responder_stats = ieee80211_get_ftm_responder_stats,
+#endif
+#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+	.start_pmsr = ieee80211_start_pmsr,
+#endif
+#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+	.abort_pmsr = ieee80211_abort_pmsr,
 #endif
 };
