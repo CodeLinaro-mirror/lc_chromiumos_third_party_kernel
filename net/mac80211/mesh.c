@@ -1172,6 +1172,7 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	struct ieee802_11_elems elems;
 	struct ieee80211_channel *channel;
 	size_t baselen;
+	bool disable_csa = true;
 	int freq;
 	enum nl80211_band band = rx_status->band;
 
@@ -1217,8 +1218,14 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 			stype, mgmt, &elems, rx_status);
 
 	if (ifmsh->csa_role != IEEE80211_MESH_CSA_ROLE_INIT &&
-	    !sdata->vif.csa_active)
-		ieee80211_mesh_process_chnswitch(sdata, &elems, true);
+	    !sdata->vif.csa_active) {
+		if (disable_csa)
+			sdata_info(sdata,
+				   "Ignoring Channel Switch request from %pM frame type %u\n",
+				   mgmt->sa, stype);
+		else
+			ieee80211_mesh_process_chnswitch(sdata, &elems, true);
+	}
 }
 
 int ieee80211_mesh_finish_csa(struct ieee80211_sub_if_data *sdata)
@@ -1310,12 +1317,18 @@ static void mesh_rx_csa_frame(struct ieee80211_sub_if_data *sdata,
 	struct ieee802_11_elems elems;
 	u16 pre_value;
 	bool fwd_csa = true;
+	bool disable_csa = true;
 	size_t baselen;
 	u8 *pos;
 
 	if (mgmt->u.action.u.measurement.action_code !=
 	    WLAN_ACTION_SPCT_CHL_SWITCH)
 		return;
+
+	if (disable_csa) {
+		sdata_info(sdata, "Ignoring CSA frame from %pM\n", mgmt->sa);
+		return;
+	}
 
 	pos = mgmt->u.action.u.chan_switch.variable;
 	baselen = offsetof(struct ieee80211_mgmt,

@@ -7686,10 +7686,6 @@ static int nl80211_channel_switch(struct sk_buff *skb, struct genl_info *info)
 		if (!wdev->ssid_len)
 			return -ENOTCONN;
 		break;
-	case NL80211_IFTYPE_MESH_POINT:
-		if (!wdev->mesh_id_len)
-			return -ENOTCONN;
-		break;
 	default:
 		return -EOPNOTSUPP;
 	}
