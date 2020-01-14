@@ -222,3 +222,12 @@ Testing and validation
 
 .. kernel-doc:: drivers/gpu/drm/drm_debugfs_crc.c
    :doc: CRC ABI
+
+DRM Tracing
+---------------
+
+.. kernel-doc:: drivers/gpu/drm/drm_trace.c
+   :doc: DRM Tracing
+
+.. kernel-doc:: drivers/gpu/drm/drm_trace.c
+   :internal:

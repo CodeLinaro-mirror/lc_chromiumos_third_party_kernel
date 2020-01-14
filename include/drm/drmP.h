@@ -284,6 +284,45 @@ void drm_printk(const char *level, unsigned int category,
 		(r)->x1 >> 16, (((r)->x1 & 0xffff) * 15625) >> 10, \
 		(r)->y1 >> 16, (((r)->y1 & 0xffff) * 15625) >> 10
 
+#ifdef CONFIG_DEBUG_FS
+
+int drm_trace_init(struct dentry *debugfs_root);
+bool drm_trace_enabled(u32 category);
+__printf(1, 2)
+void drm_trace_printf(const char *format, ...);
+__printf(2, 3)
+void drm_dev_trace_printf(const struct device *dev, const char *format, ...);
+void drm_trace_cleanup(void);
+
+#else
+
+static inline int drm_trace_init(struct dentry *debugfs_root)
+{
+	return 0;
+}
+
+static inline bool drm_trace_enabled(u32 category)
+{
+	return false;
+}
+
+__printf(1, 2)
+static inline void drm_trace_printf(const char *format, ...)
+{
+}
+
+__printf(2, 3)
+static inline void drm_dev_trace_printf(const struct device *dev,
+					const char *format, ...)
+{
+}
+
+static inline void drm_trace_cleanup(void)
+{
+}
+
+#endif
+
 /*@}*/
 
 /***********************************************************************/

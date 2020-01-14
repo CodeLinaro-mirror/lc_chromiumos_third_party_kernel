@@ -67,17 +67,33 @@ void drm_dev_printk(const struct device *dev, const char *level,
 	struct va_format vaf;
 	va_list args;
 
-	if (category != DRM_UT_NONE && !(drm_debug & category))
-		return;
+	if (category == DRM_UT_NONE || (drm_debug & category)) {
+		va_start(args, format);
+		vaf.fmt = format;
+		vaf.va = &args;
 
-	va_start(args, format);
-	vaf.fmt = format;
-	vaf.va = &args;
+		dev_printk(level, dev, DRM_PRINTK_FMT, function_name, prefix,
+			   &vaf);
 
-	dev_printk(level, dev, DRM_PRINTK_FMT, function_name, prefix,
-		   &vaf);
+		va_end(args);
+	}
 
-	va_end(args);
+	if (category == DRM_UT_NONE || drm_trace_enabled(category)) {
+		va_start(args, format);
+		vaf.fmt = format;
+		vaf.va = &args;
+
+		if (dev)
+			drm_dev_trace_printf(dev, "[%ps] %pV",
+					     __builtin_return_address(0),
+					     &vaf);
+		else
+			drm_trace_printf("[%ps] %pV",
+					 __builtin_return_address(0),
+					 &vaf);
+
+		va_end(args);
+	}
 }
 EXPORT_SYMBOL(drm_dev_printk);
 
@@ -87,18 +103,28 @@ void drm_printk(const char *level, unsigned int category,
 	struct va_format vaf;
 	va_list args;
 
-	if (category != DRM_UT_NONE && !(drm_debug & category))
-		return;
+	if (category == DRM_UT_NONE || (drm_debug & category)) {
+		va_start(args, format);
+		vaf.fmt = format;
+		vaf.va = &args;
 
-	va_start(args, format);
-	vaf.fmt = format;
-	vaf.va = &args;
+		printk("%s" "[" DRM_NAME ":%ps]%s %pV",
+		       level, __builtin_return_address(0),
+		       strcmp(level, KERN_ERR) == 0 ? " *ERROR*" : "", &vaf);
 
-	printk("%s" "[" DRM_NAME ":%ps]%s %pV",
-	       level, __builtin_return_address(0),
-	       strcmp(level, KERN_ERR) == 0 ? " *ERROR*" : "", &vaf);
+		va_end(args);
+	}
 
-	va_end(args);
+	if (category == DRM_UT_NONE || drm_trace_enabled(category)) {
+		va_start(args, format);
+		vaf.fmt = format;
+		vaf.va = &args;
+
+		drm_trace_printf("[%ps] %pV", __builtin_return_address(0),
+				 &vaf);
+
+		va_end(args);
+	}
 }
 EXPORT_SYMBOL(drm_printk);
 
@@ -861,6 +887,8 @@ static int __init drm_core_init(void)
 		goto err_p3;
 	}
 
+	WARN_ON(drm_trace_init(drm_debugfs_root));
+
 	if (!debugfs_create_bool("drm_master_relax", S_IRUSR | S_IWUSR,
 				drm_debugfs_root, &drm_master_relax)) {
 		DRM_ERROR(
@@ -882,6 +910,7 @@ err_p1:
 
 static void __exit drm_core_exit(void)
 {
+	drm_trace_cleanup();
 	debugfs_remove_recursive(drm_debugfs_root);
 	drm_sysfs_destroy();
 
