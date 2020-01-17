@@ -1157,8 +1157,11 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	struct ieee802_11_elems elems;
 	struct ieee80211_channel *channel;
 	size_t baselen;
+	bool disable_csa = true;
 	int freq;
 	enum nl80211_band band = rx_status->band;
+	/* Used for debugging only and include new channel number */
+	u8 csa_ch;
 
 	/* ignore ProbeResp to foreign address */
 	if (stype == IEEE80211_STYPE_PROBE_RESP &&
@@ -1202,8 +1205,23 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 			stype, mgmt, &elems, rx_status);
 
 	if (ifmsh->csa_role != IEEE80211_MESH_CSA_ROLE_INIT &&
-	    !sdata->vif.csa_active)
-		ieee80211_mesh_process_chnswitch(sdata, &elems, true);
+	    !sdata->vif.csa_active) {
+		if (disable_csa) {
+			/* log only if mesh beacon and probe response has
+			 * csa ie's to avoid flood on normal beacon and
+			 * probe response.
+			 */
+			csa_ch = ieee80211_mesh_find_channel_frm_csa(&elems);
+			if (csa_ch) {
+				sdata_info(sdata,
+					   "%s: Ignoring CSA from %pM frame type %u from channel %d to %d\n",
+					   __func__, mgmt->sa, stype,
+					   channel->hw_value, csa_ch);
+			}
+		} else {
+			ieee80211_mesh_process_chnswitch(sdata, &elems, true);
+		}
+	}
 }
 
 int ieee80211_mesh_finish_csa(struct ieee80211_sub_if_data *sdata)
@@ -1295,6 +1313,7 @@ static void mesh_rx_csa_frame(struct ieee80211_sub_if_data *sdata,
 	struct ieee802_11_elems elems;
 	u16 pre_value;
 	bool fwd_csa = true;
+	bool disable_csa = true;
 	size_t baselen;
 	u8 *pos;
 
@@ -1306,6 +1325,13 @@ static void mesh_rx_csa_frame(struct ieee80211_sub_if_data *sdata,
 	baselen = offsetof(struct ieee80211_mgmt,
 			   u.action.u.chan_switch.variable);
 	ieee802_11_parse_elems(pos, len - baselen, true, &elems);
+
+	if (disable_csa) {
+		sdata_info(sdata, "%s: Ignoring CSA frame from %pM to channel %d\n",
+			   __func__, mgmt->sa,
+			   ieee80211_mesh_find_channel_frm_csa(&elems));
+		return;
+	}
 
 	ifmsh->chsw_ttl = elems.mesh_chansw_params_ie->mesh_ttl;
 	if (!--ifmsh->chsw_ttl)
