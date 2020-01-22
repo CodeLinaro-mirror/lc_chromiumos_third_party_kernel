@@ -119,6 +119,7 @@ int virtio_gpu_init(struct drm_device *dev)
 
 	spin_lock_init(&vgdev->display_info_lock);
 	spin_lock_init(&vgdev->request_idr_lock);
+	spin_lock_init(&vgdev->resource_export_lock);
 	ida_init(&vgdev->ctx_id_ida);
 	ida_init(&vgdev->resource_ida);
 	idr_init(&vgdev->request_idr);
@@ -147,6 +148,10 @@ int virtio_gpu_init(struct drm_device *dev)
 	}
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_RING_F_INDIRECT_DESC)) {
 		vgdev->has_indirect = true;
+	}
+	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_RESOURCE_UUID)) {
+		vgdev->has_resource_assign_uuid = true;
+		DRM_INFO("Virtio cross device support available.\n");
 	}
 
 	DRM_INFO("features: %cvirgl %cedid\n",
