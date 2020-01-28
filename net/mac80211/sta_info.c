@@ -413,6 +413,9 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 	sta->airtime_weight = IEEE80211_DEFAULT_AIRTIME_WEIGHT *
 			      hw->weight_multiplier;
 
+	if (ieee80211_vif_is_mesh(&sdata->vif))
+		sta->airtime_weight *= IEEE80211_AIRTIME_WEIGHT_MULTIPLIER_MESH;
+
 	for (i = 0; i < IEEE80211_NUM_ACS; i++) {
 		skb_queue_head_init(&sta->ps_tx_buf[i]);
 		skb_queue_head_init(&sta->tx_filtered[i]);
