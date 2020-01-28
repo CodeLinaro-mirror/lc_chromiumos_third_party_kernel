@@ -2286,6 +2286,7 @@ enum wiphy_params_flags {
 };
 
 #define IEEE80211_DEFAULT_AIRTIME_WEIGHT	256
+#define IEEE80211_AIRTIME_WEIGHT_MULTIPLIER_MESH	3
 
 /* The per TXQ firmware queue limit in airtime */
 #define IEEE80211_DEFAULT_TXQ_AIRTIME_LIMIT	4000
