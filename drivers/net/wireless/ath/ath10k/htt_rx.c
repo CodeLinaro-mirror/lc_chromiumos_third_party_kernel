@@ -2995,6 +2995,23 @@ ath10k_htt_populate_rfs_cfr_header(struct ath10k *ar,
 
 	cfr_hdr->timestamp = __le32_to_cpu(cfr_ind->timestamp);
 
+	spin_lock_bh(&ar->data_lock);
+	if (ar->cfr_current) {
+		if (ar->cfr_windex >= CFR_NUM_OF_REQUESTED_META_INFO) {
+			ar->cfr_windex = 0;
+			ar->cfr_flag = true;
+		}
+		memcpy((ar->cfr_current + ar->cfr_windex), cfr_hdr,
+		       sizeof(struct ath10k_rfs_cfr_hdr));
+		ar->cfr_windex++;
+
+		if (ar->cfr_flag)
+			ar->cfr_rindex++;
+
+		if (ar->cfr_rindex >= CFR_NUM_OF_REQUESTED_META_INFO)
+			ar->cfr_rindex = 0;
+	}
+	spin_unlock_bh(&ar->data_lock);
 	ath10k_dump_to_rfs(&ar->cfr_rfs, cfr_hdr,
 			   sizeof(struct ath10k_rfs_cfr_hdr));
 }
@@ -3007,6 +3024,7 @@ static void ath10k_htt_peer_cfr_compl_ind(struct ath10k *ar,
 	enum htt_cfr_capture_msg_type cfr_msg_type;
 	int expected_len;
 
+	ar->cfr_event_counter++;
 	cfr_msg_type = __le32_to_cpu(resp->cfr_dump_ind.cfr_msg_type);
 
 	switch (cfr_msg_type) {

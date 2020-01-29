@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2011 Atheros Communications Inc.
  * Copyright (c) 2011-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -2412,6 +2412,7 @@ static ssize_t ath10k_write_cfr_enable(struct file *file,
 	u8 cfr_enable;
 	u32 param;
 	int ret;
+	struct timespec cfr_start, cfr_end;
 
 	if (kstrtou8_from_user(user_buf, count, 0, &cfr_enable))
 		return -EINVAL;
@@ -2442,6 +2443,32 @@ static ssize_t ath10k_write_cfr_enable(struct file *file,
 	}
 
 	ar->cfr_enable = cfr_enable;
+	if (cfr_enable == 1) {
+		/* Allocating memory for 100 headers of size 32 bytes each */
+		ar->cfr_current = vzalloc(sizeof(*ar->cfr_current) *
+					CFR_NUM_OF_REQUESTED_META_INFO);
+		if (!ar->cfr_current) {
+			ret = count;
+			goto exit;
+		}
+		ar->cfr_windex = 0;
+		ar->cfr_rindex = 0;
+		ar->cfr_flag = false;
+		ar->cfr_event_counter = 0;
+		getnstimeofday(&cfr_start);
+	} else if (cfr_enable == 0) {
+		vfree(ar->cfr_current);
+		ar->cfr_current = NULL;
+		ar->cfr_windex = 0;
+		ar->cfr_rindex = 0;
+		getnstimeofday(&cfr_end);
+		ath10k_info(ar, "CFR start_time: %ld secs and %ld nanosec\n",
+			    cfr_start.tv_sec, cfr_start.tv_nsec);
+		ath10k_info(ar, "CFR end_time: %ld sec and %ld nanosec\n",
+			    cfr_end.tv_sec, cfr_end.tv_nsec);
+		ath10k_info(ar, "Number of cfr_event came from fw are = %u\n",
+			    ar->cfr_event_counter);
+	}
 
 	ret = count;
 
@@ -3382,6 +3409,69 @@ static const struct file_operations fops_rts_threshold = {
 	.llseek = default_llseek,
 };
 
+static ssize_t
+ath10k_dbg_read_cfr_requested_meta_info(struct file *file,
+					char __user *user_buf,
+					size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	int len = 0, retval = 0;
+	char *buf;
+	struct ath10k_rfs_cfr_hdr *cfr_ptr = ar->cfr_current;
+	unsigned int i = ar->cfr_rindex;
+	const int size = 3 * 4096;
+
+	if (!cfr_ptr) {
+		ath10k_warn(ar, "periodic_cfr_enable is not enabled\n");
+		return -ENOMEM;
+	}
+
+	buf = kzalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	mutex_lock(&ar->conf_mutex);
+	spin_lock_bh(&ar->data_lock);
+
+	do {
+		len += scnprintf(buf + len, size - len, "%x  %02x:%02x:%02x:",
+				 cfr_ptr[i].head_magic_num, cfr_ptr[i].addr[0],
+				 cfr_ptr[i].addr[1], cfr_ptr[i].addr[2]);
+		len += scnprintf(buf + len, size - len, "%02x:%02x:%02x ",
+				 cfr_ptr[i].addr[3], cfr_ptr[i].addr[4],
+				 cfr_ptr[i].addr[5]);
+		len += scnprintf(buf + len, size - len, "%u %u %u ",
+				 cfr_ptr[i].status, cfr_ptr[i].capture_bw,
+				 cfr_ptr[i].channel_bw);
+		len += scnprintf(buf + len, size - len, "%u %u %u %u ",
+				 cfr_ptr[i].phy_mode, cfr_ptr[i].prim20_chan,
+				 cfr_ptr[i].center_freq1,
+				 cfr_ptr[i].center_freq2);
+		len += scnprintf(buf + len, size - len, "%u %u %u %u ",
+				 cfr_ptr[i].capture_mode,
+				 cfr_ptr[i].capture_type,
+				 cfr_ptr[i].sts_count,
+				 cfr_ptr[i].num_rx_chain);
+		len += scnprintf(buf + len, size - len, "%u %u\n",
+				 cfr_ptr[i].timestamp, cfr_ptr[i].length);
+		i++;
+		i = i % CFR_NUM_OF_REQUESTED_META_INFO;
+	} while (i != ar->cfr_rindex);
+
+	spin_unlock_bh(&ar->data_lock);
+	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	mutex_unlock(&ar->conf_mutex);
+	kfree(buf);
+	return retval;
+}
+
+static const struct file_operations fops_cfr_requested_meta_info = {
+	.read = ath10k_dbg_read_cfr_requested_meta_info,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 int ath10k_debug_register(struct ath10k *ar)
 {
 	ar->debug.debugfs_phy = debugfs_create_dir("ath10k",
@@ -3508,10 +3598,15 @@ int ath10k_debug_register(struct ath10k *ar)
 				    ar->debug.debugfs_phy, ar,
 				    &fops_tpc_stats_final);
 
-	if (test_bit(WMI_SERVICE_CFR_CAPTURE_SUPPORT, ar->wmi.svc_map))
+	if (test_bit(WMI_SERVICE_CFR_CAPTURE_SUPPORT, ar->wmi.svc_map)) {
 		debugfs_create_file("periodic_cfr_enable", 0600,
 				    ar->debug.debugfs_phy,
 				    ar, &fops_cfr_enable);
+
+		debugfs_create_file("cfr_dbg_meta_info", 0444,
+				    ar->debug.debugfs_phy, ar,
+				    &fops_cfr_requested_meta_info);
+	}
 
 	debugfs_create_file("ftm_resp", 0600,
 			    ar->debug.debugfs_phy, ar, &fops_ftm_resp);

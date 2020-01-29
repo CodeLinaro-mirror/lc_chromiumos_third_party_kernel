@@ -21,6 +21,8 @@
 #include <linux/types.h>
 #include "trace.h"
 
+#define CFR_NUM_OF_REQUESTED_META_INFO 100
+
 enum ath10k_debug_mask {
 	ATH10K_DBG_PCI		= 0x00000001,
 	ATH10K_DBG_WMI		= 0x00000002,

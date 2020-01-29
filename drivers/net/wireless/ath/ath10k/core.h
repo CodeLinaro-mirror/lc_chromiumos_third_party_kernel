@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2011 Atheros Communications Inc.
  * Copyright (c) 2011-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1172,6 +1172,12 @@ struct ath10k {
 	struct ath10k_rfs_desc cfr_rfs;
 	struct ath10k_rfs_desc rtt_rfs;
 	struct completion peer_delete_done;
+	/* Adding a pointer and index to store CFR meta info for debug */
+	struct ath10k_rfs_cfr_hdr *cfr_current;
+	unsigned int cfr_rindex;
+	unsigned int cfr_windex;
+	unsigned int cfr_event_counter;
+	bool cfr_flag;
 
 	/* protected by data_lock */
 	enum ath10k_radar_confirmation_state radar_conf_state;
