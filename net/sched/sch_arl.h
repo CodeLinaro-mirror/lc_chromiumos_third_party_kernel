@@ -33,7 +33,6 @@ enum arl_latency_sampling_state {
 
 struct arl_params {
 	u64	min_rate;	/* The lowest rate for the rate limiter */
-	u64	max_rate;	/* The highest rate for the rate limiter */
 	u64	rate;		/* Initial rate */
 	u32	buffer;		/* Burst size, in ns */
 	/* The maximum rate that rate limiting will be enforced. Above max_bw
@@ -46,7 +45,7 @@ struct arl_params {
 	u32	max_size;	/* Max packet size */
 	u32	latency_hysteresis;
 	u32	target;		/* CoDel's latency target in us */
-	enum	arl_mode mode;
+	enum arl_mode	mode;
 };
 
 DECLARE_EWMA(arl_bw_avg, 3, 8)
@@ -55,13 +54,13 @@ struct arl_vars {
 	s64	tokens;	/* token count*/
 	s64	buffer;	/* Token bucket depth/rate */
 	s64	ts;	/* Last de-queue time */
-	ktime_t phase_start_t;		/* phase start time */
-	ktime_t last_drain_t;		/* Timestamp of last DRAIN */
+	ktime_t	phase_start_t;		/* phase start time */
+	ktime_t	last_drain_t;		/* Timestamp of last DRAIN */
 	struct psched_ratecfg	rate;	/* The current rate limit */
 	struct tc_ratespec	cfg_rate;
 	u64	bw_est_bytes_sent;
-	u32	bw_est;	/* Current estimate of throughput. in Kbps */
-	u32	last_bw_est; /* bw_est from previous cycle,in kbps */
+	u32	bw_est;		/* Current estimate of throughput. in Kbps */
+	u32	last_bw_est;	/* bw_est from previous cycle, in kbps */
 	u32	last_stable_base_rate; /* Previous base_rate with low latency */
 	unsigned long	bw_est_start_t;	/* Timestamp of the start */
 	/* Exponentially Weighted Moving Avg. of bw */
@@ -113,7 +112,7 @@ struct arl_vars {
 #define ARL_LOW_LATENCY	(35 * USEC_PER_MSEC)
 
 /* The maximum BW/throughput, above it ARL will not enforce rate limit */
-#define ARL_MAX_BW_DEFAULT	(300 * 1000 / 8) /* In Kilo Bytes per sec */
+#define ARL_MAX_BW_DEFAULT	(300 * 1000 / 8) /* In KBytes per sec */
 /* The minimun rate limit. ARL will not go below this limit */
 #define ARL_MIN_RATE_DEFAULT	(2 * 1000 / 8) /* In KBytes per sec */
 /* The default burst size for the Token Buffer rate limiter */
@@ -121,8 +120,8 @@ struct arl_vars {
 #define ARL_MAX_LATENCY_DEFAULT	(150 * USEC_PER_MSEC) /* in us */
 
 struct arl_stats {
-	u32 max_bw;		/* max bw detected */
-	u32 min_rate;		/* the min. of base rate */
+	u32	max_bw;		/* max bw detected */
+	u32	min_rate;		/* the min. of base rate */
 };
 
 struct arl_sched_data {
