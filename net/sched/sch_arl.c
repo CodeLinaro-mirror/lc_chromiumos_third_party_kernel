@@ -157,7 +157,7 @@ static bool arl_check_drain(struct arl_sched_data *q)
 	if (q->vars.state != ARL_LATENCY_PROBE && q->vars.state != ARL_STABLE)
 		return false;
 
-	/* No need to DRAIN unless it is under load */
+	/* No need to DRAIN if the latency is low */
 	if (minmax_get(&q->vars.st_min_hrtt) < ARL_LOW_LATENCY)
 		return false;
 
@@ -804,8 +804,9 @@ static struct tcphdr *arl_get_tcp_header_ipv6(struct sk_buff *skb,
 /* Find the conntrack entry for packet that takes the shortcut path and has no
  * ct entry set in its skb.
  */
-struct nf_conn *arl_egress_find_ct_v4(struct sk_buff *skb, struct iphdr *iph,
-				      struct tcphdr *tcph)
+static struct nf_conn *arl_egress_find_ct_v4(struct sk_buff *skb,
+					     struct iphdr *iph,
+					     struct tcphdr *tcph)
 {
 	struct nf_conntrack_tuple_hash *h;
 	struct nf_conntrack_tuple tuple;
@@ -834,9 +835,9 @@ struct nf_conn *arl_egress_find_ct_v4(struct sk_buff *skb, struct iphdr *iph,
 	return ct;
 }
 
-struct nf_conn *arl_egress_find_ct_v6(struct sk_buff *skb,
-				      struct ipv6hdr *ipv6h,
-				       struct tcphdr *tcph)
+static struct nf_conn *arl_egress_find_ct_v6(struct sk_buff *skb,
+					     struct ipv6hdr *ipv6h,
+					     struct tcphdr *tcph)
 {
 	struct nf_conntrack_tuple_hash *h;
 	struct nf_conntrack_tuple tuple;
@@ -1193,7 +1194,8 @@ static int arl_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 			qdisc_qstats_drop(sch);
 		return ret;
 	}
-	arl_sample_latency_ingress(q, skb);
+	if (q->params.mode == ARL_INGRESS)
+		arl_sample_latency_ingress(q, skb);
 	arl_enqueue_update(sch, len);
 	return NET_XMIT_SUCCESS;
 }
@@ -1286,8 +1288,10 @@ static int arl_change(struct Qdisc *sch, struct nlattr *opt)
 		q->params.buffer = nla_get_u32(tb[TCA_ARL_BUFFER])
 				   * NSEC_PER_USEC;
 
+	/* Convert max_bw from Bps to KBps */
 	if (tb[TCA_ARL_MAX_BW])
-		q->params.max_bw = nla_get_u64(tb[TCA_ARL_MAX_BW]) / 1000;
+		q->params.max_bw = div_u64(nla_get_u64(tb[TCA_ARL_MAX_BW]),
+					   1000);
 
 	if (tb[TCA_ARL_MIN_RATE])
 		q->params.min_rate = div_u64(nla_get_u64(tb[TCA_ARL_MIN_RATE]),
@@ -1494,7 +1498,7 @@ static int arl_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 	struct arl_sched_data *q = qdisc_priv(sch);
 	struct tc_arl_xstats st = { 0 };
 
-	/* convert bw and rate from KBps to Kbps */
+	/* convert bw and rate from KBps to Kbits */
 	st.max_bw = q->stats.max_bw * 8;
 	st.min_rate = q->stats.min_rate * 8;
 	st.base_rate = q->vars.base_rate * 8;
