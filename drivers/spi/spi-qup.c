@@ -161,6 +161,8 @@ struct spi_qup {
 
 static int spi_qup_io_config(struct spi_device *spi, struct spi_transfer *xfer);
 
+static int spi_qup_pm_resume_runtime(struct device *device);
+
 static inline bool spi_qup_is_flag_set(struct spi_qup *controller, u32 flag)
 {
 	u32 opflag = readl_relaxed(controller->base + QUP_OPERATIONAL);
@@ -991,8 +993,14 @@ static void spi_qup_set_cs(struct spi_device *spi, bool val)
 	struct spi_qup *controller;
 	u32 spi_ioc;
 	u32 spi_ioc_orig;
+	int ret;
 
 	controller = spi_master_get_devdata(spi->master);
+	if (pm_runtime_suspended(controller->dev)) {
+		ret = spi_qup_pm_resume_runtime(controller->dev);
+		if (ret)
+			return;
+	}
 	spi_ioc = readl_relaxed(controller->base + SPI_IO_CONTROL);
 	spi_ioc_orig = spi_ioc;
 	if (!val)
@@ -1002,6 +1010,11 @@ static void spi_qup_set_cs(struct spi_device *spi, bool val)
 
 	if (spi_ioc != spi_ioc_orig)
 		writel_relaxed(spi_ioc, controller->base + SPI_IO_CONTROL);
+
+	if(pm_runtime_suspended(controller->dev)) {
+		clk_disable_unprepare(controller->cclk);
+		clk_disable_unprepare(controller->iclk);
+	}
 }
 
 static int spi_qup_probe(struct platform_device *pdev)
