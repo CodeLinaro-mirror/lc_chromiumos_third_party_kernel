@@ -3,7 +3,7 @@
  * This file is provided under a dual BSD/GPLv2 license.  When using or
  * redistributing this file, you may do so under either license.
  *
- * Copyright(c) 2017 Intel Corporation. All rights reserved.
+ * Copyright(c) 2018 Intel Corporation. All rights reserved.
  *
  * Author: Liam Girdwood <liam.r.girdwood@linux.intel.com>
  */
@@ -11,231 +11,243 @@
 #ifndef __SOUND_SOC_SOF_IO_H
 #define __SOUND_SOC_SOF_IO_H
 
+#include <linux/device.h>
+#include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/types.h>
-#include <linux/interrupt.h>
-#include <linux/device.h>
 #include <sound/pcm.h>
-#include <uapi/sound/sof-ipc.h>
 #include "sof-priv.h"
+
+#define sof_ops(sdev) \
+	((sdev)->pdata->desc->ops)
+
+/* Mandatory operations are verified during probing */
 
 /* init */
 static inline int snd_sof_probe(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->probe)
-		return sdev->ops->probe(sdev);
-	else
-		return 0;
+	return sof_ops(sdev)->probe(sdev);
 }
 
 static inline int snd_sof_remove(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->remove)
-		return sdev->ops->remove(sdev);
-	else
-		return 0;
+	if (sof_ops(sdev)->remove)
+		return sof_ops(sdev)->remove(sdev);
+
+	return 0;
 }
 
 /* control */
+
+/*
+ * snd_sof_dsp_run returns the core mask of the cores that are available
+ * after successful fw boot
+ */
 static inline int snd_sof_dsp_run(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->run)
-		return sdev->ops->run(sdev);
-	else
-		return 0;
+	return sof_ops(sdev)->run(sdev);
 }
 
 static inline int snd_sof_dsp_stall(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->stall)
-		return sdev->ops->stall(sdev);
-	else
-		return 0;
+	if (sof_ops(sdev)->stall)
+		return sof_ops(sdev)->stall(sdev);
+
+	return 0;
 }
 
 static inline int snd_sof_dsp_reset(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->reset)
-		return sdev->ops->reset(sdev);
-	else
-		return 0;
+	if (sof_ops(sdev)->reset)
+		return sof_ops(sdev)->reset(sdev);
+
+	return 0;
+}
+
+/* dsp core power up/power down */
+static inline int snd_sof_dsp_core_power_up(struct snd_sof_dev *sdev,
+					    unsigned int core_mask)
+{
+	if (sof_ops(sdev)->core_power_up)
+		return sof_ops(sdev)->core_power_up(sdev, core_mask);
+
+	return 0;
+}
+
+static inline int snd_sof_dsp_core_power_down(struct snd_sof_dev *sdev,
+					      unsigned int core_mask)
+{
+	if (sof_ops(sdev)->core_power_down)
+		return sof_ops(sdev)->core_power_down(sdev, core_mask);
+
+	return 0;
+}
+
+/* pre/post fw load */
+static inline int snd_sof_dsp_pre_fw_run(struct snd_sof_dev *sdev)
+{
+	if (sof_ops(sdev)->pre_fw_run)
+		return sof_ops(sdev)->pre_fw_run(sdev);
+
+	return 0;
+}
+
+static inline int snd_sof_dsp_post_fw_run(struct snd_sof_dev *sdev)
+{
+	if (sof_ops(sdev)->post_fw_run)
+		return sof_ops(sdev)->post_fw_run(sdev);
+
+	return 0;
 }
 
 /* power management */
 static inline int snd_sof_dsp_resume(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->resume)
-		return sdev->ops->resume(sdev);
-	else
-		return 0;
+	if (sof_ops(sdev)->resume)
+		return sof_ops(sdev)->resume(sdev);
+
+	return 0;
 }
 
 static inline int snd_sof_dsp_suspend(struct snd_sof_dev *sdev, int state)
 {
-	if (sdev->ops->suspend)
-		return sdev->ops->suspend(sdev, state);
-	else
-		return 0;
+	if (sof_ops(sdev)->suspend)
+		return sof_ops(sdev)->suspend(sdev, state);
+
+	return 0;
 }
 
 static inline int snd_sof_dsp_runtime_resume(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->runtime_resume)
-		return sdev->ops->runtime_resume(sdev);
-	else
-		return 0;
+	if (sof_ops(sdev)->runtime_resume)
+		return sof_ops(sdev)->runtime_resume(sdev);
+
+	return 0;
 }
 
 static inline int snd_sof_dsp_runtime_suspend(struct snd_sof_dev *sdev,
 					      int state)
 {
-	if (sdev->ops->runtime_suspend)
-		return sdev->ops->runtime_suspend(sdev, state);
-	else
-		return 0;
+	if (sof_ops(sdev)->runtime_suspend)
+		return sof_ops(sdev)->runtime_suspend(sdev, state);
+
+	return 0;
+}
+
+static inline void snd_sof_dsp_hw_params_upon_resume(struct snd_sof_dev *sdev)
+{
+	if (sof_ops(sdev)->set_hw_params_upon_resume)
+		sof_ops(sdev)->set_hw_params_upon_resume(sdev);
 }
 
 static inline int snd_sof_dsp_set_clk(struct snd_sof_dev *sdev, u32 freq)
 {
-	if (sdev->ops->set_clk)
-		return sdev->ops->set_clk(sdev, freq);
-	else
-		return 0;
+	if (sof_ops(sdev)->set_clk)
+		return sof_ops(sdev)->set_clk(sdev, freq);
+
+	return 0;
 }
 
 /* debug */
 static inline void snd_sof_dsp_dbg_dump(struct snd_sof_dev *sdev, u32 flags)
 {
-	if (sdev->ops->dbg_dump)
-		return sdev->ops->dbg_dump(sdev, flags);
+	if (sof_ops(sdev)->dbg_dump)
+		return sof_ops(sdev)->dbg_dump(sdev, flags);
+}
+
+static inline void snd_sof_ipc_dump(struct snd_sof_dev *sdev)
+{
+	if (sof_ops(sdev)->ipc_dump)
+		return sof_ops(sdev)->ipc_dump(sdev);
 }
 
 /* register IO */
 static inline void snd_sof_dsp_write(struct snd_sof_dev *sdev, u32 bar,
 				     u32 offset, u32 value)
 {
-	if (sdev->ops->write)
-		sdev->ops->write(sdev, sdev->bar[bar] + offset, value);
+	if (sof_ops(sdev)->write) {
+		sof_ops(sdev)->write(sdev, sdev->bar[bar] + offset, value);
+		return;
+	}
+
+	dev_err_ratelimited(sdev->dev, "error: %s not defined\n", __func__);
 }
 
 static inline void snd_sof_dsp_write64(struct snd_sof_dev *sdev, u32 bar,
 				       u32 offset, u64 value)
 {
-	if (sdev->ops->write64)
-		sdev->ops->write64(sdev,
-			sdev->bar[bar] + offset, value);
+	if (sof_ops(sdev)->write64) {
+		sof_ops(sdev)->write64(sdev, sdev->bar[bar] + offset, value);
+		return;
+	}
+
+	dev_err_ratelimited(sdev->dev, "error: %s not defined\n", __func__);
 }
 
 static inline u32 snd_sof_dsp_read(struct snd_sof_dev *sdev, u32 bar,
 				   u32 offset)
 {
-	if (sdev->ops->read)
-		return sdev->ops->read(sdev, sdev->bar[bar] + offset);
-	else
-		return 0;
+	if (sof_ops(sdev)->read)
+		return sof_ops(sdev)->read(sdev, sdev->bar[bar] + offset);
+
+	dev_err(sdev->dev, "error: %s not defined\n", __func__);
+	return -ENOTSUPP;
 }
 
 static inline u64 snd_sof_dsp_read64(struct snd_sof_dev *sdev, u32 bar,
 				     u32 offset)
 {
-	if (sdev->ops->read64)
-		return sdev->ops->read64(sdev, sdev->bar[bar] + offset);
-	else
-		return 0;
+	if (sof_ops(sdev)->read64)
+		return sof_ops(sdev)->read64(sdev, sdev->bar[bar] + offset);
+
+	dev_err(sdev->dev, "error: %s not defined\n", __func__);
+	return -ENOTSUPP;
 }
 
 /* block IO */
-static inline void snd_sof_dsp_block_read(struct snd_sof_dev *sdev,
+static inline void snd_sof_dsp_block_read(struct snd_sof_dev *sdev, u32 bar,
 					  u32 offset, void *dest, size_t bytes)
 {
-	if (sdev->ops->block_read)
-		sdev->ops->block_read(sdev, offset, dest, bytes);
+	sof_ops(sdev)->block_read(sdev, bar, offset, dest, bytes);
 }
 
-static inline void snd_sof_dsp_block_write(struct snd_sof_dev *sdev,
+static inline void snd_sof_dsp_block_write(struct snd_sof_dev *sdev, u32 bar,
 					   u32 offset, void *src, size_t bytes)
 {
-	if (sdev->ops->block_write)
-		sdev->ops->block_write(sdev, offset, src, bytes);
-}
-
-/* mailbox */
-static inline void snd_sof_dsp_mailbox_read(struct snd_sof_dev *sdev,
-					    u32 offset, void *message,
-					    size_t bytes)
-{
-	if (sdev->ops->mailbox_read)
-		sdev->ops->mailbox_read(sdev, offset, message, bytes);
-}
-
-static inline void snd_sof_dsp_mailbox_write(struct snd_sof_dev *sdev,
-					     u32 offset, void *message,
-					     size_t bytes)
-{
-	if (sdev->ops->mailbox_write)
-		sdev->ops->mailbox_write(sdev, offset, message, bytes);
+	sof_ops(sdev)->block_write(sdev, bar, offset, src, bytes);
 }
 
 /* ipc */
 static inline int snd_sof_dsp_send_msg(struct snd_sof_dev *sdev,
 				       struct snd_sof_ipc_msg *msg)
 {
-	if (sdev->ops->send_msg)
-		return sdev->ops->send_msg(sdev, msg);
-	else
-		return 0;
-}
-
-static inline int snd_sof_dsp_get_reply(struct snd_sof_dev *sdev,
-					struct snd_sof_ipc_msg *msg)
-{
-	if (sdev->ops->get_reply)
-		return sdev->ops->get_reply(sdev, msg);
-	else
-		return 0;
-}
-
-static inline int snd_sof_dsp_is_ready(struct snd_sof_dev *sdev)
-{
-	if (sdev->ops->is_ready)
-		return sdev->ops->is_ready(sdev);
-	else
-		return 0;
-}
-
-static inline int snd_sof_dsp_cmd_done(struct snd_sof_dev *sdev,
-				       int dir)
-{
-	if (sdev->ops->cmd_done)
-		return sdev->ops->cmd_done(sdev, dir);
-	else
-		return 0;
+	return sof_ops(sdev)->send_msg(sdev, msg);
 }
 
 /* host DMA trace */
 static inline int snd_sof_dma_trace_init(struct snd_sof_dev *sdev,
 					 u32 *stream_tag)
 {
-	if (sdev->ops->trace_init)
-		return sdev->ops->trace_init(sdev, stream_tag);
-	else
-		return 0;
+	if (sof_ops(sdev)->trace_init)
+		return sof_ops(sdev)->trace_init(sdev, stream_tag);
+
+	return 0;
 }
 
 static inline int snd_sof_dma_trace_release(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->trace_release)
-		return sdev->ops->trace_release(sdev);
-	else
-		return 0;
+	if (sof_ops(sdev)->trace_release)
+		return sof_ops(sdev)->trace_release(sdev);
+
+	return 0;
 }
 
 static inline int snd_sof_dma_trace_trigger(struct snd_sof_dev *sdev, int cmd)
 {
-	if (sdev->ops->trace_trigger)
-		return sdev->ops->trace_trigger(sdev, cmd);
-	else
-		return 0;
+	if (sof_ops(sdev)->trace_trigger)
+		return sof_ops(sdev)->trace_trigger(sdev, cmd);
+
+	return 0;
 }
 
 /* host PCM ops */
@@ -243,10 +255,10 @@ static inline int
 snd_sof_pcm_platform_open(struct snd_sof_dev *sdev,
 			  struct snd_pcm_substream *substream)
 {
-	if (sdev->ops && sdev->ops->pcm_open)
-		return sdev->ops->pcm_open(sdev, substream);
-	else
-		return 0;
+	if (sof_ops(sdev) && sof_ops(sdev)->pcm_open)
+		return sof_ops(sdev)->pcm_open(sdev, substream);
+
+	return 0;
 }
 
 /* disconnect pcm substream to a host stream */
@@ -254,10 +266,10 @@ static inline int
 snd_sof_pcm_platform_close(struct snd_sof_dev *sdev,
 			   struct snd_pcm_substream *substream)
 {
-	if (sdev->ops && sdev->ops->pcm_close)
-		return sdev->ops->pcm_close(sdev, substream);
-	else
-		return 0;
+	if (sof_ops(sdev) && sof_ops(sdev)->pcm_close)
+		return sof_ops(sdev)->pcm_close(sdev, substream);
+
+	return 0;
 }
 
 /* host stream hw params */
@@ -267,11 +279,11 @@ snd_sof_pcm_platform_hw_params(struct snd_sof_dev *sdev,
 			       struct snd_pcm_hw_params *params,
 			       struct sof_ipc_stream_params *ipc_params)
 {
-	if (sdev->ops && sdev->ops->pcm_hw_params)
-		return sdev->ops->pcm_hw_params(sdev, substream,
-						params, ipc_params);
-	else
-		return 0;
+	if (sof_ops(sdev) && sof_ops(sdev)->pcm_hw_params)
+		return sof_ops(sdev)->pcm_hw_params(sdev, substream,
+						    params, ipc_params);
+
+	return 0;
 }
 
 /* host stream trigger */
@@ -279,10 +291,27 @@ static inline int
 snd_sof_pcm_platform_trigger(struct snd_sof_dev *sdev,
 			     struct snd_pcm_substream *substream, int cmd)
 {
-	if (sdev->ops && sdev->ops->pcm_trigger)
-		return sdev->ops->pcm_trigger(sdev, substream, cmd);
-	else
-		return 0;
+	if (sof_ops(sdev) && sof_ops(sdev)->pcm_trigger)
+		return sof_ops(sdev)->pcm_trigger(sdev, substream, cmd);
+
+	return 0;
+}
+
+/* host DSP message data */
+static inline void snd_sof_ipc_msg_data(struct snd_sof_dev *sdev,
+					struct snd_pcm_substream *substream,
+					void *p, size_t sz)
+{
+	sof_ops(sdev)->ipc_msg_data(sdev, substream, p, sz);
+}
+
+/* host configure DSP HW parameters */
+static inline int
+snd_sof_ipc_pcm_params(struct snd_sof_dev *sdev,
+		       struct snd_pcm_substream *substream,
+		       const struct sof_ipc_pcm_params_reply *reply)
+{
+	return sof_ops(sdev)->ipc_pcm_params(sdev, substream, reply);
 }
 
 /* host stream pointer */
@@ -290,40 +319,93 @@ static inline snd_pcm_uframes_t
 snd_sof_pcm_platform_pointer(struct snd_sof_dev *sdev,
 			     struct snd_pcm_substream *substream)
 {
-	if (sdev->ops && sdev->ops->pcm_pointer)
-		return sdev->ops->pcm_pointer(sdev, substream);
-	else
-		return 0;
+	if (sof_ops(sdev) && sof_ops(sdev)->pcm_pointer)
+		return sof_ops(sdev)->pcm_pointer(sdev, substream);
+
+	return 0;
 }
 
-int snd_sof_dsp_update_bits_unlocked(struct snd_sof_dev *sdev, u32 bar,
-				     u32 offset, u32 mask, u32 value);
+static inline const struct snd_sof_dsp_ops
+*sof_get_ops(const struct sof_dev_desc *d,
+	     const struct sof_ops_table mach_ops[], int asize)
+{
+	int i;
 
-int snd_sof_dsp_update_bits64_unlocked(struct snd_sof_dev *sdev, u32 bar,
-				       u32 offset, u64 mask, u64 value);
+	for (i = 0; i < asize; i++) {
+		if (d == mach_ops[i].desc)
+			return mach_ops[i].ops;
+	}
+
+	/* not found */
+	return NULL;
+}
+
+/**
+ * snd_sof_dsp_register_poll_timeout - Periodically poll an address
+ * until a condition is met or a timeout occurs
+ * @op: accessor function (takes @addr as its only argument)
+ * @addr: Address to poll
+ * @val: Variable to read the value into
+ * @cond: Break condition (usually involving @val)
+ * @sleep_us: Maximum time to sleep between reads in us (0
+ *            tight-loops).  Should be less than ~20ms since usleep_range
+ *            is used (see Documentation/timers/timers-howto.txt).
+ * @timeout_us: Timeout in us, 0 means never timeout
+ *
+ * Returns 0 on success and -ETIMEDOUT upon a timeout. In either
+ * case, the last read value at @addr is stored in @val. Must not
+ * be called from atomic context if sleep_us or timeout_us are used.
+ *
+ * This is modelled after the readx_poll_timeout macros in linux/iopoll.h.
+ */
+#define snd_sof_dsp_read_poll_timeout(sdev, bar, offset, val, cond, sleep_us, timeout_us) \
+({ \
+	u64 __timeout_us = (timeout_us); \
+	unsigned long __sleep_us = (sleep_us); \
+	ktime_t __timeout = ktime_add_us(ktime_get(), __timeout_us); \
+	might_sleep_if((__sleep_us) != 0); \
+	for (;;) {							\
+		(val) = snd_sof_dsp_read(sdev, bar, offset);		\
+		if (cond) { \
+			dev_dbg(sdev->dev, \
+				"FW Poll Status: reg=%#x successful\n", (val)); \
+			break; \
+		} \
+		if (__timeout_us && \
+		    ktime_compare(ktime_get(), __timeout) > 0) { \
+			(val) = snd_sof_dsp_read(sdev, bar, offset); \
+			dev_dbg(sdev->dev, \
+				"FW Poll Status: reg=%#x timedout\n", (val)); \
+			break; \
+		} \
+		if (__sleep_us) \
+			usleep_range((__sleep_us >> 2) + 1, __sleep_us); \
+	} \
+	(cond) ? 0 : -ETIMEDOUT; \
+})
 
 /* This is for registers bits with attribute RWC */
-void snd_sof_dsp_update_bits_forced_unlocked(struct snd_sof_dev *sdev, u32 bar,
-					     u32 offset, u32 mask, u32 value);
+bool snd_sof_pci_update_bits(struct snd_sof_dev *sdev, u32 offset,
+			     u32 mask, u32 value);
 
-int snd_sof_dsp_update_bits(struct snd_sof_dev *sdev, u32 bar, u32 offset,
-			    u32 mask, u32 value);
+bool snd_sof_dsp_update_bits_unlocked(struct snd_sof_dev *sdev, u32 bar,
+				      u32 offset, u32 mask, u32 value);
 
-int snd_sof_dsp_update_bits64(struct snd_sof_dev *sdev, u32 bar,
-			      u32 offset, u64 mask, u64 value);
+bool snd_sof_dsp_update_bits64_unlocked(struct snd_sof_dev *sdev, u32 bar,
+					u32 offset, u64 mask, u64 value);
 
-/* This is for registers bits with attribute RWC */
+bool snd_sof_dsp_update_bits(struct snd_sof_dev *sdev, u32 bar, u32 offset,
+			     u32 mask, u32 value);
+
+bool snd_sof_dsp_update_bits64(struct snd_sof_dev *sdev, u32 bar,
+			       u32 offset, u64 mask, u64 value);
+
 void snd_sof_dsp_update_bits_forced(struct snd_sof_dev *sdev, u32 bar,
 				    u32 offset, u32 mask, u32 value);
 
-int snd_sof_pci_update_bits_unlocked(struct snd_sof_dev *sdev, u32 offset,
-				     u32 mask, u32 value);
-
-int snd_sof_pci_update_bits(struct snd_sof_dev *sdev, u32 offset,
-			    u32 mask, u32 value);
-
 int snd_sof_dsp_register_poll(struct snd_sof_dev *sdev, u32 bar, u32 offset,
-			      u32 mask, u32 target, u32 timeout);
+			      u32 mask, u32 target, u32 timeout_ms,
+			      u32 interval_us);
 
 void snd_sof_dsp_panic(struct snd_sof_dev *sdev, u32 offset);
 #endif

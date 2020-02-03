@@ -785,7 +785,7 @@ struct drm_connector_helper_funcs {
 	 *
 	 * This function should fill in all modes currently valid for the sink
 	 * into the &drm_connector.probed_modes list. It should also update the
-	 * EDID property by calling drm_mode_connector_update_edid_property().
+	 * EDID property by calling drm_connector_update_edid_property().
 	 *
 	 * The usual way to implement this is to cache the EDID retrieved in the
 	 * probe callback somewhere in the driver-private connector structure.
@@ -974,6 +974,21 @@ struct drm_connector_helper_funcs {
 	 */
 	int (*atomic_check)(struct drm_connector *connector,
 			    struct drm_connector_state *state);
+
+	/**
+	 * @atomic_commit:
+	 *
+	 * This hook is to be used by drivers implementing writeback connectors
+	 * that need a point when to commit the writeback job to the hardware.
+	 * The writeback_job to commit is available in
+	 * &drm_connector_state.writeback_job.
+	 *
+	 * This hook is optional.
+	 *
+	 * This callback is used by the atomic modeset helpers.
+	 */
+	void (*atomic_commit)(struct drm_connector *connector,
+			      struct drm_connector_state *state);
 };
 
 /**
@@ -1158,6 +1173,14 @@ struct drm_plane_helper_funcs {
 	 * drivers shouldn't replace the &drm_plane_state but update the
 	 * current one with the new plane configurations in the new
 	 * plane_state.
+	 *
+	 * Drivers should also swap the framebuffers between current plane
+	 * state (&drm_plane.state) and new_state.
+	 * This is required since cleanup for async commits is performed on
+	 * the new state, rather than old state like for traditional commits.
+	 * Since we want to give up the reference on the current (old) fb
+	 * instead of our brand new one, swap them in the driver during the
+	 * async commit.
 	 *
 	 * FIXME:
 	 *  - It only works for single plane updates

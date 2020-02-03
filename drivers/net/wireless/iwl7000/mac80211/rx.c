@@ -5,7 +5,7 @@
  * Copyright 2007-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 Intel Corporation
+ * Copyright (C) 2018-2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -211,7 +211,24 @@ ieee80211_rx_radiotap_hdrlen(struct ieee80211_local *local,
 	}
 
 	if (status->flag & RX_FLAG_RADIOTAP_VENDOR_DATA) {
-		struct ieee80211_vendor_radiotap *rtap = (void *)skb->data;
+		struct ieee80211_vendor_radiotap *rtap;
+		int vendor_data_offset = 0;
+
+		/*
+		 * The position to look at depends on the existence (or non-
+		 * existence) of other elements, so take that into account...
+		 */
+		if (status->flag & RX_FLAG_RADIOTAP_HE)
+			vendor_data_offset +=
+				sizeof(struct ieee80211_radiotap_he);
+		if (status->flag & RX_FLAG_RADIOTAP_HE_MU)
+			vendor_data_offset +=
+				sizeof(struct ieee80211_radiotap_he_mu);
+		if (status->flag & RX_FLAG_RADIOTAP_LSIG)
+			vendor_data_offset +=
+				sizeof(struct ieee80211_radiotap_lsig);
+
+		rtap = (void *)&skb->data[vendor_data_offset];
 
 		/* alignment for fixed 6-byte vendor data header */
 		len = ALIGN(len, 2);
@@ -1419,6 +1436,7 @@ ieee80211_rx_h_check_dup(struct ieee80211_rx_data *rx)
 		return RX_CONTINUE;
 
 	if (ieee80211_is_ctl(hdr->frame_control) ||
+	    ieee80211_is_nullfunc(hdr->frame_control) ||
 	    ieee80211_is_qos_nullfunc(hdr->frame_control) ||
 	    is_multicast_ether_addr(hdr->addr1))
 		return RX_CONTINUE;
@@ -2093,6 +2111,7 @@ ieee80211_reassemble_find(struct ieee80211_sub_if_data *sdata,
 	idx = sdata->fragment_next;
 	for (i = 0; i < IEEE80211_FRAGMENT_MAX; i++) {
 		struct ieee80211_hdr *f_hdr;
+		struct sk_buff *f_skb;
 
 		idx--;
 		if (idx < 0)
@@ -2104,7 +2123,8 @@ ieee80211_reassemble_find(struct ieee80211_sub_if_data *sdata,
 		    entry->last_frag + 1 != frag)
 			continue;
 
-		f_hdr = (struct ieee80211_hdr *)entry->skb_list.next->data;
+		f_skb = __skb_peek(&entry->skb_list);
+		f_hdr = (struct ieee80211_hdr *) f_skb->data;
 
 		/*
 		 * Check ftype and addresses are equal, else check next fragment
@@ -2489,8 +2509,9 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 			if (!xmit_skb)
 				net_info_ratelimited("%s: failed to clone multicast frame\n",
 						    dev->name);
-		} else if (!is_multicast_ether_addr(ehdr->h_dest)) {
-			dsta = sta_info_get(sdata, skb->data);
+		} else if (!is_multicast_ether_addr(ehdr->h_dest) &&
+			   !ether_addr_equal(ehdr->h_dest, ehdr->h_source)) {
+			dsta = sta_info_get(sdata, ehdr->h_dest);
 			if (dsta) {
 				/*
 				 * The destination station is associated to
@@ -3446,9 +3467,18 @@ ieee80211_rx_h_mgmt(struct ieee80211_rx_data *rx)
 	case cpu_to_le16(IEEE80211_STYPE_PROBE_RESP):
 		/* process for all: mesh, mlme, ibss */
 		break;
+	case cpu_to_le16(IEEE80211_STYPE_DEAUTH):
+		if (is_multicast_ether_addr(mgmt->da) &&
+		    !is_broadcast_ether_addr(mgmt->da))
+			return RX_DROP_MONITOR;
+
+		/* process only for station/IBSS */
+		if (sdata->vif.type != NL80211_IFTYPE_STATION &&
+		    sdata->vif.type != NL80211_IFTYPE_ADHOC)
+			return RX_DROP_MONITOR;
+		break;
 	case cpu_to_le16(IEEE80211_STYPE_ASSOC_RESP):
 	case cpu_to_le16(IEEE80211_STYPE_REASSOC_RESP):
-	case cpu_to_le16(IEEE80211_STYPE_DEAUTH):
 	case cpu_to_le16(IEEE80211_STYPE_DISASSOC):
 		if (is_multicast_ether_addr(mgmt->da) &&
 		    !is_broadcast_ether_addr(mgmt->da))
@@ -3806,6 +3836,8 @@ static bool ieee80211_accept_frame(struct ieee80211_rx_data *rx)
 	switch (sdata->vif.type) {
 	case NL80211_IFTYPE_STATION:
 		if (!bssid && !sdata->u.mgd.use_4addr)
+			return false;
+		if (ieee80211_is_robust_mgmt_frame(skb) && !rx->sta)
 			return false;
 		if (multicast)
 			return true;
@@ -4289,11 +4321,10 @@ static bool ieee80211_invoke_fast_rx(struct ieee80211_rx_data *rx,
 
 	if (fast_rx->internal_forward) {
 		struct sk_buff *xmit_skb = NULL;
-		bool multicast = is_multicast_ether_addr(skb->data);
-
-		if (multicast) {
+		if (is_multicast_ether_addr(addrs.da)) {
 			xmit_skb = skb_copy(skb, GFP_ATOMIC);
-		} else if (sta_info_get(rx->sdata, skb->data)) {
+		} else if (!ether_addr_equal(addrs.da, addrs.sa) &&
+			   sta_info_get(rx->sdata, addrs.da)) {
 			xmit_skb = skb;
 			skb = NULL;
 		}

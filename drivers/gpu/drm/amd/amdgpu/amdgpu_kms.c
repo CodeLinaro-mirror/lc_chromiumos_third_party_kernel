@@ -87,41 +87,6 @@ int amdgpu_driver_load_kms(struct drm_device *dev, unsigned long flags)
 	struct amdgpu_device *adev;
 	int r, acpi_status;
 
-#ifdef CONFIG_DRM_AMDGPU_SI
-	if (!amdgpu_si_support) {
-		switch (flags & AMD_ASIC_MASK) {
-		case CHIP_TAHITI:
-		case CHIP_PITCAIRN:
-		case CHIP_VERDE:
-		case CHIP_OLAND:
-		case CHIP_HAINAN:
-			dev_info(dev->dev,
-				 "SI support provided by radeon.\n");
-			dev_info(dev->dev,
-				 "Use radeon.si_support=0 amdgpu.si_support=1 to override.\n"
-				);
-			return -ENODEV;
-		}
-	}
-#endif
-#ifdef CONFIG_DRM_AMDGPU_CIK
-	if (!amdgpu_cik_support) {
-		switch (flags & AMD_ASIC_MASK) {
-		case CHIP_KAVERI:
-		case CHIP_BONAIRE:
-		case CHIP_HAWAII:
-		case CHIP_KABINI:
-		case CHIP_MULLINS:
-			dev_info(dev->dev,
-				 "CIK support provided by radeon.\n");
-			dev_info(dev->dev,
-				 "Use radeon.cik_support=0 amdgpu.cik_support=1 to override.\n"
-				);
-			return -ENODEV;
-		}
-	}
-#endif
-
 	adev = kzalloc(sizeof(struct amdgpu_device), GFP_KERNEL);
 	if (adev == NULL) {
 		return -ENOMEM;
@@ -292,9 +257,6 @@ static int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file
 	if (!info->return_size || !info->return_pointer)
 		return -EINVAL;
 
-	/* Ensure IB tests are run on ring */
-	flush_delayed_work(&adev->late_init_work);
-
 	switch (info->query) {
 	case AMDGPU_INFO_ACCEL_WORKING:
 		ui32 = adev->accel_working;
@@ -328,60 +290,70 @@ static int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file
 		case AMDGPU_HW_IP_GFX:
 			type = AMD_IP_BLOCK_TYPE_GFX;
 			for (i = 0; i < adev->gfx.num_gfx_rings; i++)
-				ring_mask |= ((adev->gfx.gfx_ring[i].ready ? 1 : 0) << i);
-			ib_start_alignment = AMDGPU_GPU_PAGE_SIZE;
-			ib_size_alignment = 8;
+				ring_mask |= adev->gfx.gfx_ring[i].ready << i;
+			ib_start_alignment = 32;
+			ib_size_alignment = 32;
 			break;
 		case AMDGPU_HW_IP_COMPUTE:
 			type = AMD_IP_BLOCK_TYPE_GFX;
 			for (i = 0; i < adev->gfx.num_compute_rings; i++)
-				ring_mask |= ((adev->gfx.compute_ring[i].ready ? 1 : 0) << i);
-			ib_start_alignment = AMDGPU_GPU_PAGE_SIZE;
-			ib_size_alignment = 8;
+				ring_mask |= adev->gfx.compute_ring[i].ready << i;
+			ib_start_alignment = 32;
+			ib_size_alignment = 32;
 			break;
 		case AMDGPU_HW_IP_DMA:
 			type = AMD_IP_BLOCK_TYPE_SDMA;
 			for (i = 0; i < adev->sdma.num_instances; i++)
-				ring_mask |= ((adev->sdma.instance[i].ring.ready ? 1 : 0) << i);
-			ib_start_alignment = AMDGPU_GPU_PAGE_SIZE;
-			ib_size_alignment = 1;
+				ring_mask |= adev->sdma.instance[i].ring.ready << i;
+			ib_start_alignment = 256;
+			ib_size_alignment = 4;
 			break;
 		case AMDGPU_HW_IP_UVD:
 			type = AMD_IP_BLOCK_TYPE_UVD;
-			for (i = 0; i < adev->uvd.num_uvd_inst; i++)
-				ring_mask |= ((adev->uvd.inst[i].ring.ready ? 1 : 0) << i);
-			ib_start_alignment = AMDGPU_GPU_PAGE_SIZE;
-			ib_size_alignment = 16;
+			for (i = 0; i < adev->uvd.num_uvd_inst; i++) {
+				if (adev->uvd.harvest_config & (1 << i))
+					continue;
+				ring_mask |= adev->uvd.inst[i].ring.ready;
+			}
+			ib_start_alignment = 64;
+			ib_size_alignment = 64;
 			break;
 		case AMDGPU_HW_IP_VCE:
 			type = AMD_IP_BLOCK_TYPE_VCE;
 			for (i = 0; i < adev->vce.num_rings; i++)
-				ring_mask |= ((adev->vce.ring[i].ready ? 1 : 0) << i);
-			ib_start_alignment = AMDGPU_GPU_PAGE_SIZE;
+				ring_mask |= adev->vce.ring[i].ready << i;
+			ib_start_alignment = 4;
 			ib_size_alignment = 1;
 			break;
 		case AMDGPU_HW_IP_UVD_ENC:
 			type = AMD_IP_BLOCK_TYPE_UVD;
-			for (i = 0; i < adev->uvd.num_uvd_inst; i++)
+			for (i = 0; i < adev->uvd.num_uvd_inst; i++) {
+				if (adev->uvd.harvest_config & (1 << i))
+					continue;
 				for (j = 0; j < adev->uvd.num_enc_rings; j++)
-					ring_mask |=
-					((adev->uvd.inst[i].ring_enc[j].ready ? 1 : 0) <<
-					(j + i * adev->uvd.num_enc_rings));
-			ib_start_alignment = AMDGPU_GPU_PAGE_SIZE;
-			ib_size_alignment = 1;
+					ring_mask |= adev->uvd.inst[i].ring_enc[j].ready << j;
+			}
+			ib_start_alignment = 64;
+			ib_size_alignment = 64;
 			break;
 		case AMDGPU_HW_IP_VCN_DEC:
 			type = AMD_IP_BLOCK_TYPE_VCN;
-			ring_mask = adev->vcn.ring_dec.ready ? 1 : 0;
-			ib_start_alignment = AMDGPU_GPU_PAGE_SIZE;
+			ring_mask = adev->vcn.ring_dec.ready;
+			ib_start_alignment = 16;
 			ib_size_alignment = 16;
 			break;
 		case AMDGPU_HW_IP_VCN_ENC:
 			type = AMD_IP_BLOCK_TYPE_VCN;
 			for (i = 0; i < adev->vcn.num_enc_rings; i++)
-				ring_mask |= ((adev->vcn.ring_enc[i].ready ? 1 : 0) << i);
-			ib_start_alignment = AMDGPU_GPU_PAGE_SIZE;
+				ring_mask |= adev->vcn.ring_enc[i].ready << i;
+			ib_start_alignment = 64;
 			ib_size_alignment = 1;
+			break;
+		case AMDGPU_HW_IP_VCN_JPEG:
+			type = AMD_IP_BLOCK_TYPE_VCN;
+			ring_mask = adev->vcn.ring_jpeg.ready;
+			ib_start_alignment = 16;
+			ib_size_alignment = 16;
 			break;
 		default:
 			return -EINVAL;
@@ -427,6 +399,7 @@ static int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file
 			break;
 		case AMDGPU_HW_IP_VCN_DEC:
 		case AMDGPU_HW_IP_VCN_ENC:
+		case AMDGPU_HW_IP_VCN_JPEG:
 			type = AMD_IP_BLOCK_TYPE_VCN;
 			break;
 		default:
@@ -552,6 +525,9 @@ static int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file
 			se_num = 0xffffffff;
 		if (sh_num == AMDGPU_INFO_MMR_SH_INDEX_MASK)
 			sh_num = 0xffffffff;
+
+		if (info->read_mmr_reg.count > 128)
+			return -EINVAL;
 
 		regs = kmalloc_array(info->read_mmr_reg.count, sizeof(*regs), GFP_KERNEL);
 		if (!regs)
@@ -850,6 +826,9 @@ int amdgpu_driver_open_kms(struct drm_device *dev, struct drm_file *file_priv)
 	struct amdgpu_fpriv *fpriv;
 	int r, pasid;
 
+	/* Ensure IB tests are run on ring */
+	flush_delayed_work(&adev->late_init_work);
+
 	file_priv->driver_priv = NULL;
 
 	r = pm_runtime_get_sync(dev->dev);
@@ -929,7 +908,6 @@ void amdgpu_driver_postclose_kms(struct drm_device *dev,
 		return;
 
 	pm_runtime_get_sync(dev->dev);
-	amdgpu_ctx_mgr_entity_fini(&fpriv->ctx_mgr);
 
 	if (adev->asic_type != CHIP_RAVEN) {
 		amdgpu_uvd_free_handles(adev, file_priv);
@@ -957,7 +935,7 @@ void amdgpu_driver_postclose_kms(struct drm_device *dev,
 	amdgpu_bo_unref(&pd);
 
 	idr_for_each_entry(&fpriv->bo_list_handles, list, handle)
-		amdgpu_bo_list_free(list);
+		amdgpu_bo_list_put(list);
 
 	idr_destroy(&fpriv->bo_list_handles);
 	mutex_destroy(&fpriv->bo_list_lock);

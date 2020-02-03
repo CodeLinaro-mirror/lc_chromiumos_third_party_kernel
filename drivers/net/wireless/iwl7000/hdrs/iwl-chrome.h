@@ -36,11 +36,6 @@
 #include <linux/overflow.h>
 #include "net/fq.h"
 
-/* avoid conflicts with other headers */
-#ifdef is_signed_type
-#undef is_signed_type
-#endif
-
 #define LINUX_VERSION_IS_LESS(x1,x2,x3) (LINUX_VERSION_CODE < KERNEL_VERSION(x1,x2,x3))
 #define LINUX_VERSION_IS_GEQ(x1,x2,x3)  (LINUX_VERSION_CODE >= KERNEL_VERSION(x1,x2,x3))
 #define LINUX_VERSION_IN_RANGE(x1,x2,x3, y1,y2,y3) \
@@ -232,6 +227,16 @@ static inline bool ether_addr_equal_unaligned(const u8 *addr1, const u8 *addr2)
 	return memcmp(addr1, addr2, ETH_ALEN) == 0;
 }
 #endif
+
+#if LINUX_VERSION_IS_GEQ(5,3,0)
+/*
+ * In v5.3, this function was renamed, so rename it here for v5.3+.
+ * When we merge v5.3 back from upstream, the opposite should be done
+ * (i.e. we will have _boottime_ and need to rename to _boot_ in <
+ * v5.3 instead).
+*/
+#define ktime_get_boot_ns ktime_get_boottime_ns
+#endif /* > 5.3.0 */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0)
 #define kvfree __iwl7000_kvfree
@@ -685,8 +690,6 @@ int genl_unregister_family(struct genl_family *family);
 		    (_fam)->mcgrps[_group].id, _info->nlhdr, _flags)
 #define genlmsg_put(_skb, _pid, _seq, _fam, _flags, _cmd)		\
 	genlmsg_put(_skb, _pid, _seq, &(_fam)->family, _flags, _cmd)
-#define genlmsg_nlhdr(_hdr, _fam)					\
-	genlmsg_nlhdr(_hdr, &(_fam)->family)
 #ifndef genlmsg_put_reply /* might already be there from _info override above */
 #define genlmsg_put_reply(_skb, _info, _fam, _flags, _cmd)		\
 	genlmsg_put_reply(_skb, _info, &(_fam)->family, _flags, _cmd)
@@ -846,7 +849,51 @@ static inline int nla_validate_nested4(const struct nlattr *start, int maxtype,
 #define nla_validate_nested3 nla_validate_nested
 #define nla_validate_nested(...) \
 	macro_dispatcher(nla_validate_nested, __VA_ARGS__)(__VA_ARGS__)
+
+#if LINUX_VERSION_IS_LESS(4,12,0)
+#define kvmalloc LINUX_BACKPORT(kvmalloc)
+static inline void *kvmalloc(size_t size, gfp_t flags)
+{
+	gfp_t kmalloc_flags = flags;
+	void *ret;
+
+	if ((flags & GFP_KERNEL) != GFP_KERNEL)
+		return kmalloc(size, flags);
+
+	if (size > PAGE_SIZE)
+		kmalloc_flags |= __GFP_NOWARN | __GFP_NORETRY;
+
+	ret = kmalloc(size, flags);
+	if (ret || size < PAGE_SIZE)
+		return ret;
+
+	return vmalloc(size);
+}
+
+#define kvmalloc_array LINUX_BACKPORT(kvmalloc_array)
+static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
+{
+	size_t bytes;
+
+	if (unlikely(check_mul_overflow(n, size, &bytes)))
+		return NULL;
+
+	return kvmalloc(bytes, flags);
+}
+#endif
+
+#define kvzalloc LINUX_BACKPORT(kvzalloc)
+static inline void *kvzalloc(size_t size, gfp_t flags)
+{
+	return kvmalloc(size, flags | __GFP_ZERO);
+}
+
 #endif /* LINUX_VERSION_IS_LESS(4,12,0) */
+
+/* avoid conflicts with other headers */
+#ifdef is_signed_type
+#undef is_signed_type
+#endif
 
 #ifndef offsetofend
 /**
@@ -944,4 +991,13 @@ static inline int genl_err_attr(struct genl_info *info, int err,
 	return err;
 }
 #endif
+
+#if LINUX_VERSION_IS_LESS(4,19,0)
+#ifndef atomic_fetch_add_unless
+static inline int atomic_fetch_add_unless(atomic_t *v, int a, int u)
+{
+		return __atomic_add_unless(v, a, u);
+}
+#endif
+#endif /* LINUX_VERSION_IS_LESS(4,19,0) */
 #endif /* __IWL_CHROME */

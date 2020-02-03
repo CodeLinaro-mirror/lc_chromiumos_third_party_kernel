@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pm_runtime.h>
+#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 #include <linux/export.h>
@@ -463,6 +464,9 @@ static int soc_pcm_components_close(struct snd_pcm_substream *substream,
 			continue;
 
 		component->driver->ops->close(substream);
+
+		if (component->driver->module_get_upon_open)
+			module_put(component->dev->driver->owner);
 	}
 
 	return 0;
@@ -512,6 +516,12 @@ static int soc_pcm_open(struct snd_pcm_substream *substream)
 		if (!component->driver->ops ||
 		    !component->driver->ops->open)
 			continue;
+
+		if (component->driver->module_get_upon_open &&
+		    !try_module_get(component->dev->driver->owner)) {
+			ret = -ENODEV;
+			goto module_err;
+		}
 
 		ret = component->driver->ops->open(substream);
 		if (ret < 0) {
@@ -628,7 +638,7 @@ codec_dai_err:
 
 component_err:
 	soc_pcm_components_close(substream, component);
-
+module_err:
 	if (cpu_dai->driver->ops->shutdown)
 		cpu_dai->driver->ops->shutdown(substream, cpu_dai);
 out:
@@ -954,10 +964,13 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 		codec_params = *params;
 
 		/* fixup params based on TDM slot masks */
-		if (codec_dai->tx_mask)
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK &&
+		    codec_dai->tx_mask)
 			soc_pcm_codec_params_fixup(&codec_params,
 						   codec_dai->tx_mask);
-		if (codec_dai->rx_mask)
+
+		if (substream->stream == SNDRV_PCM_STREAM_CAPTURE &&
+		    codec_dai->rx_mask)
 			soc_pcm_codec_params_fixup(&codec_params,
 						   codec_dai->rx_mask);
 
@@ -969,6 +982,8 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 		codec_dai->channels = params_channels(&codec_params);
 		codec_dai->sample_bits = snd_pcm_format_physical_width(
 						params_format(&codec_params));
+
+		snd_soc_dapm_update_dai(substream, &codec_params, codec_dai);
 	}
 
 	ret = soc_dai_hw_params(substream, params, cpu_dai);
@@ -997,6 +1012,8 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 	cpu_dai->channels = params_channels(params);
 	cpu_dai->sample_bits =
 		snd_pcm_format_physical_width(params_format(params));
+
+	snd_soc_dapm_update_dai(substream, params, cpu_dai);
 
 	ret = soc_pcm_params_symmetry(substream, params);
 
@@ -2439,7 +2456,8 @@ int dpcm_be_dai_prepare(struct snd_soc_pcm_runtime *fe, int stream)
 
 		if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_HW_PARAMS) &&
 		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_STOP) &&
-		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_SUSPEND))
+		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_SUSPEND) &&
+		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_PAUSED))
 			continue;
 
 		dev_dbg(be->dev, "ASoC: prepare BE %s\n",

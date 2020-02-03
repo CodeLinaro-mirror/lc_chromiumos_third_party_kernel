@@ -141,9 +141,9 @@ static inline void pmc_core_reg_write(struct pmc_dev *pmcdev, int
 	writel(val, pmcdev->regbase + reg_offset);
 }
 
-static inline u32 pmc_core_adjust_slp_s0_step(u32 value)
+static inline u64 pmc_core_adjust_slp_s0_step(u32 value)
 {
-	return value * SPT_PMC_SLP_S0_RES_COUNTER_STEP;
+	return (u64)value * SPT_PMC_SLP_S0_RES_COUNTER_STEP;
 }
 
 /**
@@ -243,7 +243,8 @@ static int pmc_core_ppfear_sts_show(struct seq_file *s, void *unused)
 	     index < PPFEAR_MAX_NUM_ENTRIES; index++, iter++)
 		pf_regs[index] = pmc_core_reg_read_byte(pmcdev, iter);
 
-	for (index = 0; map[index].name; index++)
+	for (index = 0; map[index].name &&
+	     index < pmcdev->map->ppfear_buckets * 8; index++)
 		pmc_core_display_map(s, index, pf_regs[index / 8], map);
 
 	return 0;

@@ -688,6 +688,24 @@ enum mgmt_set_event_mask_byte_7 {
 	MGMT_EVENT_MASK_LE_META				=  (1 << 6),
 };
 
+#define MGMT_OP_SET_BLOCKED_LTKS			0x0046
+struct mgmt_cp_set_blocked_ltks {
+	uint8_t	ltks[MAX_BLOCKED_LTKS][LTK_LENGTH];
+} __packed;
+#define MGMT_SET_BLOCKED_LTKS_CP_SIZE  (MAX_BLOCKED_LTKS * LTK_LENGTH)
+
+#define MGMT_OP_READ_SUPPORTED_CAPABILITIES		0x0047
+#define MGMT_READ_SUPPORTED_CAPABILITIES_SIZE		0
+struct mgmt_rp_read_supported_capabilities {
+	__u8 wide_band_speech;
+} __packed;
+
+#define MGMT_OP_SET_KERNEL_DEBUG			0x0048
+#define MGMT_SET_KERNEL_DEBUG_SIZE			1
+struct mgmt_cp_set_kernel_debug {
+	__u8	enabled;
+} __packed;
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16	opcode;

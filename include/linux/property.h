@@ -252,7 +252,7 @@ struct property_entry {
 #define PROPERTY_ENTRY_STRING(_name_, _val_)		\
 (struct property_entry) {				\
 	.name = _name_,					\
-	.length = sizeof(_val_),			\
+	.length = sizeof(const char *),			\
 	.is_string = true,				\
 	{ .value = { .str = _val_ } },			\
 }
@@ -274,6 +274,8 @@ void device_remove_properties(struct device *dev);
 bool device_dma_supported(struct device *dev);
 
 enum dev_dma_attr device_get_dma_attr(struct device *dev);
+
+void *device_get_match_data(struct device *dev);
 
 int device_get_phy_mode(struct device *dev);
 

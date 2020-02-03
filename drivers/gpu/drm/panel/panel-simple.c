@@ -254,7 +254,7 @@ static int panel_simple_get_modes(struct drm_panel *panel)
 	/* probe EDID if a DDC bus is available */
 	if (p->ddc) {
 		struct edid *edid = drm_get_edid(panel->connector, p->ddc);
-		drm_mode_connector_update_edid_property(panel->connector, edid);
+		drm_connector_update_edid_property(panel->connector, edid);
 		if (edid) {
 			num += drm_add_edid_modes(panel->connector, edid);
 			kfree(edid);
@@ -365,7 +365,6 @@ static int panel_simple_remove(struct device *dev)
 {
 	struct panel_simple *panel = dev_get_drvdata(dev);
 
-	drm_panel_detach(&panel->base);
 	drm_panel_remove(&panel->base);
 
 	panel_simple_disable(&panel->base);
@@ -614,9 +613,9 @@ static const struct panel_desc auo_g133han01 = {
 static const struct display_timing auo_g185han01_timings = {
 	.pixelclock = { 120000000, 144000000, 175000000 },
 	.hactive = { 1920, 1920, 1920 },
-	.hfront_porch = { 18, 60, 74 },
-	.hback_porch = { 12, 44, 54 },
-	.hsync_len = { 10, 24, 32 },
+	.hfront_porch = { 36, 120, 148 },
+	.hback_porch = { 24, 88, 108 },
+	.hsync_len = { 20, 48, 64 },
 	.vactive = { 1080, 1080, 1080 },
 	.vfront_porch = { 6, 10, 40 },
 	.vback_porch = { 2, 5, 20 },
@@ -2398,7 +2397,14 @@ static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 	dsi->format = desc->format;
 	dsi->lanes = desc->lanes;
 
-	return mipi_dsi_attach(dsi);
+	err = mipi_dsi_attach(dsi);
+	if (err) {
+		struct panel_simple *panel = dev_get_drvdata(&dsi->dev);
+
+		drm_panel_remove(&panel->base);
+	}
+
+	return err;
 }
 
 static int panel_simple_dsi_remove(struct mipi_dsi_device *dsi)

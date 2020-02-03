@@ -45,19 +45,17 @@
 #define CZ_PLAT_CLK 48000000
 #define DUAL_CHANNEL		2
 
-static struct snd_soc_dai *codec_dai;
 static struct snd_soc_jack cz_jack;
-static struct clk *da7219_dai_clk;
+static struct clk *da7219_dai_wclk;
+static struct clk *da7219_dai_bclk;
 extern int bt_uart_enable;
 
 static int cz_da7219_init(struct snd_soc_pcm_runtime *rtd)
 {
 	int ret;
 	struct snd_soc_card *card = rtd->card;
-	struct snd_soc_component *component;
-
-	codec_dai = rtd->codec_dai;
-	component = codec_dai->component;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct snd_soc_component *component = rtd->codec_dai->component;
 
 	dev_info(rtd->dev, "codec dai name = %s\n", codec_dai->name);
 
@@ -75,7 +73,8 @@ static int cz_da7219_init(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 
-	da7219_dai_clk = clk_get(component->dev, "da7219-dai-clks");
+	da7219_dai_wclk = clk_get(component->dev, "da7219-dai-wclk");
+	da7219_dai_bclk = clk_get(component->dev, "da7219-dai-bclk");
 
 	ret = snd_soc_card_jack_new(card, "Headset Jack",
 				SND_JACK_HEADSET | SND_JACK_LINEOUT |
@@ -102,7 +101,15 @@ static int da7219_clk_enable(struct snd_pcm_substream *substream)
 	int ret = 0;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 
-	ret = clk_prepare_enable(da7219_dai_clk);
+	/*
+	 * Set wclk to 48000 because the rate constraint of this driver is
+	 * 48000. ADAU7002 spec: "The ADAU7002 requires a BCLK rate that is
+	 * minimum of 64x the LRCLK sample rate." DA7219 is the only clk
+	 * source so for all codecs we have to limit bclk to 64X lrclk.
+	 */
+	clk_set_rate(da7219_dai_wclk, 48000);
+	clk_set_rate(da7219_dai_bclk, 48000 * 64);
+	ret = clk_prepare_enable(da7219_dai_bclk);
 	if (ret < 0) {
 		dev_err(rtd->dev, "can't enable master clock %d\n", ret);
 		return ret;
@@ -113,7 +120,7 @@ static int da7219_clk_enable(struct snd_pcm_substream *substream)
 
 static void da7219_clk_disable(void)
 {
-	clk_disable_unprepare(da7219_dai_clk);
+	clk_disable_unprepare(da7219_dai_bclk);
 }
 
 static const unsigned int channels[] = {
@@ -179,11 +186,6 @@ static int cz_da7219_cap_startup(struct snd_pcm_substream *substream)
 	return da7219_clk_enable(substream);
 }
 
-static void cz_da7219_shutdown(struct snd_pcm_substream *substream)
-{
-	da7219_clk_disable();
-}
-
 static int cz_max_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -203,11 +205,6 @@ static int cz_max_startup(struct snd_pcm_substream *substream)
 
 	machine->play_i2s_instance = I2S_BT_INSTANCE;
 	return da7219_clk_enable(substream);
-}
-
-static void cz_max_shutdown(struct snd_pcm_substream *substream)
-{
-	da7219_clk_disable();
 }
 
 static int cz_dmic0_startup(struct snd_pcm_substream *substream)
@@ -253,19 +250,9 @@ static int cz_dmic1_startup(struct snd_pcm_substream *substream)
 	return da7219_clk_enable(substream);
 }
 
-static void cz_dmic_shutdown(struct snd_pcm_substream *substream)
+static void cz_da7219_shutdown(struct snd_pcm_substream *substream)
 {
 	da7219_clk_disable();
-}
-
-static int cz_da7219_hw_params(struct snd_pcm_substream *substream,
-				    struct snd_pcm_hw_params *params)
-{
-	/* da7219 Codec is clock master so setup as per the needs */
-	if (codec_dai->driver->ops->hw_params)
-		return codec_dai->driver->ops->hw_params(substream, params,
-							 codec_dai);
-	return 0;
 }
 
 static const struct snd_soc_ops cz_da7219_play_ops = {
@@ -280,20 +267,17 @@ static const struct snd_soc_ops cz_da7219_cap_ops = {
 
 static const struct snd_soc_ops cz_max_play_ops = {
 	.startup = cz_max_startup,
-	.shutdown = cz_max_shutdown,
-	.hw_params = cz_da7219_hw_params,
+	.shutdown = cz_da7219_shutdown,
 };
 
 static const struct snd_soc_ops cz_dmic0_cap_ops = {
 	.startup = cz_dmic0_startup,
-	.shutdown = cz_dmic_shutdown,
-	.hw_params = cz_da7219_hw_params,
+	.shutdown = cz_da7219_shutdown,
 };
 
 static const struct snd_soc_ops cz_dmic1_cap_ops = {
 	.startup = cz_dmic1_startup,
-	.shutdown = cz_dmic_shutdown,
-	.hw_params = cz_da7219_hw_params,
+	.shutdown = cz_da7219_shutdown,
 };
 
 static struct snd_soc_dai_link cz_dai_7219_98357[] = {

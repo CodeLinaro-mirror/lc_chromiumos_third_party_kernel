@@ -128,14 +128,12 @@ static const struct snd_soc_dapm_route cht_audio_map[] = {
 	{"Ext Spk", NULL, "SPOLN"},
 	{"Ext Spk", NULL, "SPORP"},
 	{"Ext Spk", NULL, "SPORN"},
-#if !IS_ENABLED(CONFIG_SND_SOC_SOF_INTEL)
 	{"AIF1 Playback", NULL, "ssp2 Tx"},
 	{"ssp2 Tx", NULL, "codec_out0"},
 	{"ssp2 Tx", NULL, "codec_out1"},
 	{"codec_in0", NULL, "ssp2 Rx"},
 	{"codec_in1", NULL, "ssp2 Rx"},
 	{"ssp2 Rx", NULL, "AIF1 Capture"},
-#endif
 	{"Headphone", NULL, "Platform Clock"},
 	{"Headset Mic", NULL, "Platform Clock"},
 	{"Int Mic", NULL, "Platform Clock"},
@@ -402,6 +400,7 @@ static int snd_cht_mc_probe(struct platform_device *pdev)
 	int ret_val = 0;
 	struct cht_mc_private *drv;
 	struct snd_soc_acpi_mach *mach = pdev->dev.platform_data;
+	const char *platform_name;
 	const char *i2c_name;
 	int i;
 
@@ -428,6 +427,15 @@ static int snd_cht_mc_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* override plaform name, if required */
+	snd_soc_card_cht.dev = &pdev->dev;
+	platform_name = mach->mach_params.platform;
+
+	ret_val = snd_soc_fixup_dai_links_platform_name(&snd_soc_card_cht,
+							platform_name);
+	if (ret_val)
+		return ret_val;
+
 	drv->mclk = devm_clk_get(&pdev->dev, "pmc_plt_clk_3");
 	if (IS_ERR(drv->mclk)) {
 		dev_err(&pdev->dev,
@@ -438,7 +446,6 @@ static int snd_cht_mc_probe(struct platform_device *pdev)
 	snd_soc_card_set_drvdata(&snd_soc_card_cht, drv);
 
 	/* register the soc card */
-	snd_soc_card_cht.dev = &pdev->dev;
 	ret_val = devm_snd_soc_register_card(&pdev->dev, &snd_soc_card_cht);
 	if (ret_val) {
 		dev_err(&pdev->dev,
