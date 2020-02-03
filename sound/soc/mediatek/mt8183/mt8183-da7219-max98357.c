@@ -14,7 +14,6 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 
-
 #include "mt8183-afe-common.h"
 #include "../../codecs/da7219-aad.h"
 #include "../../codecs/da7219.h"
@@ -33,7 +32,7 @@ static const char * const mt8183_pin_str[PIN_STATE_MAX] = {
 struct mt8183_da7219_max98357_priv {
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *pin_states[PIN_STATE_MAX];
-	struct snd_soc_jack headset_jack;
+	struct snd_soc_jack headset_jack, hdmi_jack;
 };
 
 static int mt8183_mt6358_i2s_hw_params(struct snd_pcm_substream *substream,
@@ -303,6 +302,21 @@ static struct snd_soc_ops mt8183_da7219_tdm_ops = {
 	.shutdown = mt8183_da7219_tdm_shutdown,
 };
 
+static int mt8183_da7219_max98357_hdmi_init(struct snd_soc_pcm_runtime *rtd)
+{
+	struct mt8183_da7219_max98357_priv *priv =
+		snd_soc_card_get_drvdata(rtd->card);
+	int ret;
+
+	ret = snd_soc_card_jack_new(rtd->card, "HDMI Jack", SND_JACK_LINEOUT,
+				    &priv->hdmi_jack, NULL, 0);
+	if (ret)
+		return ret;
+
+	return hdmi_codec_set_jack_detect(rtd->codec_dai->component,
+					  &priv->hdmi_jack);
+}
+
 static struct snd_soc_dai_link mt8183_da7219_max98357_dai_links[] = {
 	/* FE */
 	{
@@ -459,6 +473,7 @@ static struct snd_soc_dai_link mt8183_da7219_max98357_dai_links[] = {
 		.ignore_suspend = 1,
 		.be_hw_params_fixup = mt8183_i2s_hw_params_fixup,
 		.ops = &mt8183_da7219_tdm_ops,
+		.init = mt8183_da7219_max98357_hdmi_init,
 		SND_SOC_DAILINK_REG(tdm),
 	},
 };
