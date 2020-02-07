@@ -92,7 +92,7 @@
 	status = "okay";
 	pinctrl-0 = <&blsp1_spi0_default &pms405_sleepclk2_pin>;
 	spidev@0 {
-		compatible = "spidev";
+		compatible = "rohm,dh2228fv";
 		reg = <0>;
 		spi-max-frequency = <25000000>;
 	};
