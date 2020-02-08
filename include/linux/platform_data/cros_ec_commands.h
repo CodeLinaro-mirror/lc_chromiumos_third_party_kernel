@@ -4917,13 +4917,20 @@ struct ec_response_usb_pd_control_v1 {
 	char state[32];
 } __ec_align1;
 
-/* Values representing usbc PD CC state */
-#define USBC_PD_CC_NONE		0 /* No accessory connected */
-#define USBC_PD_CC_NO_UFP	1 /* No UFP accessory connected */
-#define USBC_PD_CC_AUDIO_ACC	2 /* Audio accessory connected */
-#define USBC_PD_CC_DEBUG_ACC	3 /* Debug accessory connected */
-#define USBC_PD_CC_UFP_ATTACHED	4 /* UFP attached to usbc */
-#define USBC_PD_CC_DFP_ATTACHED	5 /* DPF attached to usbc */
+/* Possible port partner connections based on CC line states */
+enum pd_cc_states {
+	PD_CC_NONE,           /* No port partner attached */
+
+	/* From DFP perspective */
+	PD_CC_UFP_NONE,       /* No UFP accessory connected */
+	PD_CC_UFP_AUDIO_ACC,  /* UFP Audio accessory connected */
+	PD_CC_UFP_DEBUG_ACC,  /* UFP Debug accessory connected */
+	PD_CC_UFP_ATTACHED,   /* Plain UFP attached */
+
+	/* From UFP perspective */
+	PD_CC_DFP_ATTACHED,   /* Plain DFP attached */
+	PD_CC_DFP_DEBUG_ACC,  /* DFP debug accessory connected */
+};
 
 /* Active/Passive Cable */
 #define USB_PD_CTRL_ACTIVE_CABLE        BIT(0)
@@ -5227,14 +5234,14 @@ struct ec_params_usb_pd_mux_info {
 
 /* Flags representing mux state */
 #define USB_PD_MUX_NONE               0      /* Open switch */
-#define USB_PD_MUX_USB_ENABLED        BIT(0) /* USB connected */
-#define USB_PD_MUX_DP_ENABLED         BIT(1) /* DP connected */
-#define USB_PD_MUX_POLARITY_INVERTED  BIT(2) /* CC line Polarity inverted */
-#define USB_PD_MUX_HPD_IRQ            BIT(3) /* HPD IRQ is asserted */
-#define USB_PD_MUX_HPD_LVL            BIT(4) /* HPD level is asserted */
-#define USB_PD_MUX_SAFE_MODE          BIT(5) /* DP is in safe mode */
-#define USB_PD_MUX_TBT_COMPAT_ENABLED BIT(6) /* TBT compat enabled */
-#define USB_PD_MUX_USB4_ENABLED       BIT(7) /* USB4 enabled */
+#define USB_PD_MUX_USB_ENABLED		BIT(0) /* USB connected */
+#define USB_PD_MUX_DP_ENABLED		BIT(1) /* DP connected */
+#define USB_PD_MUX_POLARITY_INVERTED	BIT(2) /* CC line Polarity inverted */
+#define USB_PD_MUX_HPD_IRQ		BIT(3) /* HPD IRQ is asserted */
+#define USB_PD_MUX_HPD_LVL		BIT(4) /* HPD level is asserted */
+#define USB_PD_MUX_SAFE_MODE		BIT(5) /* TCSS safe mode */
+#define USB_PD_MUX_TBT_COMPAT_ENABLED	BIT(6) /* TBT Compat Enabled */
+#define USB_PD_MUX_USB4_ENABLED		BIT(7) /* USB4 enabled */
 
 struct ec_response_usb_pd_mux_info {
 	uint8_t flags; /* USB_PD_MUX_*-encoded USB mux state */
