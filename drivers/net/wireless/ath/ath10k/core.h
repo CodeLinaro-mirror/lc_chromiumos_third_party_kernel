@@ -617,6 +617,10 @@ struct ath10k_debug {
 
 	struct completion tpc_complete;
 
+	/* debug tx_work */
+	u64 num_tx_work;
+	u64 num_tx_wmi_mgmt;
+
 	/* protected by conf_mutex */
 	u64 fw_dbglog_mask;
 	u32 fw_dbglog_level;

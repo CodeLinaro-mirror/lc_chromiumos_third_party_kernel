@@ -2863,6 +2863,36 @@ static const struct file_operations fops_burst_dur = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_read_tx_wmi_mgmt(struct file *file,
+				       char __user *user_buf,
+				       size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	size_t len;
+	char buf[256];
+
+	struct sk_buff_head *q = &ar->wmi_mgmt_tx_queue;
+	u32 tx_queue_len = 0;
+
+	spin_lock_bh(&ar->data_lock);
+	tx_queue_len = skb_queue_len(q);
+	spin_unlock_bh(&ar->data_lock);
+
+	len = scnprintf(buf, sizeof(buf), "tx_queue_len: %u,
+			num_tx_wmi_mgmt: %llu, num_tx_work: %llu\n",
+			tx_queue_len, ar->debug.num_tx_wmi_mgmt,
+			ar->debug.num_tx_work);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_tx_wmi_mgmt = {
+	.read = ath10k_read_tx_wmi_mgmt,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 int ath10k_debug_create(struct ath10k *ar)
 {
 	size_t tx_delay_stats_size;
@@ -2889,6 +2919,12 @@ int ath10k_debug_create(struct ath10k *ar)
 	}
 
 	memset(ar->debug.ftmr_enabled, -1, sizeof(ar->debug.ftmr_enabled));
+
+	debugfs_create_file("tx_wmi_mgmt", 0600, ar->debug.debugfs_phy, ar,
+			    &fops_tx_wmi_mgmt);
+
+	ar->debug.num_tx_work = 0;
+	ar->debug.num_tx_wmi_mgmt = 0;
 
 	return 0;
 }
