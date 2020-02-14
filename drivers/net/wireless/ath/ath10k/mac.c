@@ -3705,6 +3705,7 @@ static int ath10k_mac_tx_wmi_mgmt(struct ath10k *ar, struct sk_buff *skb)
 	struct sk_buff_head *q = &ar->wmi_mgmt_tx_queue;
 	int ret = 0;
 
+	ar->debug.num_tx_wmi_mgmt++;
 	spin_lock_bh(&ar->data_lock);
 
 	if (skb_queue_len(q) == ATH10K_MAX_NUM_MGMT_PENDING) {
@@ -3975,6 +3976,8 @@ void ath10k_mgmt_over_wmi_tx_work(struct work_struct *work)
 	struct sk_buff *skb;
 	dma_addr_t paddr;
 	int ret;
+
+	ar->debug.num_tx_work++;
 
 	for (;;) {
 		skb = skb_dequeue(&ar->wmi_mgmt_tx_queue);
