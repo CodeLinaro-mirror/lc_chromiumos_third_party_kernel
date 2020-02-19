@@ -94,6 +94,8 @@
 #define to_vop(x) container_of(x, struct vop, crtc)
 #define to_vop_win(x) container_of(x, struct vop_win, base)
 
+#define REFLECT_Y_MASK (DRM_REFLECT_Y | DRM_ROTATE_0)
+
 /*
  * The coefficients of the following matrix are all fixed points.
  * The format is S2.10 for the 3x3 part of the matrix, and S9.12 for the offsets.
@@ -765,7 +767,7 @@ static int vop_plane_atomic_check(struct drm_plane *plane,
 		}
 	}
 
-	if (!((state->rotation == DRM_REFLECT_Y) || (state->rotation == DRM_ROTATE_0)))
+	if (state->rotation & ~REFLECT_Y_MASK)
 		return -EINVAL;
 
 	if (fb->modifier == DRM_FORMAT_MOD_CHROMEOS_ROCKCHIP_AFBC) {
@@ -879,7 +881,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	offset += (src->y1 >> 16) * fb->pitches[0];
 	dma_addr = rk_obj->dma_addr + offset + fb->offsets[0];
 	/* For rotation, move dma_addr to the beginning of the last line. */
-	if (state->rotation == DRM_REFLECT_Y)
+	if (state->rotation == REFLECT_Y_MASK)
 		dma_addr += (actual_h - 1) * fb->pitches[0];
 
 	format = vop_convert_format(fb->format->format);
@@ -901,7 +903,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	VOP_WIN_SET(vop, win, format, format);
 	VOP_WIN_SET(vop, win, yrgb_vir, DIV_ROUND_UP(fb->pitches[0], 4));
 	VOP_WIN_SET(vop, win, yrgb_mst, dma_addr);
-	VOP_WIN_SET(vop, win, y_mir_en, state->rotation == DRM_REFLECT_Y);
+	VOP_WIN_SET(vop, win, y_mir_en,	state->rotation == REFLECT_Y_MASK);
 
 	VOP_WIN_YUV2YUV_SET(vop, win_yuv2yuv, y2r_en, is_yuv);
 
