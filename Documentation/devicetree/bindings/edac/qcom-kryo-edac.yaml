@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/edac/qcom-kryo-edac.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Kryo Error Detection and Correction(EDAC)
+
+maintainers:
+  - Sai Prakash Ranjan <saiprakash.ranjan@codeaurora.org>
+
+description: |
+  Kryo EDAC is defined to describe on-chip error detection and correction
+  for the Kryo CPU cores which implement RAS extensions. It will report
+  all Single Bit Errors and Double Bit Errors found in L1/L2 caches in
+  in two registers ERXSTATUS_EL1 and ERXMISC0_EL1. L3-SCU cache errors
+  are reported in ERR1STATUS and ERR1MISC0 registers.
+    ERXSTATUS_EL1 - Selected Error Record Primary Status Register, EL1
+    ERXMISC0_EL1 - Selected Error Record Miscellaneous Register 0, EL1
+    ERR1STATUS - Error Record Primary Status Register
+    ERR1MISC0 - Error Record Miscellaneous Register 0
+  Current implementation of Kryo ECC(Error Correcting Code) mechanism is
+  based on interrupts.
+
+properties:
+  compatible:
+    enum:
+      - qcom,kryo-edac
+
+  interrupts:
+    minItems: 1
+    maxItems: 4
+    items:
+      - description: l1-l2 cache faultirq interrupt
+      - description: l1-l2 cache errirq interrupt
+      - description: l3-scu cache errirq interrupt
+      - description: l3-scu cache faultirq interrupt
+
+  interrupt-names:
+    minItems: 1
+    maxItems: 4
+    items:
+      - const: l1-l2-faultirq
+      - const: l1-l2-errirq
+      - const: l3-scu-errirq
+      - const: l3-scu-faultirq
+
+required:
+  - compatible
+  - interrupts
+  - interrupt-names
+
+examples:
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    kryo_edac {
+      compatible = "qcom,kryo-edac";
+      interrupts = <GIC_PPI 6 IRQ_TYPE_LEVEL_HIGH>,
+                   <GIC_PPI 7 IRQ_TYPE_LEVEL_HIGH>,
+                   <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>,
+                   <GIC_SPI 35 IRQ_TYPE_LEVEL_HIGH>;
+      interrupt-names = "l1-l2-faultirq",
+                        "l1-l2-errirq",
+                        "l3-scu-errirq",
+                        "l3-scu-faultirq";
+    };

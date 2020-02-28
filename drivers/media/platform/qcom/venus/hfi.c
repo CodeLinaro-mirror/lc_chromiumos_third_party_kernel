@@ -195,7 +195,7 @@ EXPORT_SYMBOL_GPL(hfi_session_create);
 int hfi_session_init(struct venus_inst *inst, u32 pixfmt)
 {
 	struct venus_core *core = inst->core;
-	const struct hfi_ops *ops = core->ops;
+	const struct hfi_ops *ops;
 	int ret;
 
 	if (inst->state != INST_UNINIT)
@@ -204,10 +204,13 @@ int hfi_session_init(struct venus_inst *inst, u32 pixfmt)
 	inst->hfi_codec = to_codec_type(pixfmt);
 	reinit_completion(&inst->done);
 
+	mutex_lock(&core->lock);
+	ops = core->ops;
 	ret = ops->session_init(inst, inst->session_type, inst->hfi_codec);
 	if (ret)
 		return ret;
 
+	mutex_unlock(&core->lock);
 	ret = wait_session_msg(inst);
 	if (ret)
 		return ret;

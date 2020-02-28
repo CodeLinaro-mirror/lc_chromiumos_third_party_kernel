@@ -617,6 +617,9 @@ static int _ath10k_ce_send_nolock_64(struct ath10k_ce_pipe *ce_state,
 			ath10k_ce_src_ring_write_index_set(ar, ctrl_addr,
 							   write_index);
 	}
+	if (ce_state->id == 3)
+	ath10k_record_ce_ring_event(ar, ATH10K_CE_BUFFER_POST, ce_state->id, write_index,
+				    per_transfer_context, buffer);
 
 	src_ring->write_index = write_index;
 exit:
@@ -1129,6 +1132,7 @@ static int _ath10k_ce_completed_send_next_nolock_64(struct ath10k_ce_pipe *ce_st
 	unsigned int sw_index = src_ring->sw_index;
 	unsigned int read_index;
 	struct ce_desc_64 *desc;
+	void *vaddr;
 
 	if (src_ring->hw_index == sw_index) {
 		/*
@@ -1158,12 +1162,16 @@ static int _ath10k_ce_completed_send_next_nolock_64(struct ath10k_ce_pipe *ce_st
 	if (per_transfer_contextp)
 		*per_transfer_contextp =
 			src_ring->per_transfer_context[sw_index];
+	vaddr = src_ring->per_transfer_context[sw_index];
 
 	/* sanity */
 	src_ring->per_transfer_context[sw_index] = NULL;
 	desc = CE_SRC_RING_TO_DESC_64(src_ring->base_addr_owner_space,
 				      sw_index);
 	desc->nbytes = 0;
+	if (ce_state->id == 3)
+	ath10k_record_ce_ring_event(ar, ATH10K_CE_BUFFER_TX_DONE, ce_state->id, sw_index,
+				    vaddr, desc->addr);
 
 	/* Update sw_index */
 	sw_index = CE_RING_IDX_INCR(nentries_mask, sw_index);
@@ -1299,6 +1307,7 @@ void ath10k_ce_per_engine_service(struct ath10k *ar, unsigned int ce_id)
 	struct ath10k_hw_ce_host_wm_regs *wm_regs = ar->hw_ce_regs->wm_regs;
 	u32 ctrl_addr = ce_state->ctrl_addr;
 
+	ath10k_record_ce_event(ar, ATH10K_CE_SERVICE, ce_id);
 	/*
 	 * Clear before handling
 	 *

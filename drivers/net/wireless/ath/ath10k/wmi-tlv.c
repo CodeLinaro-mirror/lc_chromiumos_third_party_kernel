@@ -542,6 +542,7 @@ static void ath10k_wmi_tlv_op_rx(struct ath10k *ar, struct sk_buff *skb)
 	if (skb_pull(skb, sizeof(struct wmi_cmd_hdr)) == NULL)
 		goto out;
 
+	ath10k_record_wmi_event(ar, ATH10K_WMI_EVENT, id, skb->data);
 	trace_ath10k_wmi_event(ar, id, skb->data, skb->len);
 
 	consumed = ath10k_tm_event_wmi(ar, id, skb);
@@ -2954,6 +2955,12 @@ ath10k_wmi_tlv_op_gen_mgmt_tx_send(struct ath10k *ar, struct sk_buff *msdu,
 	hdr = (struct ieee80211_hdr *)msdu->data;
 	arvif = (void *)cb->vif->drv_priv;
 	vdev_id = arvif->vdev_id;
+
+	if (ar->free_vdev_map & (1LL << vdev_id)) {
+		ath10k_err(ar, "Drop management frame for deleted vdev: %d\n",
+			   vdev_id);
+		return ERR_PTR(-EINVAL);
+	}
 
 	if (WARN_ON_ONCE(!ieee80211_is_mgmt(hdr->frame_control) &&
 			 (!(ieee80211_is_nullfunc(hdr->frame_control) ||

@@ -320,6 +320,8 @@ static int venus_remove(struct platform_device *pdev)
 	struct device *dev = core->dev;
 	int ret;
 
+	cancel_delayed_work_sync(&core->work);
+
 	ret = pm_runtime_get_sync(dev);
 	WARN_ON(ret < 0);
 
@@ -337,7 +339,9 @@ static int venus_remove(struct platform_device *pdev)
 	if (pm_ops->core_put)
 		pm_ops->core_put(dev);
 
+	mutex_lock(&core->lock);
 	hfi_destroy(core);
+	mutex_unlock(&core->lock);
 
 	icc_put(core->video_path);
 	icc_put(core->cpucfg_path);

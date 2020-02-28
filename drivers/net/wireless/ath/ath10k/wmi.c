@@ -1774,6 +1774,15 @@ struct sk_buff *ath10k_wmi_alloc_skb(struct ath10k *ar, u32 len)
 
 static void ath10k_wmi_htc_tx_complete(struct ath10k *ar, struct sk_buff *skb)
 {
+	struct wmi_cmd_hdr *cmd_hdr;
+	enum wmi_tlv_event_id id;
+
+	cmd_hdr = (struct wmi_cmd_hdr *)skb->data;
+	id = MS(__le32_to_cpu(cmd_hdr->cmd_id), WMI_CMD_HDR_CMD_ID);
+
+	ath10k_record_wmi_event(ar, ATH10K_WMI_TX_COMPL, id,
+				skb->data + sizeof(struct wmi_cmd_hdr));
+
 	dev_kfree_skb(skb);
 }
 
@@ -1884,6 +1893,7 @@ int ath10k_wmi_cmd_send(struct ath10k *ar, struct sk_buff *skb, u32 cmd_id)
 
 	might_sleep();
 
+	ath10k_record_wmi_event(ar, ATH10K_WMI_CMD, cmd_id, skb->data);
 	if (cmd_id == WMI_CMD_UNSUPPORTED) {
 		ath10k_warn(ar, "wmi command %d is not supported by firmware\n",
 			    cmd_id);

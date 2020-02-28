@@ -1960,6 +1960,8 @@ struct ath10k_htt {
 		spinlock_t lock;
 	} rx_ring;
 
+	/* Protects access to in order indication queue */
+	spinlock_t rx_in_ord_q_lock;
 	unsigned int prefetch_len;
 
 	/* Protects access to pending_tx, num_pending_tx */

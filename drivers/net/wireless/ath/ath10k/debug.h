@@ -250,6 +250,42 @@ void ath10k_dbg_dump(struct ath10k *ar,
 		     enum ath10k_debug_mask mask,
 		     const char *msg, const char *prefix,
 		     const void *buf, size_t len);
+
+/* ========== History init APIs =========== */
+int ath10k_core_reg_access_history_init(struct ath10k *ar, u32 max_entries);
+int ath10k_core_wmi_cmd_history_init(struct ath10k *ar, u32 max_entries);
+int ath10k_core_wmi_event_history_init(struct ath10k *ar, u32 max_entries);
+int ath10k_core_ce_event_history_init(struct ath10k *ar, u32 max_entries);
+int ath10k_core_ce_ring_history_init(struct ath10k *ar, u32 max_entries);
+
+/* ========== History record APIs =========== */
+void ath10k_record_reg_access(struct ath10k *ar, u32 offset, u32 val,
+			      bool write);
+void ath10k_record_wmi_event(struct ath10k *ar, enum ath10k_wmi_type type,
+			     u32 id, unsigned char *data);
+void ath10k_record_ce_event(struct ath10k *ar,
+			    enum ath10k_ce_event event_type,
+			    int ce_id);
+void ath10k_record_ce_ring_event(struct ath10k *ar,
+				 enum ath10k_ce_ring_event type, u32 ce_id,
+				 u32 wr_idx, void *vaddr, dma_addr_t paddr);
+
+static inline u64 ath10k_core_get_timestamp(void)
+{
+	struct timespec64 ts;
+
+	ktime_get_real_ts64(&ts);
+	return ((u64)ts.tv_sec * 1000000) + (ts.tv_nsec / 1000);
+}
+
+static inline int ath10k_core_get_next_idx(atomic_t *index, u32 max_entries)
+{
+	u32 curr_idx;
+
+	curr_idx = atomic_fetch_inc(index);
+	return (curr_idx & (max_entries - 1));
+}
+
 #else /* CONFIG_ATH10K_DEBUG */
 
 static inline int __ath10k_dbg(struct ath10k *ar,
@@ -263,6 +299,60 @@ static inline void ath10k_dbg_dump(struct ath10k *ar,
 				   enum ath10k_debug_mask mask,
 				   const char *msg, const char *prefix,
 				   const void *buf, size_t len)
+{
+}
+
+static inline int ath10k_core_reg_access_history_init(struct ath10k *ar,
+						      u32 max_entries)
+{
+	return 0;
+}
+
+static inline int ath10k_core_wmi_cmd_history_init(struct ath10k *ar,
+						   u32 max_entries)
+{
+	return 0;
+}
+
+static inline int ath10k_core_wmi_event_history_init(struct ath10k *ar,
+						     u32 max_entries)
+{
+	return 0;
+}
+
+static inline int ath10k_core_ce_event_history_init(struct ath10k *ar,
+						    u32 max_entries)
+{
+	return 0;
+}
+
+static inline int ath10k_core_ce_ring_history_init(struct ath10k *ar,
+						   u32 max_entries)
+{
+	return 0;
+}
+
+static inline void ath10k_record_reg_access(struct ath10k *ar, u32 offset,
+					    u32 val, bool write)
+{
+}
+
+static inline void ath10k_record_wmi_event(struct ath10k *ar,
+					   enum ath10k_wmi_type type,
+					   u32 id, unsigned char *data)
+{
+}
+
+static inline void ath10k_record_ce_event(struct ath10k *ar,
+					  enum ath10k_ce_event event_type,
+					  int ce_id)
+{
+}
+
+static inline void
+ath10k_record_ce_ring_event(struct ath10k *ar,
+			    enum ath10k_ce_ring_event type, u32 ce_id,
+			    u32 wr_idx, void *vaddr, dma_addr_t paddr)
 {
 }
 #endif /* CONFIG_ATH10K_DEBUG */

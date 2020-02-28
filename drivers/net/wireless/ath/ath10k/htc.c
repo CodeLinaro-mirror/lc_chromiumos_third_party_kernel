@@ -51,11 +51,19 @@ void ath10k_htc_notify_tx_completion(struct ath10k_htc_ep *ep,
 				     struct sk_buff *skb)
 {
 	struct ath10k *ar = ep->htc->ar;
+	struct ath10k_skb_cb *skb_cb = ATH10K_SKB_CB(skb);
 
 	ath10k_dbg(ar, ATH10K_DBG_HTC, "%s: ep %d skb %pK\n", __func__,
 		   ep->eid, skb);
 
 	ath10k_htc_restore_tx_skb(ep->htc, skb);
+	if (ep->service_id == ATH10K_HTC_SVC_ID_WMI_CONTROL ||
+	ep->service_id == ATH10K_HTC_SVC_ID_WMI_DATA_BE ||
+	ep->service_id == ATH10K_HTC_SVC_ID_WMI_DATA_BK ||
+	ep->service_id == ATH10K_HTC_SVC_ID_WMI_DATA_VI ||
+	ep->service_id == ATH10K_HTC_SVC_ID_WMI_DATA_VO)
+	ath10k_record_ce_ring_event(ar, ATH10K_CE_BUFFER_UNMAP, ep->eid, 0,
+				    skb, skb_cb->paddr);
 
 	if (!ep->ep_ops.ep_tx_complete) {
 		ath10k_warn(ar, "no tx handler for eid %d\n", ep->eid);

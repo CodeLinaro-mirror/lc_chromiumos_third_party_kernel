@@ -19,6 +19,7 @@
 #include "ipa_modem.h"
 #include "ipa_smp2p.h"
 #include "ipa_qmi.h"
+#include "msm_rmnet.h"
 
 #define IPA_NETDEV_NAME		"rmnet_ipa%d"
 #define IPA_NETDEV_TAILROOM	0	/* for padding by mux layer */
@@ -133,10 +134,80 @@ void ipa_modem_skb_rx(struct net_device *netdev, struct sk_buff *skb)
 	}
 }
 
+/** ipa_do_ioctl() - I/O control for modem network driver */
+static int ipa_do_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
+{
+	struct ipa_priv *priv = netdev_priv(netdev);
+	struct rmnet_ioctl_extended_s edata = { };
+	struct ipa_endpoint *endpoint;
+	struct ipa *ipa = priv->ipa;
+	void __user *data;
+
+	/* These features are implied; alternatives are not supported */
+	if (cmd == RMNET_IOCTL_SET_LLP_IP || cmd == RMNET_IOCTL_OPEN)
+		return 0;
+
+	if (cmd != RMNET_IOCTL_EXTENDED)
+		return -EINVAL;
+
+	data = ifr->ifr_ifru.ifru_data;
+
+	if (copy_from_user(&edata, data, sizeof(edata)))
+		return -EFAULT;
+
+	switch (edata.extended_ioctl) {
+	case RMNET_IOCTL_GET_SUPPORTED_FEATURES:	/* Get features */
+		edata.u.data = RMNET_IOCTL_FEAT_NOTIFY_MUX_CHANNEL;
+		edata.u.data |= RMNET_IOCTL_FEAT_SET_EGRESS_DATA_FORMAT;
+		edata.u.data |= RMNET_IOCTL_FEAT_SET_INGRESS_DATA_FORMAT;
+		goto copy_out;
+
+	case RMNET_IOCTL_GET_EPID:			/* Get endpoint ID */
+		edata.u.data = 1;
+		goto copy_out;
+
+	case RMNET_IOCTL_SET_EGRESS_DATA_FORMAT:	/* Egress data format */
+		/* Endpoint is configured for checksum offload enabled */
+		if (!(edata.u.data & RMNET_IOCTL_EGRESS_FORMAT_CHECKSUM))
+			return -EINVAL;
+		/* Endpoint is configured for no (de)aggregation */
+		if (edata.u.data & RMNET_IOCTL_EGRESS_FORMAT_AGGREGATION)
+			return -EINVAL;
+
+		return 0;
+
+	case RMNET_IOCTL_SET_INGRESS_DATA_FORMAT:	/* Ingress format */
+		/* Endpoint is configured for checksum offload enabled */
+		if (!(edata.u.data & RMNET_IOCTL_INGRESS_FORMAT_CHECKSUM))
+			return -EINVAL;
+		/* Endpoint is configured for no aggregation */
+		if (edata.u.data & RMNET_IOCTL_INGRESS_FORMAT_AGG_DATA)
+			return -EINVAL;
+
+		return 0;
+
+	case RMNET_IOCTL_GET_EP_PAIR:			/* Get endpoint pair */
+		endpoint = ipa->name_map[IPA_ENDPOINT_AP_MODEM_TX];
+		edata.u.ipa_endpoint_pair.consumer_pipe_num =
+				endpoint->endpoint_id;
+		endpoint = ipa->name_map[IPA_ENDPOINT_AP_MODEM_RX];
+		edata.u.ipa_endpoint_pair.producer_pipe_num =
+				endpoint->endpoint_id;
+		goto copy_out;
+
+	default:
+		return -EINVAL;		/* Invalid (unrecognized) command */
+	}
+
+copy_out:
+	return copy_to_user(data, &edata, sizeof(edata)) ? -EFAULT : 0;
+}
+
 static const struct net_device_ops ipa_modem_ops = {
 	.ndo_open	= ipa_open,
 	.ndo_stop	= ipa_stop,
 	.ndo_start_xmit	= ipa_start_xmit,
+	.ndo_do_ioctl	= ipa_do_ioctl,
 };
 
 /** ipa_modem_netdev_setup() - netdev setup function for the modem */

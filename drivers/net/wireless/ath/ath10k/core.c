@@ -667,6 +667,70 @@ static unsigned int ath10k_core_get_fw_feature_str(char *buf,
 	return scnprintf(buf, buf_len, "%s", ath10k_core_fw_feature_str[feat]);
 }
 
+int ath10k_core_thread_suspend(struct ath10k_thread *thread)
+{
+	ath10k_dbg(thread->ar, ATH10K_DBG_BOOT, "Suspending thread %s\n",
+		   thread->name);
+	set_bit(ATH10K_THREAD_EVENT_SUSPEND, thread->event_flags);
+	wait_for_completion(&thread->suspend);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_thread_suspend);
+
+int ath10k_core_thread_resume(struct ath10k_thread *thread)
+{
+	ath10k_dbg(thread->ar, ATH10K_DBG_BOOT, "Resuming thread %s\n",
+		   thread->name);
+	complete(&thread->resume);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_thread_resume);
+
+void ath10k_core_thread_post_event(struct ath10k_thread *thread,
+				   enum ath10k_thread_events event)
+{
+	set_bit(event, thread->event_flags);
+	wake_up(&thread->wait_q);
+}
+EXPORT_SYMBOL(ath10k_core_thread_post_event);
+
+int ath10k_core_thread_shutdown(struct ath10k *ar,
+				struct ath10k_thread *thread)
+{
+	ath10k_dbg(ar, ATH10K_DBG_BOOT, "shutting down %s\n", thread->name);
+	set_bit(ATH10K_THREAD_EVENT_SHUTDOWN, thread->event_flags);
+	wake_up_process(thread->task);
+	wait_for_completion(&thread->shutdown);
+	ath10k_info(ar, "thread %s exited\n", thread->name);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_thread_shutdown);
+
+int ath10k_core_thread_init(struct ath10k *ar,
+			    struct ath10k_thread *thread,
+			    int (*handler)(void *data),
+			    char *thread_name)
+{
+	thread->task = kthread_create(handler, thread, thread_name);
+	if (IS_ERR(thread->task))
+		return -EINVAL;
+
+	init_waitqueue_head(&thread->wait_q);
+	init_completion(&thread->shutdown);
+	init_completion(&thread->suspend);
+	init_completion(&thread->resume);
+	memcpy(thread->name, thread_name, ATH10K_THREAD_NAME_SIZE_MAX);
+	clear_bit(ATH10K_THREAD_EVENT_SHUTDOWN, thread->event_flags);
+	ath10k_info(ar, "Starting thread %s\n", thread_name);
+	wake_up_process(thread->task);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_thread_init);
+
 void ath10k_core_get_fw_features_str(struct ath10k *ar,
 				     char *buf,
 				     size_t buf_len)
@@ -1013,7 +1077,7 @@ static int ath10k_core_check_smbios(struct ath10k *ar)
 	return 0;
 }
 
-static int ath10k_core_check_dt(struct ath10k *ar)
+int ath10k_core_check_dt(struct ath10k *ar)
 {
 	struct device_node *node;
 	const char *variant = NULL;
@@ -1034,6 +1098,7 @@ static int ath10k_core_check_dt(struct ath10k *ar)
 
 	return 0;
 }
+EXPORT_SYMBOL(ath10k_core_check_dt);
 
 static int ath10k_download_fw(struct ath10k *ar)
 {
@@ -1428,10 +1493,17 @@ static int ath10k_core_create_board_name(struct ath10k *ar, char *name,
 	}
 
 	if (ar->id.qmi_ids_valid) {
-		scnprintf(name, name_len,
-			  "bus=%s,qmi-board-id=%x",
-			  ath10k_bus_str(ar->hif.bus),
-			  ar->id.qmi_board_id);
+		if (with_variant && ar->id.bdf_ext[0] != '\0')
+			scnprintf(name, name_len,
+				  "bus=%s,qmi-board-id=%x,qmi-chip-id=%x%s",
+				  ath10k_bus_str(ar->hif.bus),
+				  ar->id.qmi_board_id, ar->id.qmi_chip_id,
+				  variant);
+		else
+			scnprintf(name, name_len,
+				  "bus=%s,qmi-board-id=%x",
+				  ath10k_bus_str(ar->hif.bus),
+				  ar->id.qmi_board_id);
 		goto out;
 	}
 

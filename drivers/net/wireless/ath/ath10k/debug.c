@@ -2722,4 +2722,175 @@ void ath10k_dbg_dump(struct ath10k *ar,
 }
 EXPORT_SYMBOL(ath10k_dbg_dump);
 
+int ath10k_core_reg_access_history_init(struct ath10k *ar, u32 max_entries)
+{
+	ar->reg_access_history.record = vzalloc(max_entries *
+						sizeof(struct ath10k_reg_access_entry));
+	if (!ar->reg_access_history.record)
+		return -ENOMEM;
+
+	ar->reg_access_history.max_entries = max_entries;
+	atomic_set(&ar->reg_access_history.index, 0);
+	spin_lock_init(&ar->reg_access_history.hist_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_reg_access_history_init);
+
+int ath10k_core_wmi_cmd_history_init(struct ath10k *ar, u32 max_entries)
+{
+	ar->wmi_cmd_history.record = vzalloc(max_entries *
+					     sizeof(struct ath10k_wmi_event_entry));
+	if (!ar->wmi_cmd_history.record)
+		return -ENOMEM;
+
+	ar->wmi_cmd_history.max_entries = max_entries;
+	atomic_set(&ar->wmi_cmd_history.index, 0);
+	spin_lock_init(&ar->wmi_cmd_history.hist_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_wmi_cmd_history_init);
+
+int ath10k_core_wmi_event_history_init(struct ath10k *ar, u32 max_entries)
+{
+	ar->wmi_event_history.record = vzalloc(max_entries *
+					       sizeof(struct ath10k_wmi_event_entry));
+	if (!ar->wmi_event_history.record)
+		return -ENOMEM;
+
+	ar->wmi_event_history.max_entries = max_entries;
+	atomic_set(&ar->wmi_event_history.index, 0);
+	spin_lock_init(&ar->wmi_event_history.hist_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_wmi_event_history_init);
+
+int ath10k_core_ce_event_history_init(struct ath10k *ar, u32 max_entries)
+{
+	ar->ce_event_history.record = vzalloc(max_entries *
+					      sizeof(struct ath10k_ce_event_entry));
+	if (!ar->ce_event_history.record)
+		return -ENOMEM;
+
+	ar->ce_event_history.max_entries = max_entries;
+	atomic_set(&ar->ce_event_history.index, 0);
+	spin_lock_init(&ar->ce_event_history.hist_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_ce_event_history_init);
+
+int ath10k_core_ce_ring_history_init(struct ath10k *ar, u32 max_entries)
+{
+	ar->ce_ring_history.record = vmalloc(max_entries * sizeof(struct ath10k_ce_ring_event_entry));
+	if (!ar->ce_ring_history.record)
+		return -ENOMEM;
+
+	ar->ce_ring_history.max_entries = max_entries;
+	atomic_set(&ar->ce_ring_history.index, 0);
+	spin_lock_init(&ar->ce_ring_history.hist_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(ath10k_core_ce_ring_history_init);
+
+void ath10k_record_reg_access(struct ath10k *ar, u32 offset, u32 val, bool write)
+{
+	struct ath10k_reg_access_entry *entry;
+	u32 idx;
+
+	if (!ar->reg_access_history.record)
+		return;
+
+	idx = ath10k_core_get_next_idx(&ar->reg_access_history.index,
+				       ar->reg_access_history.max_entries);
+	entry = &ar->reg_access_history.record[idx];
+
+	entry->timestamp = ath10k_core_get_timestamp();
+	entry->cpu_id = smp_processor_id();
+	entry->write = write;
+	entry->offset = offset;
+	entry->val = val;
+}
+EXPORT_SYMBOL(ath10k_record_reg_access);
+
+void ath10k_record_wmi_event(struct ath10k *ar, enum ath10k_wmi_type type,
+			     u32 id, unsigned char *data)
+{
+	struct ath10k_wmi_event_entry *entry;
+	u32 idx;
+
+	if (type == ATH10K_WMI_EVENT) {
+		if (!ar->wmi_event_history.record)
+			return;
+
+		spin_lock_bh(&ar->wmi_event_history.hist_lock);
+		idx = ath10k_core_get_next_idx(&ar->reg_access_history.index,
+					       ar->wmi_event_history.max_entries);
+		entry = &ar->wmi_event_history.record[idx];
+		spin_unlock_bh(&ar->wmi_event_history.hist_lock);
+	} else {
+		if (!ar->wmi_cmd_history.record)
+			return;
+
+		spin_lock_bh(&ar->wmi_cmd_history.hist_lock);
+		idx = ath10k_core_get_next_idx(&ar->reg_access_history.index,
+					       ar->wmi_cmd_history.max_entries);
+		entry = &ar->wmi_cmd_history.record[idx];
+		spin_unlock_bh(&ar->wmi_cmd_history.hist_lock);
+	}
+
+	entry->timestamp = ath10k_core_get_timestamp();
+	entry->cpu_id = smp_processor_id();
+	entry->type = type;
+	entry->id = id;
+	memcpy(&entry->data, data + 4, ATH10K_WMI_DATA_LEN);
+}
+EXPORT_SYMBOL(ath10k_record_wmi_event);
+
+void ath10k_record_ce_event(struct ath10k *ar, enum ath10k_ce_event event_type,
+			    int ce_id)
+{
+	struct ath10k_ce_event_entry *entry;
+	u32 idx;
+
+	if (!ar->ce_event_history.record)
+		return;
+
+	idx = ath10k_core_get_next_idx(&ar->ce_event_history.index,
+				       ar->ce_event_history.max_entries);
+	entry = &ar->ce_event_history.record[idx];
+
+	entry->timestamp = ath10k_core_get_timestamp();
+	entry->cpu_id = smp_processor_id();
+	entry->event_type = event_type;
+	entry->ce_id = ce_id;
+}
+EXPORT_SYMBOL(ath10k_record_ce_event);
+
+void ath10k_record_ce_ring_event(struct ath10k *ar,
+				 enum ath10k_ce_ring_event type, u32 ce_id,
+				 u32 wr_idx, void *vaddr, dma_addr_t paddr)
+{
+	struct ath10k_ce_ring_event_entry *entry;
+	u32 idx;
+
+	if (!ar->ce_ring_history.record)
+		return;
+
+	idx = ath10k_core_get_next_idx(&ar->ce_ring_history.index,
+				       ar->ce_ring_history.max_entries);
+	entry = &ar->ce_ring_history.record[idx];
+
+	entry->timestamp = ath10k_core_get_timestamp();
+	entry->event_type = type;
+	entry->ce_id = ce_id;
+	entry->index = wr_idx;
+	entry->vaddr = vaddr;
+	entry->paddr = paddr;
+}
+EXPORT_SYMBOL(ath10k_record_ce_ring_event);
+
 #endif /* CONFIG_ATH10K_DEBUG */

@@ -21,10 +21,17 @@
 #include "hif.h"
 #include "htc.h"
 #include "snoc.h"
+#include "mac.h"
 
 #define ATH10K_SNOC_RX_POST_RETRY_MS 50
 #define CE_POLL_PIPE 4
 #define ATH10K_SNOC_WAKE_IRQ 2
+
+static bool ath10k_rx_thread_enable;
+
+module_param_named(rx_thread_enable, ath10k_rx_thread_enable, bool, 0644);
+
+MODULE_PARM_DESC(rx_thread_enable, "Receive packet processing in thread");
 
 static char *const ce_name[] = {
 	"WLAN_CE_0",
@@ -46,6 +53,7 @@ static const char * const ath10k_regulators[] = {
 	"vdd-1.8-xo",
 	"vdd-1.3-rfa",
 	"vdd-3.3-ch0",
+	"vdd-3.3-ch1",
 };
 
 static const char * const ath10k_clocks[] = {
@@ -473,6 +481,7 @@ static void ath10k_snoc_write32(struct ath10k *ar, u32 offset, u32 value)
 {
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
 
+	ath10k_record_reg_access(ar, offset, value, true);
 	iowrite32(value, ar_snoc->mem + offset);
 }
 
@@ -481,7 +490,9 @@ static u32 ath10k_snoc_read32(struct ath10k *ar, u32 offset)
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
 	u32 val;
 
+	ath10k_record_reg_access(ar, offset, 0, false);
 	val = ioread32(ar_snoc->mem + offset);
+	ath10k_record_reg_access(ar, offset, val, false);
 
 	return val;
 }
@@ -827,11 +838,13 @@ static void ath10k_snoc_hif_get_default_pipe(struct ath10k *ar,
 static inline void ath10k_snoc_irq_disable(struct ath10k *ar)
 {
 	ath10k_ce_disable_interrupts(ar);
+	ath10k_record_ce_event(ar, ATH10K_IRQ_DISABLE, 0);
 }
 
 static inline void ath10k_snoc_irq_enable(struct ath10k *ar)
 {
 	ath10k_ce_enable_interrupts(ar);
+	ath10k_record_ce_event(ar, ATH10K_IRQ_ENABLE, 0);
 }
 
 static void ath10k_snoc_rx_pipe_cleanup(struct ath10k_snoc_pipe *snoc_pipe)
@@ -909,6 +922,56 @@ static void ath10k_snoc_buffer_cleanup(struct ath10k *ar)
 	}
 }
 
+int ath10k_snoc_rx_thread_loop(void *data)
+{
+	struct ath10k_thread *rx_thread = data;
+	struct ath10k *ar = rx_thread->ar;
+	bool shutdown = false;
+	u32 thread_budget = 8192;
+
+	ath10k_dbg(ar, ATH10K_DBG_SNOC, "rx thread started\n");
+	set_user_nice(current, -1);
+
+	while (!shutdown) {
+		wait_event_interruptible(
+			rx_thread->wait_q,
+			(test_and_clear_bit(ATH10K_THREAD_EVENT_RX_POST,
+					    rx_thread->event_flags) ||
+			 test_and_clear_bit(ATH10K_THREAD_EVENT_TX_POST,
+					    rx_thread->event_flags) ||
+			 test_bit(ATH10K_THREAD_EVENT_SUSPEND,
+				  rx_thread->event_flags) ||
+			 test_bit(ATH10K_THREAD_EVENT_SHUTDOWN,
+				  rx_thread->event_flags)));
+
+		if (test_and_clear_bit(ATH10K_THREAD_EVENT_SUSPEND,
+				       rx_thread->event_flags)) {
+			complete(&rx_thread->suspend);
+			ath10k_info(ar, "rx thread suspend\n");
+			wait_for_completion(&rx_thread->resume);
+			ath10k_info(ar, "rx thread resume\n");
+		}
+
+		ath10k_htt_txrx_compl_task(ar, thread_budget);
+		if (test_and_clear_bit(ATH10K_THREAD_EVENT_SHUTDOWN,
+				       rx_thread->event_flags))
+			shutdown = true;
+
+		if (test_and_clear_bit(ATH10K_THREAD_EVENT_SUSPEND,
+				       rx_thread->event_flags)) {
+			complete(&rx_thread->suspend);
+			ath10k_info(ar, "rx thread suspend\n");
+			wait_for_completion(&rx_thread->resume);
+			ath10k_info(ar, "rx thread resume\n");
+		}
+	}
+
+	ath10k_dbg(ar, ATH10K_DBG_SNOC, "rx thread exiting\n");
+	complete(&rx_thread->shutdown);
+
+	do_exit(0);
+}
+
 static void ath10k_snoc_hif_stop(struct ath10k *ar)
 {
 	if (!test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags))
@@ -916,6 +979,8 @@ static void ath10k_snoc_hif_stop(struct ath10k *ar)
 
 	napi_synchronize(&ar->napi);
 	napi_disable(&ar->napi);
+	if (ar->rx_thread_enable)
+		ath10k_core_thread_shutdown(ar, &ar->rx_thread);
 	ath10k_snoc_buffer_cleanup(ar);
 	ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot hif stop\n");
 }
@@ -923,9 +988,21 @@ static void ath10k_snoc_hif_stop(struct ath10k *ar)
 static int ath10k_snoc_hif_start(struct ath10k *ar)
 {
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
+	int ret;
 
 	bitmap_clear(ar_snoc->pending_ce_irqs, 0, CE_COUNT_MAX);
 	napi_enable(&ar->napi);
+
+	if (ar->rx_thread_enable) {
+		ret = ath10k_core_thread_init(ar, &ar->rx_thread,
+					      ath10k_snoc_rx_thread_loop,
+					      "ath10k_rx_thread");
+		if (ret) {
+			ath10k_err(ar, "failed to start rx thread\n");
+			goto rx_thread_fail;
+		}
+	}
+
 	ath10k_snoc_irq_enable(ar);
 	ath10k_snoc_rx_post(ar);
 
@@ -934,6 +1011,10 @@ static int ath10k_snoc_hif_start(struct ath10k *ar)
 	ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot hif start\n");
 
 	return 0;
+
+rx_thread_fail:
+	napi_disable(&ar->napi);
+	return ret;
 }
 
 static int ath10k_snoc_init_pipes(struct ath10k *ar)
@@ -1002,6 +1083,39 @@ static int ath10k_snoc_wlan_enable(struct ath10k *ar,
 				       NULL);
 }
 
+static int ath10k_hw_power_on(struct ath10k *ar)
+{
+	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
+	int ret;
+
+	ath10k_dbg(ar, ATH10K_DBG_SNOC, "soc power on\n");
+
+	ret = regulator_bulk_enable(ar_snoc->num_vregs, ar_snoc->vregs);
+	if (ret)
+		return ret;
+
+	ret = clk_bulk_prepare_enable(ar_snoc->num_clks, ar_snoc->clks);
+	if (ret)
+		goto vreg_off;
+
+	return ret;
+
+vreg_off:
+	regulator_bulk_disable(ar_snoc->num_vregs, ar_snoc->vregs);
+	return ret;
+}
+
+static int ath10k_hw_power_off(struct ath10k *ar)
+{
+	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
+
+	ath10k_dbg(ar, ATH10K_DBG_SNOC, "soc power off\n");
+
+	clk_bulk_disable_unprepare(ar_snoc->num_clks, ar_snoc->clks);
+
+	return regulator_bulk_disable(ar_snoc->num_vregs, ar_snoc->vregs);
+}
+
 static void ath10k_snoc_wlan_disable(struct ath10k *ar)
 {
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
@@ -1023,6 +1137,7 @@ static void ath10k_snoc_hif_power_down(struct ath10k *ar)
 
 	ath10k_snoc_wlan_disable(ar);
 	ath10k_ce_free_rri(ar);
+	ath10k_hw_power_off(ar);
 }
 
 static int ath10k_snoc_hif_power_up(struct ath10k *ar,
@@ -1033,10 +1148,16 @@ static int ath10k_snoc_hif_power_up(struct ath10k *ar,
 	ath10k_dbg(ar, ATH10K_DBG_SNOC, "%s:WCN3990 driver state = %d\n",
 		   __func__, ar->state);
 
+	ret = ath10k_hw_power_on(ar);
+	if (ret) {
+		ath10k_err(ar, "failed to power on device: %d\n", ret);
+		return ret;
+	}
+
 	ret = ath10k_snoc_wlan_enable(ar, fw_mode);
 	if (ret) {
 		ath10k_err(ar, "failed to enable wcn3990: %d\n", ret);
-		return ret;
+		goto err_hw_power_off;
 	}
 
 	ath10k_ce_alloc_rri(ar);
@@ -1044,13 +1165,17 @@ static int ath10k_snoc_hif_power_up(struct ath10k *ar,
 	ret = ath10k_snoc_init_pipes(ar);
 	if (ret) {
 		ath10k_err(ar, "failed to initialize CE: %d\n", ret);
-		goto err_wlan_enable;
+		goto err_free_rri;
 	}
 
 	return 0;
 
-err_wlan_enable:
+err_free_rri:
+	ath10k_ce_free_rri(ar);
 	ath10k_snoc_wlan_disable(ar);
+
+err_hw_power_off:
+	ath10k_hw_power_off(ar);
 
 	return ret;
 }
@@ -1077,13 +1202,28 @@ static int ath10k_snoc_hif_suspend(struct ath10k *ar)
 	if (!device_may_wakeup(ar->dev))
 		return -EPERM;
 
+	if (ar->rx_thread_enable) {
+		ret = ath10k_core_thread_suspend(&ar->rx_thread);
+		if (ret) {
+			ath10k_err(ar, "failed to suspend rx_thread, %d\n",
+				   ret);
+			return ret;
+		}
+	}
+
 	ret = enable_irq_wake(ar_snoc->ce_irqs[ATH10K_SNOC_WAKE_IRQ].irq_line);
 	if (ret) {
 		ath10k_err(ar, "failed to enable wakeup irq :%d\n", ret);
-		return ret;
+		goto fail;
 	}
 
 	ath10k_dbg(ar, ATH10K_DBG_SNOC, "snoc device suspended\n");
+
+	return ret;
+
+fail:
+	if (ar->rx_thread_enable)
+		ath10k_core_thread_resume(&ar->rx_thread);
 
 	return ret;
 }
@@ -1100,6 +1240,15 @@ static int ath10k_snoc_hif_resume(struct ath10k *ar)
 	if (ret) {
 		ath10k_err(ar, "failed to disable wakeup irq: %d\n", ret);
 		return ret;
+	}
+
+	if (ar->rx_thread_enable) {
+		ret = ath10k_core_thread_resume(&ar->rx_thread);
+		if (ret) {
+			ath10k_err(ar, "failed to suspend rx_thread, %d\n",
+				   ret);
+			return ret;
+		}
 	}
 
 	ath10k_dbg(ar, ATH10K_DBG_SNOC, "snoc device resumed\n");
@@ -1154,7 +1303,9 @@ static irqreturn_t ath10k_snoc_per_engine_handler(int irq, void *arg)
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
 	int ce_id = ath10k_snoc_get_ce_id_from_irq(ar, irq);
 
+	ath10k_record_ce_event(ar, ATH10K_IRQ_ENTRY, ce_id);
 	if (ce_id < 0 || ce_id >= ARRAY_SIZE(ar_snoc->pipe_info)) {
+		ath10k_record_ce_event(ar, ATH10K_IRQ_EXIT, ce_id);
 		ath10k_warn(ar, "unexpected/invalid irq %d ce_id %d\n", irq,
 			    ce_id);
 		return IRQ_HANDLED;
@@ -1165,6 +1316,7 @@ static irqreturn_t ath10k_snoc_per_engine_handler(int irq, void *arg)
 
 	napi_schedule(&ar->napi);
 
+	ath10k_record_ce_event(ar, ATH10K_IRQ_EXIT, ce_id);
 	return IRQ_HANDLED;
 }
 
@@ -1175,6 +1327,7 @@ static int ath10k_snoc_napi_poll(struct napi_struct *ctx, int budget)
 	int done = 0;
 	int ce_id;
 
+	ath10k_record_ce_event(ar, ATH10K_NAPI_POLL, 0);
 	if (test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags)) {
 		napi_complete(ctx);
 		return done;
@@ -1186,10 +1339,15 @@ static int ath10k_snoc_napi_poll(struct napi_struct *ctx, int budget)
 			ath10k_ce_enable_interrupt(ar, ce_id);
 		}
 
-	done = ath10k_htt_txrx_compl_task(ar, budget);
+	if (!ar->rx_thread_enable)
+		done = ath10k_htt_txrx_compl_task(ar, budget);
 
-	if (done < budget)
+	if (done < budget) {
 		napi_complete(ctx);
+		ath10k_record_ce_event(ar, ATH10K_NAPI_COMPLETE, 0);
+	} else {
+		ath10k_record_ce_event(ar, ATH10K_NAPI_RESCHED, 0);
+	}
 
 	return done;
 }
@@ -1304,6 +1462,7 @@ int ath10k_snoc_fw_indication(struct ath10k *ar, u64 type)
 	switch (type) {
 	case ATH10K_QMI_EVENT_FW_READY_IND:
 		if (test_bit(ATH10K_SNOC_FLAG_REGISTERED, &ar_snoc->flags)) {
+			ath10k_mac_tx_unlock(ar, ATH10K_TX_PAUSE_FW_DOWN);
 			queue_work(ar->workqueue, &ar->restart_work);
 			break;
 		}
@@ -1321,6 +1480,7 @@ int ath10k_snoc_fw_indication(struct ath10k *ar, u64 type)
 	case ATH10K_QMI_EVENT_FW_DOWN_IND:
 		set_bit(ATH10K_SNOC_FLAG_RECOVERY, &ar_snoc->flags);
 		set_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags);
+		ath10k_mac_tx_lock(ar, ATH10K_TX_PAUSE_FW_DOWN);
 		break;
 	default:
 		ath10k_err(ar, "invalid fw indication: %llx\n", type);
@@ -1366,39 +1526,6 @@ static void ath10k_snoc_release_resource(struct ath10k *ar)
 	netif_napi_del(&ar->napi);
 	for (i = 0; i < CE_COUNT; i++)
 		ath10k_ce_free_pipe(ar, i);
-}
-
-static int ath10k_hw_power_on(struct ath10k *ar)
-{
-	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
-	int ret;
-
-	ath10k_dbg(ar, ATH10K_DBG_SNOC, "soc power on\n");
-
-	ret = regulator_bulk_enable(ar_snoc->num_vregs, ar_snoc->vregs);
-	if (ret)
-		return ret;
-
-	ret = clk_bulk_prepare_enable(ar_snoc->num_clks, ar_snoc->clks);
-	if (ret)
-		goto vreg_off;
-
-	return ret;
-
-vreg_off:
-	regulator_bulk_disable(ar_snoc->num_vregs, ar_snoc->vregs);
-	return ret;
-}
-
-static int ath10k_hw_power_off(struct ath10k *ar)
-{
-	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
-
-	ath10k_dbg(ar, ATH10K_DBG_SNOC, "soc power off\n");
-
-	clk_bulk_disable_unprepare(ar_snoc->num_clks, ar_snoc->clks);
-
-	return regulator_bulk_disable(ar_snoc->num_vregs, ar_snoc->vregs);
 }
 
 static void ath10k_msa_dump_memory(struct ath10k *ar,
@@ -1652,6 +1779,8 @@ static int ath10k_snoc_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	ar->rx_thread.ar = ar;
+	ar->rx_thread_enable = ath10k_rx_thread_enable;
 	ar_snoc = ath10k_snoc_priv(ar);
 	ar_snoc->dev = pdev;
 	platform_set_drvdata(pdev, ar);
@@ -1659,6 +1788,12 @@ static int ath10k_snoc_probe(struct platform_device *pdev)
 	ar_snoc->ce.bus_ops = &ath10k_snoc_bus_ops;
 	ar->ce_priv = &ar_snoc->ce;
 	msa_size = drv_data->msa_size;
+
+	ath10k_core_reg_access_history_init(ar, ATH10K_REG_ACCESS_HISTORY_MAX);
+	ath10k_core_wmi_event_history_init(ar, ATH10K_WMI_EVENT_HISTORY_MAX);
+	ath10k_core_wmi_cmd_history_init(ar, ATH10K_WMI_CMD_HISTORY_MAX);
+	ath10k_core_ce_event_history_init(ar, ATH10K_CE_EVENT_HISTORY_MAX);
+	ath10k_core_ce_ring_history_init(ar, ATH10K_CE_RING_HISTORY_MAX);
 
 	ath10k_snoc_quirks_init(ar);
 
@@ -1710,22 +1845,16 @@ static int ath10k_snoc_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_free_irq;
 
-	ret = ath10k_hw_power_on(ar);
-	if (ret) {
-		ath10k_err(ar, "failed to power on device: %d\n", ret);
-		goto err_free_irq;
-	}
-
 	ret = ath10k_setup_msa_resources(ar, msa_size);
 	if (ret) {
 		ath10k_warn(ar, "failed to setup msa resources: %d\n", ret);
-		goto err_power_off;
+		goto err_free_irq;
 	}
 
 	ret = ath10k_fw_init(ar);
 	if (ret) {
 		ath10k_err(ar, "failed to initialize firmware: %d\n", ret);
-		goto err_power_off;
+		goto err_free_irq;
 	}
 
 	ret = ath10k_qmi_init(ar, msa_size);
@@ -1740,9 +1869,6 @@ static int ath10k_snoc_probe(struct platform_device *pdev)
 
 err_fw_deinit:
 	ath10k_fw_deinit(ar);
-
-err_power_off:
-	ath10k_hw_power_off(ar);
 
 err_free_irq:
 	ath10k_snoc_free_irq(ar);
@@ -1771,7 +1897,6 @@ static int ath10k_snoc_remove(struct platform_device *pdev)
 	set_bit(ATH10K_SNOC_FLAG_UNREGISTERING, &ar_snoc->flags);
 
 	ath10k_core_unregister(ar);
-	ath10k_hw_power_off(ar);
 	ath10k_fw_deinit(ar);
 	ath10k_snoc_free_irq(ar);
 	ath10k_snoc_release_resource(ar);
@@ -1781,9 +1906,18 @@ static int ath10k_snoc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void ath10k_snoc_shutdown(struct platform_device *pdev)
+{
+	struct ath10k *ar = platform_get_drvdata(pdev);
+
+	ath10k_dbg(ar, ATH10K_DBG_SNOC, "snoc shutdown\n");
+	ath10k_snoc_remove(pdev);
+}
+
 static struct platform_driver ath10k_snoc_driver = {
 	.probe  = ath10k_snoc_probe,
 	.remove = ath10k_snoc_remove,
+	.shutdown =  ath10k_snoc_shutdown,
 	.driver = {
 		.name   = "ath10k_snoc",
 		.of_match_table = ath10k_snoc_dt_match,

@@ -796,6 +796,7 @@ int ath10k_htt_rx_alloc(struct ath10k_htt *htt)
 	timer_setup(timer, ath10k_htt_rx_ring_refill_retry, 0);
 
 	spin_lock_init(&htt->rx_ring.lock);
+	spin_lock_init(&htt->rx_in_ord_q_lock);
 
 	htt->rx_ring.fill_cnt = 0;
 	htt->rx_ring.sw_rd_idx.msdu_payld = 0;
@@ -1320,7 +1321,10 @@ static void ath10k_process_rx(struct ath10k *ar, struct sk_buff *skb)
 	trace_ath10k_rx_hdr(ar, skb->data, skb->len);
 	trace_ath10k_rx_payload(ar, skb->data, skb->len);
 
-	ieee80211_rx_napi(ar->hw, NULL, skb, &ar->napi);
+	if (in_serving_softirq())
+		ieee80211_rx_napi(ar->hw, NULL, skb, &ar->napi);
+	else
+		ieee80211_rx_napi(ar->hw, NULL, skb, NULL);
 }
 
 static int ath10k_htt_rx_nwifi_hdrlen(struct ath10k *ar,
@@ -2702,10 +2706,17 @@ static void ath10k_htt_rx_tx_compl_ind(struct ath10k *ar,
 		 */
 		if (ar->bus_param.dev_type == ATH10K_DEV_TYPE_HL) {
 			ath10k_txrx_tx_unref(htt, &tx_done);
-		} else if (!kfifo_put(&htt->txdone_fifo, tx_done)) {
-			ath10k_warn(ar, "txdone fifo overrun, msdu_id %d status %d\n",
-				    tx_done.msdu_id, tx_done.status);
-			ath10k_txrx_tx_unref(htt, &tx_done);
+		} else {
+			if (!kfifo_put(&htt->txdone_fifo, tx_done)) {
+				ath10k_warn(ar, "txdone fifo overrun, msdu_id %d status %d\n",
+					    tx_done.msdu_id, tx_done.status);
+				ath10k_txrx_tx_unref(htt, &tx_done);
+				continue;
+			}
+			if (ar->rx_thread_enable)
+				ath10k_core_thread_post_event(
+					&ar->rx_thread,
+					ATH10K_THREAD_EVENT_TX_POST);
 		}
 	}
 
@@ -3885,7 +3896,16 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	}
 	case HTT_T2H_MSG_TYPE_RX_IN_ORD_PADDR_IND: {
-		skb_queue_tail(&htt->rx_in_ord_compl_q, skb);
+		if (!ar->rx_thread_enable) {
+			skb_queue_tail(&htt->rx_in_ord_compl_q, skb);
+		} else {
+			spin_lock_bh(&htt->rx_in_ord_q_lock);
+			skb_queue_tail(&htt->rx_in_ord_compl_q, skb);
+			spin_unlock_bh(&htt->rx_in_ord_q_lock);
+			ath10k_core_thread_post_event(
+				&ar->rx_thread,
+				ATH10K_THREAD_EVENT_RX_POST);
+		}
 		return false;
 	}
 	case HTT_T2H_MSG_TYPE_TX_CREDIT_UPDATE_IND:
@@ -4011,6 +4031,9 @@ int ath10k_htt_txrx_compl_task(struct ath10k *ar, int budget)
 		goto exit;
 	}
 
+	if (ar->rx_thread_enable) {
+		spin_lock_bh(&htt->rx_in_ord_q_lock);
+	}
 	while ((skb = skb_dequeue(&htt->rx_in_ord_compl_q))) {
 		spin_lock_bh(&htt->rx_ring.lock);
 		ret = ath10k_htt_rx_in_ord_ind(ar, skb);
@@ -4019,8 +4042,12 @@ int ath10k_htt_txrx_compl_task(struct ath10k *ar, int budget)
 		dev_kfree_skb_any(skb);
 		if (ret == -EIO) {
 			resched_napi = true;
+		spin_unlock_bh(&htt->rx_in_ord_q_lock);
 			goto exit;
 		}
+	}
+	if (ar->rx_thread_enable) {
+		spin_unlock_bh(&htt->rx_in_ord_q_lock);
 	}
 
 	while (atomic_read(&htt->num_mpdus_ready)) {
@@ -4035,21 +4062,18 @@ int ath10k_htt_txrx_compl_task(struct ath10k *ar, int budget)
 	/* Deliver received data after processing data from hardware */
 	quota = ath10k_htt_rx_deliver_msdu(ar, quota, budget);
 
-	/* From NAPI documentation:
-	 *  The napi poll() function may also process TX completions, in which
-	 *  case if it processes the entire TX ring then it should count that
-	 *  work as the rest of the budget.
-	 */
-	if ((quota < budget) && !kfifo_is_empty(&htt->txdone_fifo))
-		quota = budget;
-
 	/* kfifo_get: called only within txrx_tasklet so it's neatly serialized.
 	 * From kfifo_get() documentation:
 	 *  Note that with only one concurrent reader and one concurrent writer,
 	 *  you don't need extra locking to use these macro.
 	 */
-	while (kfifo_get(&htt->txdone_fifo, &tx_done))
+	while (kfifo_get(&htt->txdone_fifo, &tx_done)) {
 		ath10k_txrx_tx_unref(htt, &tx_done);
+		quota++;
+	}
+
+	if (quota > budget)
+		resched_napi = true;
 
 	ath10k_mac_tx_push_pending(ar);
 

@@ -947,6 +947,7 @@ ap_spi_fp: &spi10 {
 	 * spot. Channel 0 is held open by bluetooth for now.
 	 */
 	vdd-3.3-ch0-supply = <&pp3300_l11c>;
+	qcom,msa-fixed-perm;
 	wifi-firmware {
 		iommus = <&apps_smmu 0xc2 0x1>;
 	};

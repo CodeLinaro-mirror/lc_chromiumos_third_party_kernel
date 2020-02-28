@@ -874,6 +874,7 @@ static inline const char *ath10k_scan_state_str(enum ath10k_scan_state state)
 
 enum ath10k_tx_pause_reason {
 	ATH10K_TX_PAUSE_Q_FULL,
+	ATH10K_TX_PAUSE_FW_DOWN,
 	ATH10K_TX_PAUSE_MAX,
 };
 
@@ -944,6 +945,122 @@ struct ath10k_bus_params {
 	bool hl_msdu_ids;
 };
 
+#define ATH10K_REG_ACCESS_HISTORY_MAX	512
+#define ATH10K_CE_EVENT_HISTORY_MAX	1024
+#define ATH10K_WMI_EVENT_HISTORY_MAX	512
+#define ATH10K_WMI_CMD_HISTORY_MAX	256
+#define ATH10K_CE_RING_HISTORY_MAX	1024
+
+#define ATH10K_WMI_DATA_LEN	16
+
+enum ath10k_ce_event {
+	ATH10K_IRQ_ENTRY,
+	ATH10K_IRQ_EXIT,
+	ATH10K_IRQ_ENABLE,
+	ATH10K_IRQ_DISABLE,
+	ATH10K_NAPI_POLL,
+	ATH10K_CE_SERVICE,
+	ATH10K_NAPI_COMPLETE,
+	ATH10K_NAPI_RESCHED,
+	ATH10K_IRQ_SUMMARY,
+};
+
+enum ath10k_wmi_type {
+	ATH10K_WMI_EVENT,
+	ATH10K_WMI_CMD,
+	ATH10K_WMI_TX_COMPL,
+};
+
+enum ath10k_ce_ring_event {
+	ATH10K_CE_BUFFER_POST,
+	ATH10K_CE_BUFFER_TX_DONE,
+	ATH10K_CE_BUFFER_UNMAP,
+};
+
+struct ath10k_reg_access_entry {
+	bool write;
+	u32 cpu_id;
+	u32 offset;
+	u32 val;
+	u64 timestamp;
+};
+
+struct ath10k_ce_ring_event_entry {
+	enum ath10k_ce_ring_event event_type;
+	u32 ce_id;
+	u64 timestamp;
+	u32 index;
+	void *vaddr;
+	dma_addr_t paddr;
+};
+
+struct ath10k_wmi_event_entry {
+	enum ath10k_wmi_type type;
+	u32 cpu_id;
+	u32 id;
+	u64 timestamp;
+	unsigned char data[ATH10K_WMI_DATA_LEN];
+};
+
+struct ath10k_ce_event_entry {
+	enum ath10k_ce_event event_type;
+	u32 cpu_id;
+	u32 ce_id;
+	u64 timestamp;
+};
+
+struct ath10k_ce_ring_event_history {
+	struct ath10k_ce_ring_event_entry *record;
+	u32 max_entries;
+	atomic_t index;
+	spinlock_t hist_lock;
+};
+
+struct ath10k_wmi_event_history {
+	struct ath10k_wmi_event_entry *record;
+	u32 max_entries;
+	atomic_t index;
+	/* lock for accessing wmi event history */
+	spinlock_t hist_lock;
+};
+
+struct ath10k_ce_event_history {
+	struct ath10k_ce_event_entry *record;
+	u32 max_entries;
+	atomic_t index;
+	/* lock for accessing ce event history */
+	spinlock_t hist_lock;
+};
+
+struct ath10k_reg_access_history {
+	struct ath10k_reg_access_entry *record;
+	u32 max_entries;
+	atomic_t index;
+	/* lock for accessing register access history */
+	spinlock_t hist_lock;
+};
+
+#define ATH10K_THREAD_NAME_SIZE_MAX	32
+
+enum ath10k_thread_events {
+	ATH10K_THREAD_EVENT_SHUTDOWN,
+	ATH10K_THREAD_EVENT_RX_POST,
+	ATH10K_THREAD_EVENT_TX_POST,
+	ATH10K_THREAD_EVENT_SUSPEND,
+	ATH10K_THREAD_EVENT_MAX,
+};
+
+struct ath10k_thread {
+	struct ath10k *ar;
+	struct task_struct *task;
+	struct completion shutdown;
+	struct completion suspend;
+	struct completion resume;
+	wait_queue_head_t wait_q;
+	DECLARE_BITMAP(event_flags, ATH10K_THREAD_EVENT_MAX);
+	char name[ATH10K_THREAD_NAME_SIZE_MAX];
+};
+
 struct ath10k {
 	struct ath_common ath_common;
 	struct ieee80211_hw *hw;
@@ -956,6 +1073,8 @@ struct ath10k {
 	} msa;
 	u8 mac_addr[ETH_ALEN];
 
+	bool rx_thread_enable;
+	struct ath10k_thread rx_thread;
 	enum ath10k_hw_rev hw_rev;
 	u16 dev_id;
 	u32 chip_id;
@@ -1030,6 +1149,7 @@ struct ath10k {
 		bool bmi_ids_valid;
 		bool qmi_ids_valid;
 		u32 qmi_board_id;
+		u32 qmi_chip_id;
 		u8 bmi_board_id;
 		u8 bmi_eboard_id;
 		u8 bmi_chip_id;
@@ -1232,6 +1352,12 @@ struct ath10k {
 	bool coex_support;
 	int coex_gpio_pin;
 
+	struct ath10k_reg_access_history reg_access_history;
+	struct ath10k_ce_event_history ce_event_history;
+	struct ath10k_wmi_event_history wmi_event_history;
+	struct ath10k_wmi_event_history wmi_cmd_history;
+	struct ath10k_ce_ring_event_history ce_ring_history;
+
 	/* must be last */
 	u8 drv_priv[0] __aligned(sizeof(void *));
 };
@@ -1247,6 +1373,16 @@ static inline bool ath10k_peer_stats_enabled(struct ath10k *ar)
 
 extern unsigned long ath10k_coredump_mask;
 
+int ath10k_core_thread_suspend(struct ath10k_thread *thread);
+int ath10k_core_thread_resume(struct ath10k_thread *thread);
+void ath10k_core_thread_post_event(struct ath10k_thread *thread,
+				   enum ath10k_thread_events event);
+int ath10k_core_thread_shutdown(struct ath10k *ar,
+				struct ath10k_thread *thread);
+int ath10k_core_thread_init(struct ath10k *ar,
+			    struct ath10k_thread *thread,
+			    int (*handler)(void *data),
+			    char *thread_name);
 struct ath10k *ath10k_core_create(size_t priv_size, struct device *dev,
 				  enum ath10k_bus bus,
 				  enum ath10k_hw_rev hw_rev,
@@ -1266,6 +1402,7 @@ int ath10k_core_register(struct ath10k *ar,
 			 const struct ath10k_bus_params *bus_params);
 void ath10k_core_unregister(struct ath10k *ar);
 int ath10k_core_fetch_board_file(struct ath10k *ar, int bd_ie_type);
+int ath10k_core_check_dt(struct ath10k *ar);
 void ath10k_core_free_board_files(struct ath10k *ar);
 
 #endif /* _CORE_H_ */

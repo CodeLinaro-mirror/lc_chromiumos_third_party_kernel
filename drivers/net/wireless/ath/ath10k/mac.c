@@ -29,6 +29,8 @@
 /* Rates */
 /*********/
 
+extern void *ath10k_ptr;
+
 static struct ieee80211_rate ath10k_rates[] = {
 	{ .bitrate = 10,
 	  .hw_value = ATH10K_HW_RATE_CCK_LP_1M },
@@ -701,7 +703,8 @@ static void ath10k_wait_for_peer_delete_done(struct ath10k *ar, u32 vdev_id,
 	unsigned long time_left;
 	int ret;
 
-	if (test_bit(WMI_SERVICE_SYNC_DELETE_CMDS, ar->wmi.svc_map)) {
+	if (test_bit(WMI_SERVICE_SYNC_DELETE_CMDS, ar->wmi.svc_map) &&
+	    !test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags)) {
 		ret = ath10k_wait_for_peer_deleted(ar, vdev_id, addr);
 		if (ret) {
 			ath10k_warn(ar, "failed wait for peer deleted");
@@ -841,7 +844,8 @@ static int ath10k_peer_delete(struct ath10k *ar, u32 vdev_id, const u8 *addr)
 	if (ret)
 		return ret;
 
-	if (test_bit(WMI_SERVICE_SYNC_DELETE_CMDS, ar->wmi.svc_map)) {
+	if (test_bit(WMI_SERVICE_SYNC_DELETE_CMDS, ar->wmi.svc_map) &&
+	    !test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags)) {
 		unsigned long time_left;
 
 		time_left = wait_for_completion_timeout
@@ -3302,6 +3306,7 @@ void ath10k_mac_tx_lock(struct ath10k *ar, int reason)
 	ar->tx_paused |= BIT(reason);
 	ieee80211_stop_queues(ar->hw);
 }
+EXPORT_SYMBOL(ath10k_mac_tx_lock);
 
 static void ath10k_mac_tx_unlock_iter(void *data, u8 *mac,
 				      struct ieee80211_vif *vif)
@@ -3332,6 +3337,7 @@ void ath10k_mac_tx_unlock(struct ath10k *ar, int reason)
 
 	ieee80211_wake_queue(ar->hw, ar->hw->offchannel_tx_hw_queue);
 }
+EXPORT_SYMBOL(ath10k_mac_tx_unlock);
 
 void ath10k_mac_vif_tx_lock(struct ath10k_vif *arvif, int reason)
 {
@@ -3702,11 +3708,8 @@ static int ath10k_mac_tx_submit(struct ath10k *ar,
 		break;
 	}
 
-	if (ret) {
-		ath10k_warn(ar, "failed to transmit packet, dropping: %d\n",
-			    ret);
+	if (ret)
 		ieee80211_free_txskb(ar->hw, skb);
-	}
 
 	return ret;
 }
@@ -3760,10 +3763,8 @@ static int ath10k_mac_tx(struct ath10k *ar,
 	}
 
 	ret = ath10k_mac_tx_submit(ar, txmode, txpath, skb);
-	if (ret) {
-		ath10k_warn(ar, "failed to submit frame: %d\n", ret);
+	if (ret)
 		return ret;
-	}
 
 	return 0;
 }
@@ -4395,7 +4396,12 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 
 	ret = ath10k_mac_tx(ar, vif, txmode, txpath, skb, false);
 	if (ret) {
-		ath10k_warn(ar, "failed to transmit frame: %d\n", ret);
+		if (ret == -ESHUTDOWN)
+			ath10k_dbg(ar, ATH10K_DBG_MAC, "failed to transmit frame: %d\n",
+				   ret);
+		else
+			ath10k_warn(ar, "failed to transmit frame: %d\n", ret);
+
 		if (is_htt) {
 			spin_lock_bh(&ar->htt.tx_lock);
 			ath10k_htt_tx_dec_pending(htt);
@@ -5627,7 +5633,8 @@ static void ath10k_remove_interface(struct ieee80211_hw *hw,
 		ath10k_warn(ar, "failed to delete WMI vdev %i: %d\n",
 			    arvif->vdev_id, ret);
 
-	if (test_bit(WMI_SERVICE_SYNC_DELETE_CMDS, ar->wmi.svc_map)) {
+	if (test_bit(WMI_SERVICE_SYNC_DELETE_CMDS, ar->wmi.svc_map) &&
+	    !test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags)) {
 		time_left = wait_for_completion_timeout(&ar->vdev_delete_done,
 							ATH10K_VDEV_DELETE_TIMEOUT_HZ);
 		if (time_left == 0) {
@@ -6061,6 +6068,11 @@ static int ath10k_hw_scan(struct ieee80211_hw *hw,
 
 	if (ath10k_mac_tdls_vif_stations_count(hw, vif) > 0) {
 		ret = -EBUSY;
+		goto exit;
+	}
+
+	if (test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags)) {
+		ret = -ESHUTDOWN;
 		goto exit;
 	}
 
@@ -6712,7 +6724,9 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 		}
 
 		ret = ath10k_peer_delete(ar, arvif->vdev_id, sta->addr);
-		if (ret)
+		if (ret == -ESHUTDOWN)
+			ret = 0;
+		else if (ret)
 			ath10k_warn(ar, "failed to delete peer %pM for vdev %d: %i\n",
 				    sta->addr, arvif->vdev_id, ret);
 
@@ -7901,31 +7915,6 @@ ath10k_mac_update_vif_chan(struct ath10k *ar,
 	if (ar->monitor_started)
 		ath10k_monitor_stop(ar);
 
-	for (i = 0; i < n_vifs; i++) {
-		arvif = (void *)vifs[i].vif->drv_priv;
-
-		ath10k_dbg(ar, ATH10K_DBG_MAC,
-			   "mac chanctx switch vdev_id %i freq %hu->%hu width %d->%d\n",
-			   arvif->vdev_id,
-			   vifs[i].old_ctx->def.chan->center_freq,
-			   vifs[i].new_ctx->def.chan->center_freq,
-			   vifs[i].old_ctx->def.width,
-			   vifs[i].new_ctx->def.width);
-
-		if (WARN_ON(!arvif->is_started))
-			continue;
-
-		if (WARN_ON(!arvif->is_up))
-			continue;
-
-		ret = ath10k_wmi_vdev_down(ar, arvif->vdev_id);
-		if (ret) {
-			ath10k_warn(ar, "failed to down vdev %d: %d\n",
-				    arvif->vdev_id, ret);
-			continue;
-		}
-	}
-
 	/* All relevant vdevs are downed and associated channel resources
 	 * should be available for the channel switch now.
 	 */
@@ -7936,6 +7925,14 @@ ath10k_mac_update_vif_chan(struct ath10k *ar,
 
 	for (i = 0; i < n_vifs; i++) {
 		arvif = (void *)vifs[i].vif->drv_priv;
+
+		ath10k_dbg(ar, ATH10K_DBG_MAC,
+			   "mac chanctx switch vdev_id %i freq %hu->%hu width %d->%d\n",
+			   arvif->vdev_id,
+			   vifs[i].old_ctx->def.chan->center_freq,
+			   vifs[i].new_ctx->def.chan->center_freq,
+			   vifs[i].old_ctx->def.width,
+			   vifs[i].new_ctx->def.width);
 
 		if (WARN_ON(!arvif->is_started))
 			continue;
@@ -8434,6 +8431,7 @@ struct ath10k *ath10k_mac_create(size_t priv_size)
 	ar = hw->priv;
 	ar->hw = hw;
 	ar->ops = ops;
+	ath10k_ptr = ar;
 
 	return ar;
 }
