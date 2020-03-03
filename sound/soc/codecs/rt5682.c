@@ -1253,7 +1253,7 @@ static int set_dmic_clk(struct snd_soc_dapm_widget *w,
 	int idx = -EINVAL;
 	static const int div[] = {2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128};
 
-	idx = rt5682_div_sel(rt5682, 1500000, div, ARRAY_SIZE(div));
+	idx = rt5682_div_sel(rt5682, 3072000, div, ARRAY_SIZE(div));
 
 	snd_soc_component_update_bits(component, RT5682_DMIC_CTRL_1,
 		RT5682_DMIC_CLK_MASK, idx << RT5682_DMIC_CLK_SFT);
