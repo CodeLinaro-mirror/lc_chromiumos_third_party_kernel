@@ -1638,6 +1638,9 @@ static const char *pick_link(struct nameidata *nd, struct path *link,
 		touch_atime(&last->link);
 	}
 
+	if (nd->path.mnt->mnt_flags & MNT_NOSYMFOLLOW)
+		return ERR_PTR(-ELOOP);
+
 	error = security_inode_follow_link(link->dentry, inode,
 					   nd->flags & LOOKUP_RCU);
 	if (unlikely(error))
