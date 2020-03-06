@@ -6438,6 +6438,67 @@ ath10k_mac_bitrate_mask_has_single_rate(struct ath10k *ar,
 	return num_rates == 1;
 }
 
+/* Set the last_tx_bitrate when a fixed rate with a single rate is used.
+ * In this case there is no rate stats updates from the firmware.
+ * last_tx_bitrate needs be set properly in order to calculate estimated
+ * airtime.
+ */
+static void ath10k_mac_set_last_txrate(void *data,
+				       struct ieee80211_sta *sta)
+{
+	struct ath10k_vif *arvif = data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ath10k *ar = arvif->ar;
+	struct rate_info txrate;
+	u32 bitrate;
+
+	if (arsta->arvif != arvif)
+		return;
+
+	txrate = arvif->fixed_txrate;
+	spin_lock_bh(&ar->data_lock);
+	switch (sta->bandwidth) {
+	case IEEE80211_STA_RX_BW_20:
+		txrate.bw = RATE_INFO_BW_20;
+		break;
+	case IEEE80211_STA_RX_BW_40:
+		txrate.bw = RATE_INFO_BW_40;
+		break;
+	case IEEE80211_STA_RX_BW_80:
+		txrate.bw = RATE_INFO_BW_80;
+		break;
+	default:
+		ath10k_warn(ar, "%s Invalid bandwidth %d in %pM\n", __func__,
+			    sta->bandwidth, sta->addr);
+	}
+	bitrate = cfg80211_calculate_bitrate(&txrate);
+	if (bitrate)
+		arsta->last_tx_bitrate = bitrate;
+
+	spin_unlock_bh(&ar->data_lock);
+}
+
+static void ath10k_fixed_rate_update_last_txrate(struct ath10k_vif *arvif,
+						 u8 rate)
+{
+	arvif->fixed_txrate.nss = ATH10K_HW_NSS(rate);
+	arvif->fixed_txrate.mcs = ATH10K_HW_MCS_RATE(rate);
+
+	switch (ATH10K_HW_PREAMBLE(rate)) {
+	case WMI_RATE_PREAMBLE_HT:
+		arvif->fixed_txrate.flags = RATE_INFO_FLAGS_MCS;
+		break;
+	case WMI_RATE_PREAMBLE_VHT:
+		arvif->fixed_txrate.flags = RATE_INFO_FLAGS_VHT_MCS;
+		break;
+	default:
+		arvif->fixed_txrate.flags = 0;
+	}
+	ieee80211_iterate_stations_atomic(arvif->ar->hw,
+					  ath10k_mac_set_last_txrate,
+					  arvif);
+}
+
 static int
 ath10k_mac_bitrate_mask_get_single_rate(struct ath10k *ar,
 					enum nl80211_band band,
@@ -7023,6 +7084,7 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 		ath10k_dbg(ar, ATH10K_DBG_MAC, "mac sta %pM associated\n",
 			   sta->addr);
 
+		ath10k_mac_set_last_txrate(arvif, sta);
 		ret = ath10k_station_assoc(ar, vif, sta, false);
 		if (ret)
 			ath10k_warn(ar, "failed to associate station %pM for vdev %i: %i\n",
@@ -7736,6 +7798,7 @@ static int ath10k_mac_op_set_bitrate_mask(struct ieee80211_hw *hw,
 	if (sgi == NL80211_TXRATE_FORCE_LGI)
 		return -EINVAL;
 
+	memset(&arvif->fixed_txrate, 0, sizeof(arvif->fixed_txrate));
 	if (ath10k_mac_bitrate_mask_has_single_rate(ar, band, mask)) {
 		ret = ath10k_mac_bitrate_mask_get_single_rate(ar, band, mask,
 							      &rate, &nss);
@@ -7744,6 +7807,7 @@ static int ath10k_mac_op_set_bitrate_mask(struct ieee80211_hw *hw,
 				    arvif->vdev_id, ret);
 			return ret;
 		}
+		ath10k_fixed_rate_update_last_txrate(arvif, rate);
 	} else if (ath10k_mac_bitrate_mask_get_single_nss(ar, band, mask,
 							  &single_nss)) {
 		rate = WMI_FIXED_RATE_NONE;
