@@ -25,7 +25,6 @@ enum lpaif_i2s_ports {
 	IPQ806X_LPAIF_I2S_PORT_CODEC_MIC,
 	IPQ806X_LPAIF_I2S_PORT_SEC_SPK,
 	IPQ806X_LPAIF_I2S_PORT_SEC_MIC,
-	IPQ806X_LPAIF_I2S_PORT_MI2S,
 };
 
 enum lpaif_dma_channels {
@@ -84,12 +83,6 @@ static struct lpass_variant ipq806x_data = {
 	.wrdma_channels		= 4,
 	.dai_driver		= &ipq806x_lpass_cpu_dai_driver,
 	.num_dai		= 1,
-	.dai_osr_clk_names	= (const char *[]) {
-				"mi2s-osr-clk",
-				},
-	.dai_bit_clk_names	= (const char *[]) {
-				"mi2s-bit-clk",
-				},
 	.alloc_dma_channel	= ipq806x_lpass_alloc_dma_channel,
 	.free_dma_channel	= ipq806x_lpass_free_dma_channel,
 };

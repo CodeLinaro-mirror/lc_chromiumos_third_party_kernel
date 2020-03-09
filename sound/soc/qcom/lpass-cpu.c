@@ -23,9 +23,10 @@ static int lpass_cpu_daiops_set_sysclk(struct snd_soc_dai *dai, int clk_id,
 		unsigned int freq, int dir)
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+	struct lpass_dai *dai_data = drvdata->dai_priv[dai->driver->id];
 	int ret;
 
-	ret = clk_set_rate(drvdata->mi2s_osr_clk[dai->driver->id], freq);
+	ret = clk_set_rate(dai_data->osr_clk, freq);
 	if (ret)
 		dev_err(dai->dev, "error setting mi2s osrclk to %u: %d\n",
 			freq, ret);
@@ -37,18 +38,22 @@ static int lpass_cpu_daiops_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+	struct lpass_dai *dai_data = drvdata->dai_priv[dai->driver->id];
 	int ret;
 
-	ret = clk_prepare_enable(drvdata->mi2s_osr_clk[dai->driver->id]);
-	if (ret) {
-		dev_err(dai->dev, "error in enabling mi2s osr clk: %d\n", ret);
-		return ret;
+	if (dai_data->osr_clk != NULL) {
+		ret = clk_prepare_enable(dai_data->osr_clk);
+		if (ret) {
+			dev_err(dai->dev,
+				"error in enabling mi2s osr clk: %d\n", ret);
+			return ret;
+		}
 	}
 
-	ret = clk_prepare_enable(drvdata->mi2s_bit_clk[dai->driver->id]);
+	ret = clk_prepare_enable(dai_data->bit_clk);
 	if (ret) {
 		dev_err(dai->dev, "error in enabling mi2s bit clk: %d\n", ret);
-		clk_disable_unprepare(drvdata->mi2s_osr_clk[dai->driver->id]);
+		clk_disable_unprepare(dai_data->osr_clk);
 		return ret;
 	}
 
@@ -59,16 +64,18 @@ static void lpass_cpu_daiops_shutdown(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+	struct lpass_dai *dai_data = drvdata->dai_priv[dai->driver->id];
 
-	clk_disable_unprepare(drvdata->mi2s_bit_clk[dai->driver->id]);
+	clk_disable_unprepare(dai_data->bit_clk);
 
-	clk_disable_unprepare(drvdata->mi2s_osr_clk[dai->driver->id]);
+	clk_disable_unprepare(dai_data->osr_clk);
 }
 
 static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+	struct lpass_dai *dai_data = drvdata->dai_priv[dai->driver->id];
 	snd_pcm_format_t format = params_format(params);
 	unsigned int channels = params_channels(params);
 	unsigned int rate = params_rate(params);
@@ -163,8 +170,7 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 
-	ret = clk_set_rate(drvdata->mi2s_bit_clk[dai->driver->id],
-			   rate * bitwidth * 2);
+	ret = clk_set_rate(dai_data->bit_clk, rate * bitwidth * 2);
 	if (ret) {
 		dev_err(dai->dev, "error setting mi2s bitclk to %u: %d\n",
 			rate * bitwidth * 2, ret);
@@ -413,6 +419,68 @@ static struct regmap_config lpass_cpu_regmap_config = {
 	.cache_type = REGCACHE_FLAT,
 };
 
+static void of_qcom_parse_dai_data(struct device *dev,
+				    struct lpass_data *drvdata)
+{
+	struct device_node *node;
+	struct lpass_dai *dai;
+	int ret;
+
+	for_each_child_of_node(dev->of_node, node) {
+		int id;
+
+		ret = of_property_read_u32(node, "id", &id);
+		if (ret || id < 0 || id >= LPASS_MAX_MI2S_PORTS) {
+			dev_err(dev, "valid dai id not found:%d\n", ret);
+			continue;
+		}
+
+		dai = drvdata->dai_priv[id];
+		switch (id) {
+		case MI2S_PRIMARY... MI2S_QUATERNARY:
+			 /* MI2S specific properties */
+			ret = of_property_read_string(node, "qcom,osrclk-name",
+						      &dai->osrclk_name);
+			if (ret) {
+				dev_warn(dev, "dai:%d osrclk not defined", id);
+			}
+
+			ret = of_property_read_string(node, "qcom,bitclk-name",
+							&dai->bitclk_name);
+			if (ret) {
+				dev_err(dev, "dai:%d bitclk not defined", id);
+			}
+			break;
+		case IPQ806X_LPAIF_I2S_PORT_MI2S:
+			/* We have hardcoded clock name for IPQ806X */
+			dai->osrclk_name = "mi2s-osr-clk";
+			dai->bitclk_name = "mi2s-bit-clk";
+			break;
+		default:
+			dev_err(dev, "valid dai not found:%d\n", id);
+			break;
+		}
+	}
+}
+
+static int lpass_init_dai_clocks(struct device *dev,
+			   struct lpass_data *drvdata)
+{
+	struct lpass_dai *dai;
+	struct lpass_variant *variant = drvdata->variant;
+	int i;
+
+	for (i = 0; i < variant->num_dai; i++) {
+
+		dai = drvdata->dai_priv[i];
+
+		dai->osr_clk = devm_clk_get_optional(dev, dai->osrclk_name);
+		dai->bit_clk = devm_clk_get(dev, dai->bitclk_name);
+	}
+
+	return 0;
+}
+
 int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 {
 	struct lpass_data *drvdata;
@@ -421,7 +489,7 @@ int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 	struct lpass_variant *variant;
 	struct device *dev = &pdev->dev;
 	const struct of_device_id *match;
-	int ret, i, dai_id;
+	int ret, i;
 
 	dsp_of_node = of_parse_phandle(pdev->dev.of_node, "qcom,adsp", 0);
 	if (dsp_of_node) {
@@ -467,28 +535,18 @@ int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 		variant->init(pdev);
 
 	for (i = 0; i < variant->num_dai; i++) {
-		dai_id = variant->dai_driver[i].id;
-		drvdata->mi2s_osr_clk[dai_id] = devm_clk_get(&pdev->dev,
-					     variant->dai_osr_clk_names[i]);
-		if (IS_ERR(drvdata->mi2s_osr_clk[dai_id])) {
-			dev_warn(&pdev->dev,
-				"%s() error getting optional %s: %ld\n",
-				__func__,
-				variant->dai_osr_clk_names[i],
-				PTR_ERR(drvdata->mi2s_osr_clk[dai_id]));
+		drvdata->dai_priv[i] = devm_kzalloc(dev,
+						sizeof(struct lpass_dai),
+						GFP_KERNEL);
+	}
 
-			drvdata->mi2s_osr_clk[dai_id] = NULL;
-		}
+	/* parse dai data from dts */
+	of_qcom_parse_dai_data(dev, drvdata);
 
-		drvdata->mi2s_bit_clk[dai_id] = devm_clk_get(&pdev->dev,
-						variant->dai_bit_clk_names[i]);
-		if (IS_ERR(drvdata->mi2s_bit_clk[dai_id])) {
-			dev_err(&pdev->dev,
-				"error getting %s: %ld\n",
-				variant->dai_bit_clk_names[i],
-				PTR_ERR(drvdata->mi2s_bit_clk[dai_id]));
-			return PTR_ERR(drvdata->mi2s_bit_clk[dai_id]);
-		}
+	ret = lpass_init_dai_clocks(dev, drvdata);
+	if (ret) {
+		dev_err(&pdev->dev, "error intializing dai clock: %d\n", ret);
+		return ret;
 	}
 
 	drvdata->ahbix_clk = devm_clk_get(&pdev->dev, "ahbix-clk");

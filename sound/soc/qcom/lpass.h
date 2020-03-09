@@ -12,10 +12,19 @@
 #include <linux/compiler.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+#include <dt-bindings/sound/qcom,lpass.h>
 
-#define LPASS_AHBIX_CLOCK_FREQUENCY		131072000
-#define LPASS_MAX_MI2S_PORTS			(8)
-#define LPASS_MAX_DMA_CHANNELS			(8)
+#define LPASS_AHBIX_CLOCK_FREQUENCY            131072000
+#define LPASS_MAX_MI2S_PORTS                   (8)
+#define LPASS_MAX_DMA_CHANNELS                 (8)
+
+struct lpass_dai {
+	struct clk *osr_clk;
+	struct clk *bit_clk;
+
+	const char *osrclk_name;
+	const char *bitclk_name;
+};
 
 /* Both the CPU DAI and platform drivers will access this data */
 struct lpass_data {
@@ -23,11 +32,8 @@ struct lpass_data {
 	/* AHB-I/X bus clocks inside the low-power audio subsystem (LPASS) */
 	struct clk *ahbix_clk;
 
-	/* MI2S system clock */
-	struct clk *mi2s_osr_clk[LPASS_MAX_MI2S_PORTS];
-
-	/* MI2S bit clock (derived from system clock by a divider */
-	struct clk *mi2s_bit_clk[LPASS_MAX_MI2S_PORTS];
+	/* MI2S dai specific configuration */
+	struct lpass_dai *dai_priv[LPASS_MAX_MI2S_PORTS];
 
 	/* low-power audio interface (LPAIF) registers */
 	void __iomem *lpaif;
@@ -83,8 +89,6 @@ struct lpass_variant {
 	/* SOC specific dais */
 	struct snd_soc_dai_driver *dai_driver;
 	int num_dai;
-	const char * const *dai_osr_clk_names;
-	const char * const *dai_bit_clk_names;
 };
 
 /* register the platform driver from the CPU DAI driver */
