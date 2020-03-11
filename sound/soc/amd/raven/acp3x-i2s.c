@@ -8,7 +8,6 @@
 #include <linux/module.h>
 #include <linux/err.h>
 #include <linux/io.h>
-#include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/soc-dai.h>
@@ -16,7 +15,7 @@
 
 #include "acp3x.h"
 
-#define DRV_NAME "acp3x-i2s"
+#define DRV_NAME "acp3x_i2s_playcap"
 
 static int acp3x_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
 					unsigned int fmt)
@@ -171,6 +170,7 @@ static int acp3x_i2s_trigger(struct snd_pcm_substream *substream,
 	struct snd_soc_card *card;
 	struct acp3x_platform_info *pinfo;
 	u32 ret, val, period_bytes, reg_val, ier_val, water_val;
+	u32 buf_size, buf_reg;
 
 	prtd = substream->private_data;
 	rtd = substream->runtime->private_data;
@@ -184,6 +184,8 @@ static int acp3x_i2s_trigger(struct snd_pcm_substream *substream,
 	}
 	period_bytes = frames_to_bytes(substream->runtime,
 			substream->runtime->period_size);
+	buf_size = frames_to_bytes(substream->runtime,
+			substream->runtime->buffer_size);
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
@@ -197,6 +199,7 @@ static int acp3x_i2s_trigger(struct snd_pcm_substream *substream,
 					mmACP_BT_TX_INTR_WATERMARK_SIZE;
 				reg_val = mmACP_BTTDM_ITER;
 				ier_val = mmACP_BTTDM_IER;
+				buf_reg = mmACP_BT_TX_RINGBUFSIZE;
 				break;
 			case I2S_SP_INSTANCE:
 			default:
@@ -204,6 +207,7 @@ static int acp3x_i2s_trigger(struct snd_pcm_substream *substream,
 					mmACP_I2S_TX_INTR_WATERMARK_SIZE;
 				reg_val = mmACP_I2STDM_ITER;
 				ier_val = mmACP_I2STDM_IER;
+				buf_reg = mmACP_I2S_TX_RINGBUFSIZE;
 			}
 		} else {
 			switch (rtd->i2s_instance) {
@@ -212,6 +216,7 @@ static int acp3x_i2s_trigger(struct snd_pcm_substream *substream,
 					mmACP_BT_RX_INTR_WATERMARK_SIZE;
 				reg_val = mmACP_BTTDM_IRER;
 				ier_val = mmACP_BTTDM_IER;
+				buf_reg = mmACP_BT_RX_RINGBUFSIZE;
 				break;
 			case I2S_SP_INSTANCE:
 			default:
@@ -219,9 +224,11 @@ static int acp3x_i2s_trigger(struct snd_pcm_substream *substream,
 					mmACP_I2S_RX_INTR_WATERMARK_SIZE;
 				reg_val = mmACP_I2STDM_IRER;
 				ier_val = mmACP_I2STDM_IER;
+				buf_reg = mmACP_I2S_RX_RINGBUFSIZE;
 			}
 		}
 		rv_writel(period_bytes, rtd->acp3x_base + water_val);
+		rv_writel(buf_size, rtd->acp3x_base + buf_reg);
 		val = rv_readl(rtd->acp3x_base + reg_val);
 		val = val | BIT(0);
 		rv_writel(val, rtd->acp3x_base + reg_val);
@@ -235,30 +242,32 @@ static int acp3x_i2s_trigger(struct snd_pcm_substream *substream,
 			switch (rtd->i2s_instance) {
 			case I2S_BT_INSTANCE:
 				reg_val = mmACP_BTTDM_ITER;
-				ier_val = mmACP_BTTDM_IER;
 				break;
 			case I2S_SP_INSTANCE:
 			default:
 				reg_val = mmACP_I2STDM_ITER;
-				ier_val = mmACP_I2STDM_IER;
 			}
 
 		} else {
 			switch (rtd->i2s_instance) {
 			case I2S_BT_INSTANCE:
 				reg_val = mmACP_BTTDM_IRER;
-				ier_val = mmACP_BTTDM_IER;
 				break;
 			case I2S_SP_INSTANCE:
 			default:
 				reg_val = mmACP_I2STDM_IRER;
-				ier_val = mmACP_I2STDM_IER;
 			}
 		}
 		val = rv_readl(rtd->acp3x_base + reg_val);
 		val = val & ~BIT(0);
 		rv_writel(val, rtd->acp3x_base + reg_val);
-		rv_writel(0, rtd->acp3x_base + ier_val);
+
+		if (!(rv_readl(rtd->acp3x_base + mmACP_BTTDM_ITER) & BIT(0)) &&
+		     !(rv_readl(rtd->acp3x_base + mmACP_BTTDM_IRER) & BIT(0)))
+			rv_writel(0, rtd->acp3x_base + mmACP_BTTDM_IER);
+		if (!(rv_readl(rtd->acp3x_base + mmACP_I2STDM_ITER) & BIT(0)) &&
+		     !(rv_readl(rtd->acp3x_base + mmACP_I2STDM_IRER) & BIT(0)))
+			rv_writel(0, rtd->acp3x_base + mmACP_I2STDM_IER);
 		ret = 0;
 		break;
 	default:
@@ -277,7 +286,7 @@ static struct snd_soc_dai_ops acp3x_i2s_dai_ops = {
 };
 
 static const struct snd_soc_component_driver acp3x_dai_component = {
-	.name           = "acp3x-i2s",
+	.name           = DRV_NAME,
 };
 
 static struct snd_soc_dai_driver acp3x_i2s_dai = {
@@ -322,8 +331,8 @@ static int acp3x_dai_probe(struct platform_device *pdev)
 	}
 	adata->acp3x_base = devm_ioremap(&pdev->dev, res->start,
 						resource_size(res));
-	if (IS_ERR(adata->acp3x_base))
-		return PTR_ERR(adata->acp3x_base);
+	if (!adata->acp3x_base)
+		return -ENOMEM;
 
 	adata->i2s_irq = res->start;
 	dev_set_drvdata(&pdev->dev, adata);
@@ -356,4 +365,4 @@ module_platform_driver(acp3x_dai_driver);
 MODULE_AUTHOR("Vishnuvardhanrao.Ravulapati@amd.com");
 MODULE_DESCRIPTION("AMD ACP 3.x PCM Driver");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:" DRV_NAME);
+MODULE_ALIAS("platform:"DRV_NAME);

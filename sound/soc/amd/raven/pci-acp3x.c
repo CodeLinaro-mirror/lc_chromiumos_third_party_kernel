@@ -11,7 +11,6 @@
 #include <linux/interrupt.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
-#include <sound/pcm.h>
 
 #include "acp3x.h"
 
@@ -39,8 +38,13 @@ static int acp3x_power_on(void __iomem *acp3x_base)
 	timeout = 0;
 	while (++timeout < 500) {
 		val = rv_readl(acp3x_base + mmACP_PGFSM_STATUS);
-		if (!val)
+		if (!val) {
+			/* Set PME_EN as after ACP power On,
+			 * PME_EN gets cleared
+			 */
+			rv_writel(0x1, acp3x_base + mmACP_PME_EN);
 			return 0;
+		}
 		udelay(1);
 	}
 	return -ETIMEDOUT;
@@ -226,7 +230,13 @@ static int snd_acp3x_probe(struct pci_dev *pci,
 		pdevinfo[2].id = 1;
 		pdevinfo[2].parent = &pci->dev;
 		pdevinfo[2].num_res = 1;
-		pdevinfo[2].res = &adata->res[2];
+		pdevinfo[2].res = &adata->res[1];
+
+		pdevinfo[3].name = "acp3x_i2s_playcap";
+		pdevinfo[3].id = 2;
+		pdevinfo[3].parent = &pci->dev;
+		pdevinfo[3].num_res = 1;
+		pdevinfo[3].res = &adata->res[2];
 		for (i = 0; i < ACP3x_DEVS; i++) {
 			adata->pdev[i] =
 				platform_device_register_full(&pdevinfo[i]);
@@ -243,11 +253,12 @@ static int snd_acp3x_probe(struct pci_dev *pci,
 		ret = -ENODEV;
 		goto disable_msi;
 	}
-	pm_runtime_set_autosuspend_delay(&pci->dev, 5000);
+	pm_runtime_set_autosuspend_delay(&pci->dev, 2000);
 	pm_runtime_use_autosuspend(&pci->dev);
 	pm_runtime_set_active(&pci->dev);
 	pm_runtime_put_noidle(&pci->dev);
 	pm_runtime_enable(&pci->dev);
+	pm_runtime_allow(&pci->dev);
 	return 0;
 
 unregister_devs:

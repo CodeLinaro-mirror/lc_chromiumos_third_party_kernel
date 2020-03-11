@@ -520,7 +520,7 @@ static void link_disconnect_remap(struct dc_sink *prev_sink, struct dc_link *lin
 }
 
 
-static void read_edp_current_link_settings_on_detect(struct dc_link *link)
+static void read_current_link_settings_on_detect(struct dc_link *link)
 {
 	union lane_count_set lane_count_set = { {0} };
 	uint8_t link_bw_set;
@@ -555,17 +555,23 @@ static void read_edp_current_link_settings_on_detect(struct dc_link *link)
 			&link_bw_set, sizeof(link_bw_set));
 
 	if (link_bw_set == 0) {
-		/* If standard link rates are not being used,
-		 * Read DPCD 00115h to find the link rate set used
-		 */
-		core_link_read_dpcd(link, DP_LINK_RATE_SET,
-				&link_rate_set, sizeof(link_rate_set));
+		if (link->connector_signal == SIGNAL_TYPE_EDP) {
+			/* If standard link rates are not being used,
+			 * Read DPCD 00115h to find the edp link rate set used
+			 */
+			core_link_read_dpcd(link, DP_LINK_RATE_SET,
+					&link_rate_set, sizeof(link_rate_set));
 
-		if (link_rate_set < link->dpcd_caps.edp_supported_link_rates_count) {
-			link->cur_link_settings.link_rate =
-				link->dpcd_caps.edp_supported_link_rates[link_rate_set];
-			link->cur_link_settings.link_rate_set = link_rate_set;
-			link->cur_link_settings.use_link_rate_set = true;
+			// edp_supported_link_rates_count = 0 for DP
+			if (link_rate_set < link->dpcd_caps.edp_supported_link_rates_count) {
+				link->cur_link_settings.link_rate =
+						link->dpcd_caps.edp_supported_link_rates[link_rate_set];
+				link->cur_link_settings.link_rate_set = link_rate_set;
+				link->cur_link_settings.use_link_rate_set = true;
+			}
+		} else {
+			// Link Rate not found. Seamless boot may not work.
+			ASSERT(false);
 		}
 	} else {
 		link->cur_link_settings.link_rate = link_bw_set;
@@ -593,6 +599,9 @@ static bool detect_dp(
 
 	if (sink_caps->transaction_type == DDC_TRANSACTION_TYPE_I2C_OVER_AUX) {
 		sink_caps->signal = SIGNAL_TYPE_DISPLAY_PORT;
+
+		dpcd_set_source_specific_data(link);
+
 		if (!detect_dp_sink_caps(link))
 			return false;
 
@@ -753,6 +762,7 @@ bool dc_link_detect(struct dc_link *link, enum dc_detect_reason reason)
 	struct dpcd_caps prev_dpcd_caps;
 	bool same_dpcd = true;
 	enum dc_connection_type new_connection_type = dc_connection_none;
+	bool perform_dp_seamless_boot = false;
 	DC_LOGGER_INIT(link->ctx->logger);
 
 	if (dc_is_virtual_signal(link->connector_signal))
@@ -760,8 +770,16 @@ bool dc_link_detect(struct dc_link *link, enum dc_detect_reason reason)
 
 	if ((link->connector_signal == SIGNAL_TYPE_LVDS ||
 			link->connector_signal == SIGNAL_TYPE_EDP) &&
-			link->local_sink)
+			link->local_sink) {
+
+		// need to re-write OUI and brightness in resume case
+		if (link->connector_signal == SIGNAL_TYPE_EDP) {
+			dpcd_set_source_specific_data(link);
+			dc_link_set_default_brightness_aux(link); //TODO: use cached
+		}
+
 		return true;
+	}
 
 	if (false == dc_link_detect_sink(link, &new_connection_type)) {
 		BREAK_TO_DEBUGGER();
@@ -809,15 +827,19 @@ bool dc_link_detect(struct dc_link *link, enum dc_detect_reason reason)
 		}
 
 		case SIGNAL_TYPE_EDP: {
-			read_edp_current_link_settings_on_detect(link);
+			read_current_link_settings_on_detect(link);
+
+			dpcd_set_source_specific_data(link);
+
 			detect_edp_sink_caps(link);
-			sink_caps.transaction_type =
-				DDC_TRANSACTION_TYPE_I2C_OVER_AUX;
+			read_current_link_settings_on_detect(link);
+			sink_caps.transaction_type = DDC_TRANSACTION_TYPE_I2C_OVER_AUX;
 			sink_caps.signal = SIGNAL_TYPE_EDP;
 			break;
 		}
 
 		case SIGNAL_TYPE_DISPLAY_PORT: {
+
 			/* wa HPD high coming too early*/
 			if (link->link_enc->features.flags.bits.DP_IS_USB_C == 1) {
 
@@ -869,6 +891,17 @@ bool dc_link_detect(struct dc_link *link, enum dc_detect_reason reason)
 				if (prev_sink != NULL)
 					dc_sink_release(prev_sink);
 				return false;
+			}
+
+			// For seamless boot, to skip verify link cap, we read UEFI settings and set them as verified.
+			if (reason == DETECT_REASON_BOOT &&
+					dc_ctx->dc->config.power_down_display_on_boot == false &&
+					link->link_status.link_active == true)
+				perform_dp_seamless_boot = true;
+
+			if (perform_dp_seamless_boot) {
+				read_current_link_settings_on_detect(link);
+				link->verified_link_cap = link->reported_link_cap;
 			}
 
 			break;
@@ -948,17 +981,17 @@ bool dc_link_detect(struct dc_link *link, enum dc_detect_reason reason)
 			same_edid = is_same_edid(&prev_sink->dc_edid, &sink->dc_edid);
 
 		if (link->connector_signal == SIGNAL_TYPE_DISPLAY_PORT &&
-			sink_caps.transaction_type == DDC_TRANSACTION_TYPE_I2C_OVER_AUX &&
-			reason != DETECT_REASON_HPDRX) {
+			sink_caps.transaction_type == DDC_TRANSACTION_TYPE_I2C_OVER_AUX) {
 			/*
 			 * TODO debug why Dell 2413 doesn't like
 			 *  two link trainings
 			 */
 
-			/* deal with non-mst cases */
-			dp_verify_link_cap_with_retries(link,
-					&link->reported_link_cap,
-					LINK_TRAINING_MAX_VERIFY_RETRY);
+			// verify link cap for SST non-seamless boot
+			if (!perform_dp_seamless_boot)
+				dp_verify_link_cap_with_retries(link,
+						&link->reported_link_cap,
+						LINK_TRAINING_MAX_VERIFY_RETRY);
 		} else {
 			// If edid is the same, then discard new sink and revert back to original sink
 			if (same_edid) {
@@ -1463,6 +1496,7 @@ static enum dc_status enable_link_dp(
 #endif
 	int i;
 	bool apply_seamless_boot_optimization = false;
+	uint32_t bl_oled_enable_delay = 50; // in ms
 
 	// check for seamless boot
 	for (i = 0; i < state->stream_count; i++) {
@@ -1510,6 +1544,9 @@ static enum dc_status enable_link_dp(
 	panel_mode = dp_get_panel_mode(link);
 	dp_set_panel_mode(link, panel_mode);
 
+	// during mode switch we do DP_SET_POWER off then on, and OUI is lost
+	dpcd_set_source_specific_data(link);
+
 	skip_video_pattern = true;
 
 	if (link_settings.link_rate == LINK_RATE_LOW)
@@ -1539,6 +1576,17 @@ static enum dc_status enable_link_dp(
 
 	dp_set_fec_enable(link, fec_enable);
 #endif
+
+	// during mode set we do DP_SET_POWER off then on, aux writes are lost
+	if (link->dpcd_sink_ext_caps.bits.oled == 1 ||
+		link->dpcd_sink_ext_caps.bits.sdr_aux_backlight_control == 1 ||
+		link->dpcd_sink_ext_caps.bits.hdr_aux_backlight_control == 1) {
+		dc_link_set_default_brightness_aux(link); // TODO: use cached if known
+		if (link->dpcd_sink_ext_caps.bits.oled == 1)
+			msleep(bl_oled_enable_delay);
+		dc_link_backlight_enable_aux(link, true);
+	}
+
 	return status;
 }
 
@@ -2669,6 +2717,24 @@ static enum dc_status deallocate_mst_payload(struct pipe_ctx *pipe_ctx)
 
 	return DC_OK;
 }
+#if defined(CONFIG_DRM_AMD_DC_HDCP)
+static void update_psp_stream_config(struct pipe_ctx *pipe_ctx, bool dpms_off)
+{
+	struct cp_psp *cp_psp = &pipe_ctx->stream->ctx->cp_psp;
+	if (cp_psp && cp_psp->funcs.update_stream_config) {
+		struct cp_psp_stream_config config;
+
+		memset(&config, 0, sizeof(config));
+
+		config.otg_inst = (uint8_t) pipe_ctx->stream_res.tg->inst;
+		config.stream_enc_inst = (uint8_t) pipe_ctx->stream_res.stream_enc->id;
+		config.link_enc_inst = pipe_ctx->stream->link->link_enc_hw_inst;
+		config.dpms_off = dpms_off;
+		config.dm_stream_ctx = pipe_ctx->stream->dm_stream_context;
+		cp_psp->funcs.update_stream_config(cp_psp->handle, &config);
+	}
+}
+#endif
 
 void core_link_enable_stream(
 		struct dc_state *state,
@@ -2729,6 +2795,9 @@ void core_link_enable_stream(
 		/* Do not touch link on seamless boot optimization. */
 		if (pipe_ctx->stream->apply_seamless_boot_optimization) {
 			pipe_ctx->stream->dpms_off = false;
+#if defined(CONFIG_DRM_AMD_DC_HDCP)
+			update_psp_stream_config(pipe_ctx, false);
+#endif
 			return;
 		}
 
@@ -2736,6 +2805,9 @@ void core_link_enable_stream(
 		if (pipe_ctx->stream->signal == SIGNAL_TYPE_EDP &&
 					apply_edp_fast_boot_optimization) {
 			pipe_ctx->stream->dpms_off = false;
+#if defined(CONFIG_DRM_AMD_DC_HDCP)
+			update_psp_stream_config(pipe_ctx, false);
+#endif
 			return;
 		}
 
@@ -2804,6 +2876,9 @@ void core_link_enable_stream(
 
 		if (dc_is_dp_signal(pipe_ctx->stream->signal))
 			enable_stream_features(pipe_ctx);
+#if defined(CONFIG_DRM_AMD_DC_HDCP)
+		update_psp_stream_config(pipe_ctx, false);
+#endif
 	}
 #ifdef CONFIG_DRM_AMD_DC_DSC_SUPPORT
 	else { // if (IS_FPGA_MAXIMUS_DC(core_dc->ctx->dce_environment))
@@ -2820,6 +2895,10 @@ void core_link_disable_stream(struct pipe_ctx *pipe_ctx)
 	struct dc  *core_dc = pipe_ctx->stream->ctx->dc;
 	struct dc_stream_state *stream = pipe_ctx->stream;
 	struct dc_link *link = stream->sink->link;
+
+#if defined(CONFIG_DRM_AMD_DC_HDCP)
+	update_psp_stream_config(pipe_ctx, true);
+#endif
 
 	core_dc->hwss.blank_stream(pipe_ctx);
 

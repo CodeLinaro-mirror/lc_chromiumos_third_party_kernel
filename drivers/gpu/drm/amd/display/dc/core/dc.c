@@ -827,6 +827,16 @@ alloc_fail:
 void dc_init_callbacks(struct dc *dc,
 		const struct dc_callback_init *init_params)
 {
+#ifdef CONFIG_DRM_AMD_DC_HDCP
+	dc->ctx->cp_psp = init_params->cp_psp;
+#endif
+}
+
+void dc_deinit_callbacks(struct dc *dc)
+{
+#ifdef CONFIG_DRM_AMD_DC_HDCP
+	memset(&dc->ctx->cp_psp, 0, sizeof(dc->ctx->cp_psp));
+#endif
 }
 
 void dc_destroy(struct dc **dc)
@@ -971,29 +981,33 @@ bool dc_validate_seamless_boot_timing(const struct dc *dc,
 {
 	struct timing_generator *tg;
 	struct dc_link *link = sink->link;
-	unsigned int enc_inst, tg_inst;
+	unsigned int enc_inst, tg_inst, i;
+
+	// Seamless port only support single DP and EDP so far
+	if (sink->sink_signal != SIGNAL_TYPE_DISPLAY_PORT &&
+		sink->sink_signal != SIGNAL_TYPE_EDP)
+		return false;
 
 	/* Check for enabled DIG to identify enabled display */
 	if (!link->link_enc->funcs->is_dig_enabled(link->link_enc))
 		return false;
 
-	/* Check for which front end is used by this encoder.
-	 * Note the inst is 1 indexed, where 0 is undefined.
-	 * Note that DIG_FE can source from different OTG but our
-	 * current implementation always map 1-to-1, so this code makes
-	 * the same assumption and doesn't check OTG source.
-	 */
 	enc_inst = link->link_enc->funcs->get_dig_frontend(link->link_enc);
 
-	/* Instance should be within the range of the pool */
-	if (enc_inst >= dc->res_pool->pipe_count)
+	if (enc_inst == ENGINE_ID_UNKNOWN)
 		return false;
 
-	if (enc_inst >= dc->res_pool->stream_enc_count)
-		return false;
+	for (i = 0; i < dc->res_pool->stream_enc_count; i++) {
+		if (dc->res_pool->stream_enc[i]->id == enc_inst) {
+			tg_inst = dc->res_pool->stream_enc[i]->funcs->dig_source_otg(
+				dc->res_pool->stream_enc[i]);
+			break;
+		}
+	}
 
-	tg_inst = dc->res_pool->stream_enc[enc_inst]->funcs->dig_source_otg(
-		dc->res_pool->stream_enc[enc_inst]);
+	// tg_inst not found
+	if (i == dc->res_pool->stream_enc_count)
+		return false;
 
 	if (tg_inst >= dc->res_pool->timing_generator_count)
 		return false;
@@ -2267,12 +2281,7 @@ void dc_set_power_state(
 	enum dc_acpi_cm_power_state power_state)
 {
 	struct kref refcount;
-	struct display_mode_lib *dml = kzalloc(sizeof(struct display_mode_lib),
-						GFP_KERNEL);
-
-	ASSERT(dml);
-	if (!dml)
-		return;
+	struct display_mode_lib *dml;
 
 	switch (power_state) {
 	case DC_ACPI_CM_POWER_STATE_D0:
@@ -2294,6 +2303,12 @@ void dc_set_power_state(
 		 * clean state, and dc hw programming optimizations will not
 		 * cause any trouble.
 		 */
+		dml = kzalloc(sizeof(struct display_mode_lib),
+				GFP_KERNEL);
+
+		ASSERT(dml);
+		if (!dml)
+			return;
 
 		/* Preserve refcount */
 		refcount = dc->current_state->refcount;
@@ -2307,10 +2322,10 @@ void dc_set_power_state(
 		dc->current_state->refcount = refcount;
 		dc->current_state->bw_ctx.dml = *dml;
 
+		kfree(dml);
+
 		break;
 	}
-
-	kfree(dml);
 }
 
 void dc_resume(struct dc *dc)
