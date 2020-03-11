@@ -76,6 +76,7 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
 	struct lpass_dai *dai_data = drvdata->dai_priv[dai->driver->id];
+	struct lpass_variant *v = drvdata->variant;
 	snd_pcm_format_t format = params_format(params);
 	unsigned int channels = params_channels(params);
 	unsigned int rate = params_rate(params);
@@ -88,18 +89,18 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 		return bitwidth;
 	}
 
-	regval = LPAIF_I2SCTL_LOOPBACK_DISABLE |
-			LPAIF_I2SCTL_WSSRC_INTERNAL;
+	regval = LPAIF_I2SCTL(v, LOOPBACK_DISABLE);
+	regval |= LPAIF_I2SCTL(v, WSSRC_INTERNAL);
 
 	switch (bitwidth) {
 	case 16:
-		regval |= LPAIF_I2SCTL_BITWIDTH_16;
+		regval |= LPAIF_I2SCTL(v, BITWIDTH_16);
 		break;
 	case 24:
-		regval |= LPAIF_I2SCTL_BITWIDTH_24;
+		regval |= LPAIF_I2SCTL(v, BITWIDTH_24);
 		break;
 	case 32:
-		regval |= LPAIF_I2SCTL_BITWIDTH_32;
+		regval |= LPAIF_I2SCTL(v, BITWIDTH_32);
 		break;
 	default:
 		dev_err(dai->dev, "invalid bitwidth given: %d\n", bitwidth);
@@ -109,24 +110,24 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		switch (channels) {
 		case 1:
-			regval |= LPAIF_I2SCTL_SPKMODE_SD0;
-			regval |= LPAIF_I2SCTL_SPKMONO_MONO;
+			regval |= LPAIF_I2SCTL(v, SPKMODE_SD0);
+			regval |= LPAIF_I2SCTL(v, SPKMONO_MONO);
 			break;
 		case 2:
-			regval |= LPAIF_I2SCTL_SPKMODE_SD0;
-			regval |= LPAIF_I2SCTL_SPKMONO_STEREO;
+			regval |= LPAIF_I2SCTL(v, SPKMODE_SD0);
+			regval |= LPAIF_I2SCTL(v, SPKMONO_STEREO);
 			break;
 		case 4:
-			regval |= LPAIF_I2SCTL_SPKMODE_QUAD01;
-			regval |= LPAIF_I2SCTL_SPKMONO_STEREO;
+			regval |= LPAIF_I2SCTL(v, SPKMODE_QUAD01);
+			regval |= LPAIF_I2SCTL(v, SPKMONO_STEREO);
 			break;
 		case 6:
-			regval |= LPAIF_I2SCTL_SPKMODE_6CH;
-			regval |= LPAIF_I2SCTL_SPKMONO_STEREO;
+			regval |= LPAIF_I2SCTL(v, SPKMODE_6CH);
+			regval |= LPAIF_I2SCTL(v, SPKMONO_STEREO);
 			break;
 		case 8:
-			regval |= LPAIF_I2SCTL_SPKMODE_8CH;
-			regval |= LPAIF_I2SCTL_SPKMONO_STEREO;
+			regval |= LPAIF_I2SCTL(v, SPKMODE_8CH);
+			regval |= LPAIF_I2SCTL(v, SPKMONO_STEREO);
 			break;
 		default:
 			dev_err(dai->dev, "invalid channels given: %u\n",
@@ -136,24 +137,24 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 	} else {
 		switch (channels) {
 		case 1:
-			regval |= LPAIF_I2SCTL_MICMODE_SD0;
-			regval |= LPAIF_I2SCTL_MICMONO_MONO;
+			regval |= LPAIF_I2SCTL(v, MICMODE_SD0);
+			regval |= LPAIF_I2SCTL(v, MICMONO_MONO);
 			break;
 		case 2:
-			regval |= LPAIF_I2SCTL_MICMODE_SD0;
-			regval |= LPAIF_I2SCTL_MICMONO_STEREO;
+			regval |= LPAIF_I2SCTL(v, MICMODE_SD0);
+			regval |= LPAIF_I2SCTL(v, MICMONO_STEREO);
 			break;
 		case 4:
-			regval |= LPAIF_I2SCTL_MICMODE_QUAD01;
-			regval |= LPAIF_I2SCTL_MICMONO_STEREO;
+			regval |= LPAIF_I2SCTL(v, MICMODE_QUAD01);
+			regval |= LPAIF_I2SCTL(v, MICMONO_STEREO);
 			break;
 		case 6:
-			regval |= LPAIF_I2SCTL_MICMODE_6CH;
-			regval |= LPAIF_I2SCTL_MICMONO_STEREO;
+			regval |= LPAIF_I2SCTL(v, MICMODE_6CH);
+			regval |= LPAIF_I2SCTL(v, MICMONO_STEREO);
 			break;
 		case 8:
-			regval |= LPAIF_I2SCTL_MICMODE_8CH;
-			regval |= LPAIF_I2SCTL_MICMONO_STEREO;
+			regval |= LPAIF_I2SCTL(v, MICMODE_8CH);
+			regval |= LPAIF_I2SCTL(v, MICMONO_STEREO);
 			break;
 		default:
 			dev_err(dai->dev, "invalid channels given: %u\n",
@@ -199,15 +200,16 @@ static int lpass_cpu_daiops_prepare(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+	struct lpass_variant *v = drvdata->variant;
 	int ret;
 	unsigned int val, mask;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		val = LPAIF_I2SCTL_SPKEN_ENABLE;
-		mask = LPAIF_I2SCTL_SPKEN_MASK;
+		val = LPAIF_I2SCTL(v, SPKEN_ENABLE);
+		mask = LPAIF_I2SCTL(v, SPKEN_MASK);
 	} else  {
-		val = LPAIF_I2SCTL_MICEN_ENABLE;
-		mask = LPAIF_I2SCTL_MICEN_MASK;
+		val = LPAIF_I2SCTL(v, MICEN_ENABLE);
+		mask = LPAIF_I2SCTL(v, MICEN_MASK);
 	}
 
 	ret = regmap_update_bits(drvdata->lpaif_map,
@@ -223,6 +225,7 @@ static int lpass_cpu_daiops_trigger(struct snd_pcm_substream *substream,
 		int cmd, struct snd_soc_dai *dai)
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+	struct lpass_variant *v = drvdata->variant;
 	int ret = -EINVAL;
 	unsigned int val, mask;
 
@@ -231,11 +234,11 @@ static int lpass_cpu_daiops_trigger(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-			val = LPAIF_I2SCTL_SPKEN_ENABLE;
-			mask = LPAIF_I2SCTL_SPKEN_MASK;
+			val = LPAIF_I2SCTL(v, SPKEN_ENABLE);
+			mask = LPAIF_I2SCTL(v, SPKEN_MASK);
 		} else  {
-			val = LPAIF_I2SCTL_MICEN_ENABLE;
-			mask = LPAIF_I2SCTL_MICEN_MASK;
+			val = LPAIF_I2SCTL(v, MICEN_ENABLE);
+			mask = LPAIF_I2SCTL(v, MICEN_MASK);
 		}
 
 		ret = regmap_update_bits(drvdata->lpaif_map,
@@ -250,11 +253,11 @@ static int lpass_cpu_daiops_trigger(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-			val = LPAIF_I2SCTL_SPKEN_DISABLE;
-			mask = LPAIF_I2SCTL_SPKEN_MASK;
+			val = LPAIF_I2SCTL(v, SPKEN_DISABLE);
+			mask = LPAIF_I2SCTL(v, SPKEN_MASK);
 		} else  {
-			val = LPAIF_I2SCTL_MICEN_DISABLE;
-			mask = LPAIF_I2SCTL_MICEN_MASK;
+			val = LPAIF_I2SCTL(v, MICEN_DISABLE);
+			mask = LPAIF_I2SCTL(v, MICEN_MASK);
 		}
 
 		ret = regmap_update_bits(drvdata->lpaif_map,

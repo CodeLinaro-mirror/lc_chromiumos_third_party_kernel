@@ -146,25 +146,26 @@ static int lpass_platform_pcmops_hw_params(struct snd_soc_component *component,
 		return bitwidth;
 	}
 
-	regval = LPAIF_DMACTL_BURSTEN_INCR4 |
-			LPAIF_DMACTL_AUDINTF(dma_port) |
-			LPAIF_DMACTL_FIFOWM_8;
+
+	regval = LPAIF_DMACTL(v, BURSTEN_INCR4);
+	regval |= LPAIF_DMACTL(v, FIFOWM_8);
+	regval |= LPAIF_DMACTL_AUD_INTF(v, dma_port);
 
 	switch (bitwidth) {
 	case 16:
 		switch (channels) {
 		case 1:
 		case 2:
-			regval |= LPAIF_DMACTL_WPSCNT_ONE;
+			regval |= LPAIF_DMACTL(v, WPSCNT_ONE);
 			break;
 		case 4:
-			regval |= LPAIF_DMACTL_WPSCNT_TWO;
+			regval |= LPAIF_DMACTL(v, WPSCNT_TWO);
 			break;
 		case 6:
-			regval |= LPAIF_DMACTL_WPSCNT_THREE;
+			regval |= LPAIF_DMACTL(v, WPSCNT_THREE);
 			break;
 		case 8:
-			regval |= LPAIF_DMACTL_WPSCNT_FOUR;
+			regval |= LPAIF_DMACTL(v, WPSCNT_FOUR);
 			break;
 		default:
 			dev_err(soc_runtime->dev,
@@ -177,19 +178,19 @@ static int lpass_platform_pcmops_hw_params(struct snd_soc_component *component,
 	case 32:
 		switch (channels) {
 		case 1:
-			regval |= LPAIF_DMACTL_WPSCNT_ONE;
+			regval |= LPAIF_DMACTL(v, WPSCNT_ONE);
 			break;
 		case 2:
-			regval |= LPAIF_DMACTL_WPSCNT_TWO;
+			regval |= LPAIF_DMACTL(v, WPSCNT_TWO);
 			break;
 		case 4:
-			regval |= LPAIF_DMACTL_WPSCNT_FOUR;
+			regval |= LPAIF_DMACTL(v, WPSCNT_FOUR);
 			break;
 		case 6:
-			regval |= LPAIF_DMACTL_WPSCNT_SIX;
+			regval |= LPAIF_DMACTL(v, WPSCNT_SIX);
 			break;
 		case 8:
-			regval |= LPAIF_DMACTL_WPSCNT_EIGHT;
+			regval |= LPAIF_DMACTL(v, WPSCNT_EIGHT);
 			break;
 		default:
 			dev_err(soc_runtime->dev,
@@ -277,7 +278,7 @@ static int lpass_platform_pcmops_prepare(struct snd_soc_component *component,
 
 	ret = regmap_update_bits(drvdata->lpaif_map,
 			LPAIF_DMACTL_REG(v, ch, dir),
-			LPAIF_DMACTL_ENABLE_MASK, LPAIF_DMACTL_ENABLE_ON);
+			LPAIF_DMACTL(v, ENABLE_MASK), LPAIF_DMACTL_ENABLE_ON);
 	if (ret) {
 		dev_err(soc_runtime->dev, "error writing to rdmactl reg: %d\n",
 			ret);
@@ -326,7 +327,7 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 
 		ret = regmap_update_bits(drvdata->lpaif_map,
 				LPAIF_DMACTL_REG(v, ch, dir),
-				LPAIF_DMACTL_ENABLE_MASK,
+				LPAIF_DMACTL(v, ENABLE_MASK),
 				LPAIF_DMACTL_ENABLE_ON);
 		if (ret) {
 			dev_err(soc_runtime->dev,
@@ -339,7 +340,7 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		ret = regmap_update_bits(drvdata->lpaif_map,
 				LPAIF_DMACTL_REG(v, ch, dir),
-				LPAIF_DMACTL_ENABLE_MASK,
+				LPAIF_DMACTL(v, ENABLE_MASK),
 				LPAIF_DMACTL_ENABLE_OFF);
 		if (ret) {
 			dev_err(soc_runtime->dev,

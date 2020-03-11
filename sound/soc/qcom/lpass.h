@@ -18,6 +18,9 @@
 #define LPASS_MAX_MI2S_PORTS                   (8)
 #define LPASS_MAX_DMA_CHANNELS                 (8)
 
+#define LPASS_VARIANT				0
+#define LPASS_VARIANT_V2			1
+
 struct lpass_dai {
 	struct clk *osr_clk;
 	struct clk *bit_clk;
@@ -93,6 +96,9 @@ struct lpass_variant {
 	/* SOC specific clocks configuration */
 	const char **clk_name;
 	int num_clks;
+
+	/* LPASS Version id */
+	int id;
 };
 
 /* register the platform driver from the CPU DAI driver */
