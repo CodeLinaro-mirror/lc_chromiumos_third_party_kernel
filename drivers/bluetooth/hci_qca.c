@@ -1340,13 +1340,11 @@ static int qca_set_speed(struct hci_uart *hu, enum qca_speed_type speed_type)
 		if (!speed)
 			return 0;
 
-		/* Disable flow control for wcn3990 to deassert RTS while
+		/* Disable flow control for wcn399x to deassert RTS while
 		 * changing the baudrate of chip and host.
 		 */
-		if (qca_is_wcn399x(soc_type))
+		if (qca_is_wcn399x(soc_type)) {
 			hci_uart_set_flow_control(hu, true);
-
-		if (soc_type == QCA_WCN3990) {
 			reinit_completion(&qca->drop_ev_comp);
 			set_bit(QCA_DROP_VENDOR_EVENT, &qca->flags);
 		}
@@ -1363,9 +1361,7 @@ error:
 		if (qca_is_wcn399x(soc_type)) {
 			msleep(50);
 			hci_uart_set_flow_control(hu, false);
-		}
 
-		if (soc_type == QCA_WCN3990) {
 			/* Wait for the controller to send the vendor event
 			 * for the baudrate change command.
 			 */
