@@ -1148,7 +1148,7 @@ static int qca_recv(struct hci_uart *hu, const void *data, int count)
 				  qca_recv_pkts, ARRAY_SIZE(qca_recv_pkts));
 	if (IS_ERR(qca->rx_skb)) {
 		int err = PTR_ERR(qca->rx_skb);
-		bt_dev_err(hu->hdev, "Frame reassembly failed (%d)", err);
+//		bt_dev_err(hu->hdev, "Frame reassembly failed (%d)", err);
 		qca->rx_skb = NULL;
 		return err;
 	}
@@ -1636,6 +1636,7 @@ static void qca_power_shutdown(struct hci_uart *hu)
 static int qca_power_off(struct hci_dev *hdev)
 {
 	struct hci_uart *hu = hci_get_drvdata(hdev);
+	hu->hdev->hw_error = NULL;
 
 	/* Perform pre shutdown command */
 	qca_send_pre_shutdown_cmd(hdev);
