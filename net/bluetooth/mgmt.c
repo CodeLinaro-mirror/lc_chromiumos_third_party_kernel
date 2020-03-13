@@ -108,9 +108,11 @@ static const u16 mgmt_commands[] = {
 	MGMT_OP_SET_APPEARANCE,
 	MGMT_OP_SET_BLOCKED_KEYS,
 	MGMT_OP_SET_WIDEBAND_SPEECH,
+	/* Begin Chromium only op codes*/
 	MGMT_OP_SET_ADVERTISING_INTERVALS,
 	MGMT_OP_SET_EVENT_MASK,
 	MGMT_OP_SET_KERNEL_DEBUG,
+	/* End Chromium only op codes */
 };
 
 static const u16 mgmt_events[] = {
@@ -7276,11 +7278,37 @@ static const struct hci_mgmt_handler mgmt_handlers[] = {
 	{ set_blocked_keys,	   MGMT_OP_SET_BLOCKED_KEYS_SIZE,
 						HCI_MGMT_VAR_LEN },
 	{ set_wideband_speech,	   MGMT_SETTING_SIZE },
+	{ NULL }, // 0x0048
+	{ NULL }, // 0x0049
+	{ NULL }, // 0x004A
+	{ NULL }, // 0x0048
+	{ NULL }, // 0x004C
+	{ NULL }, // 0x004D
+	{ NULL }, // 0x004E
+	{ NULL }, // 0x004F
+	{ NULL }, // 0x0050
+	{ NULL }, // 0x0051
+	{ NULL }, // 0x0052
+	{ NULL }, // 0x0053
+	{ NULL }, // 0x0054
+	{ NULL }, // 0x0055
+	{ NULL }, // 0x0056
+	{ NULL }, // 0x0057
+	{ NULL }, // 0x0058
+	{ NULL }, // 0x0059
+	{ NULL }, // 0x005A
+	{ NULL }, // 0x005B
+	{ NULL }, // 0x005C
+	{ NULL }, // 0x005D
+	{ NULL }, // 0x005E
+	{ NULL }, // 0x005F
+	/* Begin Chromium only op_codes */
 	{ set_advertising_intervals, MGMT_SET_ADVERTISING_INTERVALS_SIZE },
 	{ set_event_mask,	   MGMT_SET_EVENT_MASK_CP_SIZE },
 	{ set_kernel_debug,	   MGMT_SET_KERNEL_DEBUG_SIZE,
 						HCI_MGMT_NO_HDEV |
 						HCI_MGMT_UNTRUSTED },
+	/* End Chromium only op_codes */
 };
 
 void mgmt_index_added(struct hci_dev *hdev)

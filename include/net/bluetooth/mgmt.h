@@ -675,14 +675,17 @@ struct mgmt_cp_set_blocked_keys {
 
 #define MGMT_OP_SET_WIDEBAND_SPEECH	0x0047
 
-#define MGMT_OP_SET_ADVERTISING_INTERVALS	0x0044
+/*
+ * Begin chromium only op_codes
+ */
+#define MGMT_OP_SET_ADVERTISING_INTERVALS	0x0060
 struct mgmt_cp_set_advertising_intervals {
 	__le16	min_interval;
 	__le16	max_interval;
 } __packed;
 #define MGMT_SET_ADVERTISING_INTERVALS_SIZE	4
 
-#define MGMT_OP_SET_EVENT_MASK			0x0045
+#define MGMT_OP_SET_EVENT_MASK			0x0061
 struct mgmt_cp_set_event_mask {
 	/*
 	 * The mask variable enables modifying a subset of the 'event mask'.
@@ -758,11 +761,15 @@ enum mgmt_set_event_mask_byte_7 {
 	MGMT_EVENT_MASK_LE_META				=  (1 << 6),
 };
 
-#define MGMT_OP_SET_KERNEL_DEBUG			0x0048
+#define MGMT_OP_SET_KERNEL_DEBUG			0x0062
 #define MGMT_SET_KERNEL_DEBUG_SIZE			1
 struct mgmt_cp_set_kernel_debug {
 	__u8	enabled;
 } __packed;
+
+/*
+ * End chromium only op_codes
+ */
 
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
