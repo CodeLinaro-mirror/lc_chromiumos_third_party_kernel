@@ -33,6 +33,11 @@ struct lpass_dai {
 	const char *osrclk_name;
 	const char *mclk_name;
 	const char *bitclk_name;
+
+	uint32_t spkmode;
+	uint32_t micmode;
+	uint32_t wssrc;
+	uint32_t loopback;
 };
 
 /* Both the CPU DAI and platform drivers will access this data */

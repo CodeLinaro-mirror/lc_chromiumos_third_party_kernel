@@ -105,8 +105,9 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 		return bitwidth;
 	}
 
-	regval = LPAIF_I2SCTL(v, LOOPBACK_DISABLE);
-	regval |= LPAIF_I2SCTL(v, WSSRC_INTERNAL);
+	/* default to Loopback disable & wssrc internal */
+	regval = dai_data->loopback << (LPAIF_I2SCTL(v, LOOPBACK_SHIFT));
+	regval |= dai_data->wssrc << (LPAIF_I2SCTL(v, WSSRC_SHIFT));
 
 	switch (bitwidth) {
 	case 16:
@@ -185,6 +186,28 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 	if (ret) {
 		dev_err(dai->dev, "error writing to i2sctl reg: %d\n", ret);
 		return ret;
+	}
+
+	/* Overwrite spk & mic mode bits with device tree value if specified */
+	if (dai_data->spkmode != 0) {
+		regval = dai_data->spkmode << (LPAIF_I2SCTL(v, SPKMODE_SHIFT));
+		ret = regmap_update_bits(drvdata->lpaif_map,
+			LPAIF_I2SCTL_REG(drvdata->variant, dai->driver->id),
+			LPAIF_I2SCTL(v, SPKMODE_MASK), regval);
+		if (ret)
+			dev_err(dai->dev, "error writing to i2sctl reg: %d\n",
+				ret);
+	}
+
+
+	if (dai_data->micmode != 0) {
+		regval = dai_data->micmode << (LPAIF_I2SCTL(v, MICMODE_SHIFT));
+		ret = regmap_update_bits(drvdata->lpaif_map,
+			LPAIF_I2SCTL_REG(drvdata->variant, dai->driver->id),
+			LPAIF_I2SCTL(v, MICMODE_MASK), regval);
+		if (ret)
+			dev_err(dai->dev, "error writing to i2sctl reg: %d\n",
+				ret);
 	}
 
 	ret = clk_set_rate(dai_data->bit_clk, rate * bitwidth * 2);
@@ -475,6 +498,19 @@ static void of_qcom_parse_dai_data(struct device *dev,
 			if (ret) {
 				dev_err(dev, "dai:%d bitclk not defined", id);
 			}
+
+			ret = of_property_read_u32(node,"qcom,spkmode-mask",
+						   &dai->spkmode);
+
+			ret = of_property_read_u32(node,"qcom,micmode-mask",
+						   &dai->micmode);
+
+			ret = of_property_read_u32(node,"qcom,wssrc-mask",
+						   &dai->wssrc);
+
+			ret = of_property_read_u32(node,"qcom,loopback-mask",
+						   &dai->loopback);
+
 			break;
 		case IPQ806X_LPAIF_I2S_PORT_MI2S:
 			/* We have hardcoded clock name for IPQ806X */
