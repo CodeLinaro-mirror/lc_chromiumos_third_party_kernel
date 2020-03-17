@@ -21,11 +21,17 @@
 #define LPASS_VARIANT				0
 #define LPASS_VARIANT_V2			1
 
+#define LPASS_MCLK0				0
+#define LPASS_MCLK1				1
+#define LPASS_MCLK2				2
+
 struct lpass_dai {
 	struct clk *osr_clk;
+	struct clk *mclk;
 	struct clk *bit_clk;
 
 	const char *osrclk_name;
+	const char *mclk_name;
 	const char *bitclk_name;
 };
 

@@ -24,13 +24,21 @@ static int lpass_cpu_daiops_set_sysclk(struct snd_soc_dai *dai, int clk_id,
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
 	struct lpass_dai *dai_data = drvdata->dai_priv[dai->driver->id];
-	int ret;
+	int ret = 0;
 
-	ret = clk_set_rate(dai_data->osr_clk, freq);
-	if (ret)
-		dev_err(dai->dev, "error setting mi2s osrclk to %u: %d\n",
-			freq, ret);
-
+	switch (clk_id) {
+	case LPASS_MCLK0... LPASS_MCLK2:
+		ret = clk_set_rate(dai_data->mclk, freq);
+		if (ret)
+			dev_err(dai->dev, "error setting mclk%d to %u: %d\n",
+				clk_id, freq, ret);
+		break;
+	default:
+		ret = clk_set_rate(dai_data->osr_clk, freq);
+		if (ret)
+			dev_err(dai->dev, "error setting osrclk to %u: %d\n",
+				freq, ret);
+	}
 	return ret;
 }
 
@@ -46,6 +54,14 @@ static int lpass_cpu_daiops_startup(struct snd_pcm_substream *substream,
 		if (ret) {
 			dev_err(dai->dev,
 				"error in enabling mi2s osr clk: %d\n", ret);
+			return ret;
+		}
+	}
+
+	if (dai_data->mclk != NULL) {
+		ret = clk_prepare_enable(dai_data->mclk);
+		if (ret) {
+			dev_err(dai->dev, "error in enabling mi2s mclk: %d\n", ret);
 			return ret;
 		}
 	}
@@ -67,7 +83,7 @@ static void lpass_cpu_daiops_shutdown(struct snd_pcm_substream *substream,
 	struct lpass_dai *dai_data = drvdata->dai_priv[dai->driver->id];
 
 	clk_disable_unprepare(dai_data->bit_clk);
-
+	clk_disable_unprepare(dai_data->mclk);
 	clk_disable_unprepare(dai_data->osr_clk);
 }
 
@@ -448,6 +464,12 @@ static void of_qcom_parse_dai_data(struct device *dev,
 				dev_warn(dev, "dai:%d osrclk not defined", id);
 			}
 
+                        ret = of_property_read_string(node, "qcom,mclk-name",
+                                                      &dai->mclk_name);
+                        if (ret) {
+                                dev_warn(dev, "dai:%d mclk not defined", id);
+                        }
+
 			ret = of_property_read_string(node, "qcom,bitclk-name",
 							&dai->bitclk_name);
 			if (ret) {
@@ -478,6 +500,7 @@ static int lpass_init_dai_clocks(struct device *dev,
 		dai = drvdata->dai_priv[i];
 
 		dai->osr_clk = devm_clk_get_optional(dev, dai->osrclk_name);
+		dai->mclk = devm_clk_get_optional(dev, dai->mclk_name);
 		dai->bit_clk = devm_clk_get(dev, dai->bitclk_name);
 	}
 
