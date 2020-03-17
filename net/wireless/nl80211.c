@@ -7691,8 +7691,6 @@ static int nl80211_channel_switch(struct sk_buff *skb, struct genl_info *info)
 	struct net_device *dev = info->user_ptr[1];
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_csa_settings params;
-	/* This variable is used only for debugging */
-	struct cfg80211_chan_def *debug_chandef;
 	/* csa_attrs is defined static to avoid waste of stack size - this
 	 * function is called under RTNL lock, so this should not be a problem.
 	 */
@@ -7828,17 +7826,6 @@ skip_beacons:
 	err = nl80211_parse_chandef(rdev, info, &params.chandef);
 	if (err)
 		return err;
-
-	if (wdev->iftype == NL80211_IFTYPE_MESH_POINT) {
-		/* only for debugging */
-		debug_chandef = &params.chandef;
-		if (wdev->chandef.chan && debug_chandef)
-			pr_info("%s: Ignoring CSA from channel %d to %d bw:%d received on iface type:%d name:%s",
-				__func__, wdev->chandef.chan->hw_value,
-				debug_chandef->chan->hw_value,
-				debug_chandef->width, wdev->iftype, dev->name);
-		return -EOPNOTSUPP;
-	}
 
 	if (!cfg80211_reg_can_beacon_relax(&rdev->wiphy, &params.chandef,
 					   wdev->iftype))

@@ -1648,7 +1648,6 @@ void ieee80211_mesh_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,
 int ieee80211_mesh_csa_beacon(struct ieee80211_sub_if_data *sdata,
 			      struct cfg80211_csa_settings *csa_settings);
 int ieee80211_mesh_finish_csa(struct ieee80211_sub_if_data *sdata);
-u8 ieee80211_mesh_find_channel_frm_csa(struct ieee802_11_elems *elems);
 
 /* scan/BSS handling */
 void ieee80211_scan_work(struct work_struct *work);

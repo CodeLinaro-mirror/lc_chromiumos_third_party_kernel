@@ -38,18 +38,6 @@
 /* privid for wiphys to determine whether they belong to us or not */
 const void *const mac80211_wiphy_privid = &mac80211_wiphy_privid;
 
-u8 ieee80211_mesh_find_channel_frm_csa(struct ieee802_11_elems *elems)
-{
-	u8 channel = 0;
-
-	if (elems->ext_chansw_ie)
-		channel = elems->ext_chansw_ie->new_ch_num;
-	else if (elems->ch_switch_ie)
-		channel = elems->ch_switch_ie->new_ch_num;
-
-	return channel;
-}
-
 struct ieee80211_hw *wiphy_to_ieee80211_hw(struct wiphy *wiphy)
 {
 	struct ieee80211_local *local;
