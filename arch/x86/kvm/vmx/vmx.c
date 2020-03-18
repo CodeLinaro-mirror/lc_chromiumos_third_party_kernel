@@ -6812,6 +6812,10 @@ reenter_guest:
 	 */
 	x86_spec_ctrl_set_guest(vmx->spec_ctrl, 0);
 
+	/* VM entries need to wait if the core is not ready. */
+#ifdef CONFIG_SCHED_CORE
+	sched_core_user_enter();
+#endif
 	/* The actual VMENTER/EXIT is in the .noinstr.text section. */
 	vmx_vcpu_enter_exit(vcpu, vmx);
 
