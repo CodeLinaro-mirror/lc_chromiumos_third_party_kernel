@@ -2554,7 +2554,9 @@ static unsigned long rt5682_wclk_recalc_rate(struct clk_hw *hw,
 
 	if (!rt5682_clk_check(rt5682))
 		return 0;
-
+	/*
+	 * Only accept to set wclk rate to 48kHz temporarily.
+	 */
 	return CLK_48;
 }
 
@@ -2567,7 +2569,9 @@ static long rt5682_wclk_round_rate(struct clk_hw *hw, unsigned long rate,
 
 	if (!rt5682_clk_check(rt5682))
 		return -EINVAL;
-
+	/*
+	 * Only accept to set wclk rate to 48kHz temporarily.
+	 */
 	return CLK_48;
 }
 
@@ -2585,6 +2589,13 @@ static int rt5682_wclk_set_rate(struct clk_hw *hw, unsigned long rate,
 	if (!rt5682_clk_check(rt5682))
 		return -EINVAL;
 
+	/*
+	 * Whether the wclk's parent clk (mclk) exists or not, please ensure
+	 * it is fixed or set to 48MHz before setting wclk rate. It's a
+	 * temporary limitation. Only accept 48MHz clk as the clk provider.
+	 *
+	 * It will set the codec anyway by assuming mclk is 48MHz.
+	 */
 	parent_clk = clk_get_parent(hw->clk);
 	if (!parent_clk)
 		dev_warn(component->dev,
@@ -2595,12 +2606,19 @@ static int rt5682_wclk_set_rate(struct clk_hw *hw, unsigned long rate,
 		dev_warn(component->dev, "clk %s only support %d Hz input\n",
 			clk_name, CLK_PLL2_FIN);
 
+	/*
+	 * It's a temporary limitation. Only accept to set wclk rate to 48kHz.
+	 * It will force wclk to 48kHz even it's not.
+	 */
 	if (rate != CLK_48) {
 		dev_warn(component->dev, "clk %s only support %d Hz output\n",
 			clk_name, CLK_48);
 		rate = CLK_48;
 	}
 
+	/*
+	 * To achieve the rate conversion from 48MHz to 48kHz, PLL2 is needed.
+	 */
 	rt5682_set_component_pll(component, RT5682_PLL2, RT5682_PLL2_S_MCLK,
 		CLK_PLL2_FIN, CLK_PLL2_FOUT);
 

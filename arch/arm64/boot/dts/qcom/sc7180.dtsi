@@ -10,6 +10,7 @@
 #include <dt-bindings/clock/qcom,gpucc-sc7180.h>
 #include <dt-bindings/clock/qcom,rpmh.h>
 #include <dt-bindings/clock/qcom,videocc-sc7180.h>
+#include <dt-bindings/interconnect/qcom,sc7180.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/phy/phy-qcom-qusb2.h>
 #include <dt-bindings/power/qcom-aoss-qmp.h>
@@ -76,6 +77,11 @@
 
 		smem_mem: memory@80900000 {
 			reg = <0x0 0x80900000 0x0 0x200000>;
+			no-map;
+		};
+
+		venus_mem: memory@8f600000 {
+			reg = <0 0x8f600000 0 0x500000>;
 			no-map;
 		};
 	};
@@ -354,7 +360,7 @@
 		method = "smc";
 	};
 
-	soc: soc {
+	soc: soc@0 {
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges = <0 0 0 0 0x10 0>;
@@ -389,7 +395,7 @@
 			compatible = "qcom,sc7180-sdhci", "qcom,sdhci-msm-v5";
 			reg = <0 0x7c4000 0 0x1000>,
 				<0 0x07c5000 0 0x1000>;
-			reg-names = "hc_mem", "cqhci_mem";
+			reg-names = "hc", "cqhci";
 
 			iommus = <&apps_smmu 0x60 0x0>;
 			interrupts = <GIC_SPI 641 IRQ_TYPE_LEVEL_HIGH>,
@@ -828,6 +834,69 @@
 				interrupts = <GIC_SPI 358 IRQ_TYPE_LEVEL_HIGH>;
 				status = "disabled";
 			};
+		};
+
+		config_noc: interconnect@1500000 {
+			compatible = "qcom,sc7180-config-noc";
+			reg = <0 0x01500000 0 0x28000>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		system_noc: interconnect@1620000 {
+			compatible = "qcom,sc7180-system-noc";
+			reg = <0 0x01620000 0 0x17080>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		mc_virt: interconnect@1638000 {
+			compatible = "qcom,sc7180-mc-virt";
+			reg = <0 0x01638000 0 0x1000>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		qup_virt: interconnect@1650000 {
+			compatible = "qcom,sc7180-qup-virt";
+			reg = <0 0x01650000 0 0x1000>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		aggre1_noc: interconnect@16e0000 {
+			compatible = "qcom,sc7180-aggre1-noc";
+			reg = <0 0x016e0000 0 0x15080>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		aggre2_noc: interconnect@1705000 {
+			compatible = "qcom,sc7180-aggre2-noc";
+			reg = <0 0x01705000 0 0x9000>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		compute_noc: interconnect@170e000 {
+			compatible = "qcom,sc7180-compute-noc";
+			reg = <0 0x0170e000 0 0x6000>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		mmss_noc: interconnect@1740000 {
+			compatible = "qcom,sc7180-mmss-noc";
+			reg = <0 0x01740000 0 0x1c100>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		ipa_virt: interconnect@1e00000 {
+			compatible = "qcom,sc7180-ipa-virt";
+			reg = <0 0x01e00000 0 0x1000>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
 		};
 
 		tcsr_mutex_regs: syscon@1f40000 {
@@ -1345,7 +1414,6 @@
 		sdhc_2: sdhci@8804000 {
 			compatible = "qcom,sc7180-sdhci", "qcom,sdhci-msm-v5";
 			reg = <0 0x08804000 0 0x1000>;
-			reg-names = "hc_mem";
 
 			iommus = <&apps_smmu 0x80 0>;
 			interrupts = <GIC_SPI 204 IRQ_TYPE_LEVEL_HIGH>,
@@ -1403,8 +1471,8 @@
 				 <&gcc GCC_USB3_PRIM_PHY_COM_AUX_CLK>;
 			clock-names = "aux", "cfg_ahb", "ref", "com_aux";
 
-			resets = <&gcc GCC_USB3_DP_PHY_PRIM_BCR>,
-				 <&gcc GCC_USB3_PHY_PRIM_BCR>;
+			resets = <&gcc GCC_USB3_PHY_PRIM_BCR>,
+				 <&gcc GCC_USB3_DP_PHY_PRIM_BCR>;
 			reset-names = "phy", "common";
 
 			usb_1_ssphy: phy@88e9200 {
@@ -1422,11 +1490,32 @@
 			};
 		};
 
+		dc_noc: interconnect@9160000 {
+			compatible = "qcom,sc7180-dc-noc";
+			reg = <0 0x09160000 0 0x03200>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
 		system-cache-controller@9200000 {
 			compatible = "qcom,sc7180-llcc";
 			reg = <0 0x09200000 0 0x200000>, <0 0x09600000 0 0x50000>;
 			reg-names = "llcc_base", "llcc_broadcast_base";
 			interrupts = <GIC_SPI 582 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		gem_noc: interconnect@9680000 {
+			compatible = "qcom,sc7180-gem-noc";
+			reg = <0 0x09680000 0 0x3e200>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
+		};
+
+		npu_noc: interconnect@9990000 {
+			compatible = "qcom,sc7180-npu-noc";
+			reg = <0 0x09990000 0 0x1600>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
 		};
 
 		usb_1: usb@a6f8800 {
@@ -1473,6 +1562,32 @@
 			};
 		};
 
+		venus: video-codec@aa00000 {
+			compatible = "qcom,sc7180-venus";
+			reg = <0 0x0aa00000 0 0xff000>;
+			interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&videocc VENUS_GDSC>,
+					<&videocc VCODEC0_GDSC>;
+			power-domain-names = "venus", "vcodec0";
+			clocks = <&videocc VIDEO_CC_VENUS_CTL_CORE_CLK>,
+				 <&videocc VIDEO_CC_VENUS_AHB_CLK>,
+				 <&videocc VIDEO_CC_VENUS_CTL_AXI_CLK>,
+				 <&videocc VIDEO_CC_VCODEC0_CORE_CLK>,
+				 <&videocc VIDEO_CC_VCODEC0_AXI_CLK>;
+			clock-names = "core", "iface", "bus",
+				      "vcodec0_core", "vcodec0_bus";
+			iommus = <&apps_smmu 0x0c00 0x60>;
+			memory-region = <&venus_mem>;
+
+			video-decoder {
+				compatible = "venus-decoder";
+			};
+
+			video-encoder {
+				compatible = "venus-encoder";
+			};
+		};
+
 		videocc: clock-controller@ab00000 {
 			compatible = "qcom,sc7180-videocc";
 			reg = <0 0x0ab00000 0 0x10000>;
@@ -1481,6 +1596,13 @@
 			#clock-cells = <1>;
 			#reset-cells = <1>;
 			#power-domain-cells = <1>;
+		};
+
+		camnoc_virt: interconnect@ac00000 {
+			compatible = "qcom,sc7180-camnoc-virt";
+			reg = <0 0x0ac00000 0 0x1000>;
+			#interconnect-cells = <1>;
+			qcom,bcm-voters = <&apps_bcm_voter>;
 		};
 
 		mdss: mdss@ae00000 {
@@ -1962,6 +2084,20 @@
 					};
 				};
 			};
+
+			apps_bcm_voter: bcm_voter {
+				compatible = "qcom,bcm-voter";
+			};
+		};
+
+		osm_l3: interconnect@18321000 {
+			compatible = "qcom,sc7180-osm-l3";
+			reg = <0 0x18321000 0 0x1400>;
+
+			clocks = <&rpmhcc RPMH_CXO_CLK>, <&gcc GPLL0>;
+			clock-names = "xo", "alternate";
+
+			#interconnect-cells = <1>;
 		};
 
 		cpufreq_hw: cpufreq@18323000 {
@@ -2437,6 +2573,12 @@
 					hysteresis = <2000>;
 					type = "hot";
 				};
+
+				aoss0_crit: aoss0_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
 			};
 		};
 
@@ -2492,6 +2634,12 @@
 					hysteresis = <2000>;
 					type = "hot";
 				};
+
+				gpuss0_crit: gpuss0_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
 			};
 		};
 
@@ -2506,6 +2654,12 @@
 					temperature = <90000>;
 					hysteresis = <2000>;
 					type = "hot";
+				};
+
+				gpuss1_crit: gpuss1_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
 				};
 			};
 		};
@@ -2522,6 +2676,12 @@
 					hysteresis = <2000>;
 					type = "hot";
 				};
+
+				aoss1_crit: aoss1_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
 			};
 		};
 
@@ -2536,6 +2696,12 @@
 					temperature = <90000>;
 					hysteresis = <2000>;
 					type = "hot";
+				};
+
+				cwlan_crit: cwlan_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
 				};
 			};
 		};
@@ -2552,6 +2718,12 @@
 					hysteresis = <2000>;
 					type = "hot";
 				};
+
+				audio_crit: audio_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
 			};
 		};
 
@@ -2566,6 +2738,12 @@
 					temperature = <90000>;
 					hysteresis = <2000>;
 					type = "hot";
+				};
+
+				ddr_crit: ddr_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
 				};
 			};
 		};
@@ -2582,6 +2760,12 @@
 					hysteresis = <2000>;
 					type = "hot";
 				};
+
+				q6_hvx_crit: q6_hvx_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
 			};
 		};
 
@@ -2596,6 +2780,12 @@
 					temperature = <90000>;
 					hysteresis = <2000>;
 					type = "hot";
+				};
+
+				camera_crit: camera_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
 				};
 			};
 		};
@@ -2612,6 +2802,12 @@
 					hysteresis = <2000>;
 					type = "hot";
 				};
+
+				mdm_crit: mdm_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
 			};
 		};
 
@@ -2626,6 +2822,12 @@
 					temperature = <90000>;
 					hysteresis = <2000>;
 					type = "hot";
+				};
+
+				mdm_dsp_crit: mdm_dsp_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
 				};
 			};
 		};
@@ -2642,6 +2844,12 @@
 					hysteresis = <2000>;
 					type = "hot";
 				};
+
+				npu_crit: npu_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
 			};
 		};
 
@@ -2656,6 +2864,12 @@
 					temperature = <90000>;
 					hysteresis = <2000>;
 					type = "hot";
+				};
+
+				video_crit: video_crit {
+					temperature = <110000>;
+					hysteresis = <2000>;
+					type = "critical";
 				};
 			};
 		};
