@@ -454,14 +454,9 @@ enum {
 	Opt_nosymfollow = 0,
 };
 
-static const struct fs_parameter_spec chromiumos_param_specs[] = {
+static const struct fs_parameter_spec chromiumos_fs_parameters[] = {
 	fsparam_bool("symfollow",	Opt_nosymfollow),
 	{}
-};
-
-static const struct fs_parameter_description chromiumos_fs_parameters = {
-	.name		= "ChromiumOS",
-	.specs		= chromiumos_param_specs,
 };
 
 static int chromiumos_fs_context_parse_param(struct fs_context *fc,
@@ -471,7 +466,7 @@ static int chromiumos_fs_context_parse_param(struct fs_context *fc,
 	int opt, rc;
 	struct chromiumos_mnt_opts *opts;
 
-	opt = fs_parse(fc, &chromiumos_fs_parameters, param, &result);
+	opt = fs_parse(fc, chromiumos_fs_parameters, param, &result);
 
 	if (opt < 0)
 		return opt;
