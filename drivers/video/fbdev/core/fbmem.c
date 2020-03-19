@@ -1685,7 +1685,7 @@ static void unbind_console(struct fb_info *fb_info)
 	console_unlock();
 }
 
-static void unlink_framebuffer(struct fb_info *fb_info)
+void unlink_framebuffer(struct fb_info *fb_info)
 {
 	int i;
 
@@ -1704,6 +1704,7 @@ static void unlink_framebuffer(struct fb_info *fb_info)
 
 	fb_info->dev = NULL;
 }
+EXPORT_SYMBOL(unlink_framebuffer);
 
 static void do_unregister_framebuffer(struct fb_info *fb_info)
 {
