@@ -57,7 +57,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "km/rgx_bvnc_defs_km.h"
 #include "pvrsrv_bridge_init.h"
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
 #include "pvr_drm.h"
 #include "pvr_drv.h"
 
