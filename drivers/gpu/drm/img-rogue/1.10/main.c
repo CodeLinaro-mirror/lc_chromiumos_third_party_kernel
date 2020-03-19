@@ -49,7 +49,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/init.h>
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
 
 #include "img_types.h"
 #include "linuxsrv.h"

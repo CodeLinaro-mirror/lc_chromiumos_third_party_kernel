@@ -8,6 +8,8 @@
  */
 
 #include "evdi_drv.h"
+#include <drm/drm_device.h>
+#include <drm/drm_file.h>
 
 static ssize_t frame_count_show(struct device *dev,
 				__always_unused struct device_attribute *attr,

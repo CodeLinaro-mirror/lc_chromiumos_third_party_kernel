@@ -8,7 +8,9 @@
  * more details.
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_file.h>
+#include <drm/drm_prime.h>
 #include "evdi_drv.h"
 #include <linux/shmem_fs.h>
 #include <linux/dma-buf.h>
@@ -403,19 +405,6 @@ static void evdi_unmap_dma_buf(
 {
 }
 
-static void *evdi_dmabuf_kmap(__always_unused struct dma_buf *dma_buf,
-			__always_unused unsigned long page_num)
-{
-	return NULL;
-}
-
-static void evdi_dmabuf_kunmap(
-			__always_unused struct dma_buf *dma_buf,
-			__always_unused unsigned long page_num,
-			__always_unused void *addr)
-{
-}
-
 static int evdi_dmabuf_mmap(__always_unused struct dma_buf *dma_buf,
 			__always_unused struct vm_area_struct *vma)
 {
@@ -428,8 +417,6 @@ static struct dma_buf_ops evdi_dmabuf_ops = {
 	.detach = evdi_detach_dma_buf,
 	.map_dma_buf = evdi_map_dma_buf,
 	.unmap_dma_buf = evdi_unmap_dma_buf,
-	.map = evdi_dmabuf_kmap,
-	.unmap = evdi_dmabuf_kunmap,
 	.mmap = evdi_dmabuf_mmap,
 	.release = drm_gem_dmabuf_release,
 };

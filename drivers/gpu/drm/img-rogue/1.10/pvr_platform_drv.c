@@ -43,7 +43,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/version.h>

@@ -44,7 +44,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
 #include <drm/drm.h>
-#include <drm/drmP.h> /* include before drm_crtc.h for kernels older than 3.9 */
+#include <drm/drm_drv.h>/* include before drm_crtc.h for kernels older than 3.9 */
 #include <drm/drm_crtc.h>
 #include <linux/device.h>
 #include <linux/kernel.h>
