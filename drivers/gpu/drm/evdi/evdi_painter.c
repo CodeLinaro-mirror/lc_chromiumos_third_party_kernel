@@ -7,8 +7,10 @@
  * more details.
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_file.h>
+#include <drm/drm_fourcc.h>
 #include <uapi/drm/evdi_drm.h>
 #include "evdi_drv.h"
 #include "evdi_cursor.h"
