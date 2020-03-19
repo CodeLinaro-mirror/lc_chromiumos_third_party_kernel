@@ -14,7 +14,7 @@
 #define EVDI_DRV_H
 
 #include <linux/module.h>
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_probe_helper.h>
