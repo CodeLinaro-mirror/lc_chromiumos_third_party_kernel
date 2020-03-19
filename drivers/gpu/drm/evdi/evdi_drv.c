@@ -8,7 +8,12 @@
  * more details.
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_ioctl.h>
+#include <drm/drm_file.h>
+#include <drm/drm_prime.h>
+#include <drm/drm_vblank.h>
+#include <linux/dma-mapping.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_probe_helper.h>
