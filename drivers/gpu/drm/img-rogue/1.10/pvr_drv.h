@@ -47,7 +47,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define __PVR_DRV_H__
 
 #include <linux/version.h>
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
 #include <linux/pm.h>
 
 struct file;
