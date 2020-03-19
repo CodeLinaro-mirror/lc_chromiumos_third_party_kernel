@@ -23,7 +23,7 @@
 #define _EVDI_CURSOR_H_
 
 #include <linux/module.h>
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_crtc.h>
 
 struct evdi_cursor;
