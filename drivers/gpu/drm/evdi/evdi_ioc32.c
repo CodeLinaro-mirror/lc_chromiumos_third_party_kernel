@@ -21,7 +21,8 @@
 
 #include <linux/compat.h>
 
-#include <drm/drmP.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_ioctl.h>
 #include <drm/drm_edid.h>
 #include <uapi/drm/evdi_drm.h>
 
