@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2011 Atheros Communications Inc.
  * Copyright (c) 2011-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -6732,11 +6732,6 @@ enum wmi_force_fw_hang_type {
 struct wmi_force_fw_hang_cmd {
 	__le32 type;
 	__le32 delay_ms;
-} __packed;
-
-struct wmi_fw_test_cmd {
-	__le32 param_id;
-	__le32 param_value;
 } __packed;
 
 enum wmi_pdev_reset_mode_type {

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2011 Atheros Communications Inc.
  * Copyright (c) 2011-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -147,8 +147,6 @@ struct wmi_ops {
 	struct sk_buff *(*gen_mgmt_tx_send)(struct ath10k *ar,
 					    struct sk_buff *skb,
 					    dma_addr_t paddr);
-	struct sk_buff *(*gen_fw_test)(struct ath10k *ar, u32 param_id,
-				       u32 param_value);
 	struct sk_buff *(*gen_dbglog_cfg)(struct ath10k *ar, u64 module_enable,
 					  u32 log_level);
 	struct sk_buff *(*gen_pktlog_enable)(struct ath10k *ar, u32 filter);
@@ -1110,21 +1108,6 @@ ath10k_wmi_force_fw_hang(struct ath10k *ar,
 		return PTR_ERR(skb);
 
 	return ath10k_wmi_cmd_send(ar, skb, ar->wmi.cmd->force_fw_hang_cmdid);
-}
-
-static inline int
-ath10k_wmi_fw_test(struct ath10k *ar, u32 param_id, u32 param_value)
-{
-	struct sk_buff *skb;
-
-	if (!ar->wmi.ops->gen_fw_test)
-		return -EOPNOTSUPP;
-
-	skb = ar->wmi.ops->gen_fw_test(ar, param_id, param_value);
-	if (IS_ERR(skb))
-		return PTR_ERR(skb);
-
-	return ath10k_wmi_cmd_send(ar, skb, ar->wmi.cmd->fwtest_cmdid);
 }
 
 static inline int
