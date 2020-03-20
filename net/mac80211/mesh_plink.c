@@ -1076,14 +1076,11 @@ mesh_process_plink_frame(struct ieee80211_sub_if_data *sdata,
 {
 
 	struct sta_info *sta;
-	struct ieee80211_local *local = sdata->local;
-
 	enum plink_event event;
 	enum ieee80211_self_protected_actioncode ftype;
-	u32 changed = 0, cap = 0;
+	u32 changed = 0;
 	u8 ie_len = elems->peering_len;
-	u16 plid, llid = 0, aid = 0;
-	u8 addr[ETH_ALEN] = {};
+	u16 plid, llid = 0;
 
 	if (!elems->peering) {
 		mpl_dbg(sdata,
@@ -1162,10 +1159,6 @@ mesh_process_plink_frame(struct ieee80211_sub_if_data *sdata,
 			sta->mesh->plid = plid;
 
 		sta->mesh->aid = get_unaligned_le16(PLINK_CNF_AID(mgmt));
-
-		aid = sta->mesh->aid;
-		cap = sta->sta.vht_cap.cap;
-		memcpy(addr, sta->sta.addr, ETH_ALEN);
 	}
 
 	changed |= mesh_plink_fsm(sdata, sta, event);
@@ -1175,10 +1168,6 @@ unlock_rcu:
 
 	if (changed)
 		ieee80211_mbss_info_change_notify(sdata, changed);
-
-	if (aid)
-		if (drv_sta_set_peer_mesh_info(local, sdata, addr, cap, aid))
-			mpl_dbg(sdata, "Mesh plink: failed to set mesh info\n");
 }
 
 void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata,

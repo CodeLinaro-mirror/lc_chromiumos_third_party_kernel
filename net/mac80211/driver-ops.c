@@ -159,25 +159,6 @@ int drv_sta_set_txpwr(struct ieee80211_local *local,
 	return ret;
 }
 
-int drv_sta_set_peer_mesh_info(struct ieee80211_local *local,
-			       struct ieee80211_sub_if_data *sdata,
-			       const u8 *mac_addr, u32 cap, u16 peer_aid)
-{
-	/* if driver doesn't support this ops, it will return success */
-	int ret = 0;
-
-	might_sleep();
-
-	sdata = get_bss_sdata(sdata);
-	if (!check_sdata_in_driver(sdata))
-		return -EIO;
-
-	if (local->ops->set_peer_mesh_info)
-		ret = local->ops->set_peer_mesh_info(&local->hw, &sdata->vif,
-						     mac_addr, cap, peer_aid);
-	return ret;
-}
-
 void drv_sta_rc_update(struct ieee80211_local *local,
 		       struct ieee80211_sub_if_data *sdata,
 		       struct ieee80211_sta *sta, u32 changed)

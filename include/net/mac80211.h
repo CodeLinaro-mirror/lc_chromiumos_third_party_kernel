@@ -3582,8 +3582,6 @@ enum ieee80211_reconfig_type {
  *	station when @sta is non-NULL. When @sta is NULL, then the configuration
  *	will be for all the connected clients in the vif.
  *	This callback may sleep.
- * @set_peer_mesh_info: Set peer mesh information, it contains peer MAC address,
- *	peer vht capabilities and mesh AID.
  */
 struct ieee80211_ops {
 	void (*tx)(struct ieee80211_hw *hw,
@@ -3875,9 +3873,6 @@ struct ieee80211_ops {
 			      struct ieee80211_vif *vif,
 			      struct ieee80211_sta *sta,
 			      struct ieee80211_tid_config *tid_conf);
-	int (*set_peer_mesh_info)(struct ieee80211_hw *hw,
-				  struct ieee80211_vif *vif,
-				  const u8 *mac_addr, u32 cap, u16 peer_aid);
 };
 
 /**

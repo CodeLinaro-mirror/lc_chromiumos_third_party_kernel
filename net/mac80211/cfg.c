@@ -1261,15 +1261,13 @@ static int sta_apply_auth_flags(struct ieee80211_local *local,
 	return 0;
 }
 
-static int sta_apply_mesh_params(struct ieee80211_local *local,
-				 struct sta_info *sta,
-				 struct station_parameters *params)
+static void sta_apply_mesh_params(struct ieee80211_local *local,
+				  struct sta_info *sta,
+				  struct station_parameters *params)
 {
 #ifdef CONFIG_MAC80211_MESH
 	struct ieee80211_sub_if_data *sdata = sta->sdata;
 	u32 changed = 0;
-	int ret;
-	u32 cap;
 
 	if (params->sta_modify_mask & STATION_PARAM_APPLY_PLINK_STATE) {
 		switch (params->plink_state) {
@@ -1278,17 +1276,6 @@ static int sta_apply_mesh_params(struct ieee80211_local *local,
 				changed = mesh_plink_inc_estab_count(sdata);
 			sta->mesh->plink_state = params->plink_state;
 			sta->mesh->aid = params->peer_aid;
-
-			if (params->vht_capa) {
-				memcpy(&sta->sta.vht_cap, params->vht_capa,
-				       sizeof(struct ieee80211_vht_cap));
-			}
-			cap = sta->sta.vht_cap.cap;
-			ret = drv_sta_set_peer_mesh_info(local, sdata,
-							 sta->sta.addr, cap,
-							 params->peer_aid);
-			if (ret)
-				return ret;
 
 			ieee80211_mps_sta_status_update(sta);
 			changed |= ieee80211_mps_set_sta_local_pm(sta,
@@ -1336,8 +1323,6 @@ static int sta_apply_mesh_params(struct ieee80211_local *local,
 							  params->local_pm);
 
 	ieee80211_mbss_info_change_notify(sdata, changed);
-
-	return 0;
 #endif
 }
 
@@ -1517,11 +1502,8 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 	if (params->support_p2p_ps >= 0)
 		sta->sta.support_p2p_ps = params->support_p2p_ps;
 
-	if (ieee80211_vif_is_mesh(&sdata->vif)) {
-		ret = sta_apply_mesh_params(local, sta, params);
-		if (ret)
-			return ret;
-	}
+	if (ieee80211_vif_is_mesh(&sdata->vif))
+		sta_apply_mesh_params(local, sta, params);
 
 	if (params->airtime_weight)
 		sta->airtime_weight = params->airtime_weight;

@@ -533,10 +533,6 @@ int drv_sta_set_txpwr(struct ieee80211_local *local,
 		      struct ieee80211_sub_if_data *sdata,
 		      struct sta_info *sta);
 
-int drv_sta_set_peer_mesh_info(struct ieee80211_local *local,
-			       struct ieee80211_sub_if_data *sdata,
-			       const u8 *mac_addr, u32 cap, u16 peer_aid);
-
 void drv_sta_rc_update(struct ieee80211_local *local,
 		       struct ieee80211_sub_if_data *sdata,
 		       struct ieee80211_sta *sta, u32 changed);
