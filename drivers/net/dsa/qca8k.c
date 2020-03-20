@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2009 Felix Fietkau <nbd@nbd.name>
  * Copyright (C) 2011-2012 Gabor Juhos <juhosg@openwrt.org>
- * Copyright (c) 2015, 2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2019, 2020 The Linux Foundation. All rights reserved.
  * Copyright (c) 2016 John Crispin <john@phrozen.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -661,8 +661,6 @@ qca8k_phy_fixup(struct qca8k_priv *priv, int phy_addr)
 {
 	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x7, 0x3c);
 	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4007, 0x0);
-	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x7, 0x801a);
-	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4007, 0x382a);
 	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x3, 0x800d);
 	qca8k_phy_mmd_write(priv->ds, phy_addr, 0x4003, 0x803f);
 
