@@ -914,21 +914,6 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 		return -ENOMEM;
 	}
 
-	if (ifmsh->mshcfg.vht_capa_mask) {
-		u32 cap;
-		struct ieee80211_supported_band *sband =
-						ieee80211_get_sband(sdata);
-		if (!sband)
-			return -EINVAL;
-
-		cap = sband->vht_cap.cap;
-		cap &= ~ifmsh->mshcfg.vht_capa_mask;
-		cap |= (ifmsh->mshcfg.vht_capa & ifmsh->mshcfg.vht_capa_mask);
-
-		sdata->vif.bss_conf.vht_capa = cap;
-		changed |= BSS_CHANGED_VHT_CAPA;
-	}
-
 	ieee80211_recalc_dtim(local, sdata);
 	ieee80211_bss_info_change_notify(sdata, changed);
 
