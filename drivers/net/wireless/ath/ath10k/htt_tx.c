@@ -1116,13 +1116,10 @@ int ath10k_htt_mgmt_tx(struct ath10k_htt *htt, struct sk_buff *msdu)
 	struct sk_buff *txdesc = NULL;
 	struct htt_cmd *cmd;
 	struct ath10k_skb_cb *skb_cb = ATH10K_SKB_CB(msdu);
-	struct ath10k_peer *peer;
 	u8 vdev_id = ath10k_htt_tx_get_vdev_id(ar, msdu);
 	int len = 0;
 	int msdu_id = -1;
 	int res;
-	const u8 *peer_addr;
-	int cipher;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)msdu->data;
 
 	len += sizeof(cmd->hdr);
@@ -1139,29 +1136,8 @@ int ath10k_htt_mgmt_tx(struct ath10k_htt *htt, struct sk_buff *msdu)
 	if ((ieee80211_is_action(hdr->frame_control) ||
 	     ieee80211_is_deauth(hdr->frame_control) ||
 	     ieee80211_is_disassoc(hdr->frame_control)) &&
-	    ieee80211_has_protected(hdr->frame_control)) {
-		peer_addr = hdr->addr1;
-		if (is_multicast_ether_addr(peer_addr)) {
-			skb_put(msdu, sizeof(struct ieee80211_mmie_16));
-		} else {
-			spin_lock_bh(&ar->data_lock);
-			peer = ath10k_peer_find(ar, vdev_id, peer_addr);
-			if (!peer) {
-				spin_unlock_bh(&ar->data_lock);
-				ath10k_warn(ar, "non-existent peer %pM\n",
-					    peer_addr);
-				res = -EINVAL;
-				goto err_free_msdu_id;
-			}
-
-			cipher = ath10k_cipher_find(ar, peer);
-			spin_unlock_bh(&ar->data_lock);
-			if (cipher == WLAN_CIPHER_SUITE_GCMP ||
-			    cipher == WLAN_CIPHER_SUITE_GCMP_256)
-				skb_put(msdu, IEEE80211_GCMP_MIC_LEN);
-			else
-				skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
-		}
+	     ieee80211_has_protected(hdr->frame_control)) {
+		skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
 	}
 
 	txdesc = ath10k_htc_alloc_skb(ar, len);
@@ -1230,11 +1206,8 @@ static int ath10k_htt_tx_32(struct ath10k_htt *htt,
 	u16 freq = 0;
 	u32 frags_paddr = 0;
 	u32 txbuf_paddr;
-	const u8 *peer_addr;
-	int cipher;
 	struct htt_msdu_ext_desc *ext_desc = NULL;
 	struct htt_msdu_ext_desc *ext_desc_t = NULL;
-	struct ath10k_peer *peer;
 
 	spin_lock_bh(&htt->tx_lock);
 	res = ath10k_htt_tx_alloc_msdu_id(htt, msdu);
@@ -1251,34 +1224,15 @@ static int ath10k_htt_tx_32(struct ath10k_htt *htt,
 	txbuf_paddr = htt->txbuf.paddr +
 		      (sizeof(struct ath10k_htt_txbuf_32) * msdu_id);
 
-	if (ieee80211_has_protected(hdr->frame_control) &&
-	    ((ieee80211_is_action(hdr->frame_control) ||
-	      ieee80211_is_deauth(hdr->frame_control) ||
-	      ieee80211_is_disassoc(hdr->frame_control)) ||
-	     (!(skb_cb->flags & ATH10K_SKB_F_NO_HWCRYPT) &&
-	      txmode == ATH10K_HW_TXRX_RAW))) {
-		peer_addr = hdr->addr1;
-		if (is_multicast_ether_addr(peer_addr)) {
-			skb_put(msdu, sizeof(struct ieee80211_mmie_16));
-		} else {
-			spin_lock_bh(&ar->data_lock);
-			peer = ath10k_peer_find(ar, vdev_id, peer_addr);
-			if (!peer) {
-				spin_unlock_bh(&ar->data_lock);
-				ath10k_warn(ar, "non-existent peer %pM\n",
-					    peer_addr);
-				res = -EINVAL;
-				goto err_free_msdu_id;
-			}
-
-			cipher = ath10k_cipher_find(ar, peer);
-			spin_unlock_bh(&ar->data_lock);
-			if (cipher == WLAN_CIPHER_SUITE_GCMP ||
-			    cipher == WLAN_CIPHER_SUITE_GCMP_256)
-				skb_put(msdu, IEEE80211_GCMP_MIC_LEN);
-			else
-				skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
-		}
+	if ((ieee80211_is_action(hdr->frame_control) ||
+	     ieee80211_is_deauth(hdr->frame_control) ||
+	     ieee80211_is_disassoc(hdr->frame_control)) &&
+	     ieee80211_has_protected(hdr->frame_control)) {
+		skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
+	} else if (!(skb_cb->flags & ATH10K_SKB_F_NO_HWCRYPT) &&
+		   txmode == ATH10K_HW_TXRX_RAW &&
+		   ieee80211_has_protected(hdr->frame_control)) {
+		skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
 	}
 
 	skb_cb->paddr = dma_map_single(dev, msdu->data, msdu->len,
@@ -1454,11 +1408,8 @@ static int ath10k_htt_tx_64(struct ath10k_htt *htt,
 	u16 freq = 0;
 	dma_addr_t frags_paddr = 0;
 	dma_addr_t txbuf_paddr;
-	const u8 *peer_addr;
-	int cipher;
 	struct htt_msdu_ext_desc_64 *ext_desc = NULL;
 	struct htt_msdu_ext_desc_64 *ext_desc_t = NULL;
-	struct ath10k_peer *peer;
 
 	spin_lock_bh(&htt->tx_lock);
 	res = ath10k_htt_tx_alloc_msdu_id(htt, msdu);
@@ -1475,34 +1426,15 @@ static int ath10k_htt_tx_64(struct ath10k_htt *htt,
 	txbuf_paddr = htt->txbuf.paddr +
 		      (sizeof(struct ath10k_htt_txbuf_64) * msdu_id);
 
-	if (ieee80211_has_protected(hdr->frame_control) &&
-	    ((ieee80211_is_action(hdr->frame_control) ||
-	      ieee80211_is_deauth(hdr->frame_control) ||
-	      ieee80211_is_disassoc(hdr->frame_control)) ||
-	     (!(skb_cb->flags & ATH10K_SKB_F_NO_HWCRYPT) &&
-	      txmode == ATH10K_HW_TXRX_RAW))) {
-		peer_addr = hdr->addr1;
-		if (is_multicast_ether_addr(peer_addr)) {
-			skb_put(msdu, sizeof(struct ieee80211_mmie_16));
-		} else {
-			spin_lock_bh(&ar->data_lock);
-			peer = ath10k_peer_find(ar, vdev_id, peer_addr);
-			if (!peer) {
-				spin_unlock_bh(&ar->data_lock);
-				ath10k_warn(ar, "non-existent peer %pM\n",
-					    peer_addr);
-				res = -EINVAL;
-				goto err_free_msdu_id;
-			}
-
-			cipher = ath10k_cipher_find(ar, peer);
-			spin_unlock_bh(&ar->data_lock);
-			if (cipher == WLAN_CIPHER_SUITE_GCMP ||
-			    cipher == WLAN_CIPHER_SUITE_GCMP_256)
-				skb_put(msdu, IEEE80211_GCMP_MIC_LEN);
-			else
-				skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
-		}
+	if ((ieee80211_is_action(hdr->frame_control) ||
+	     ieee80211_is_deauth(hdr->frame_control) ||
+	     ieee80211_is_disassoc(hdr->frame_control)) &&
+	     ieee80211_has_protected(hdr->frame_control)) {
+		skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
+	} else if (!(skb_cb->flags & ATH10K_SKB_F_NO_HWCRYPT) &&
+		   txmode == ATH10K_HW_TXRX_RAW &&
+		   ieee80211_has_protected(hdr->frame_control)) {
+		skb_put(msdu, IEEE80211_CCMP_MIC_LEN);
 	}
 
 	skb_cb->paddr = dma_map_single(dev, msdu->data, msdu->len,
