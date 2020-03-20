@@ -757,7 +757,6 @@ static struct wmi_cmd_map wmi_10_4_cmd_map = {
 	.peer_set_cfr_capture_conf_cmdid = WMI_10_4_PEER_SET_CFR_CAPTURE_CONF_CMDID,
 	.per_peer_per_tid_config_cmdid = WMI_10_4_PER_PEER_PER_TID_CONFIG_CMDID,
 	.radar_found_cmdid = WMI_10_4_RADAR_FOUND_CMDID,
-	.peer_mesh_confirm_cmdid = WMI_10_4_PEER_MESH_CONFIRMATION_CMDID,
 };
 
 static struct wmi_peer_param_map wmi_peer_param_map = {
@@ -1074,7 +1073,6 @@ static struct wmi_vdev_param_map wmi_10_4_vdev_param_map = {
 	.rx_decap_type = WMI_10_4_VDEV_PARAM_RX_DECAP_TYPE,
 	.bw_nss_ratemask = WMI_10_4_VDEV_PARAM_BW_NSS_RATEMASK,
 	.rtt_responder_role = WMI_10_4_VDEV_PARAM_ENABLE_DISABLE_RTT_RESPONDER_ROLE,
-	.mumimo_in_mesh = WMI_10_4_VDEV_PARAM_ENABLE_MUMIMO_IN_11S_MESH,
 };
 
 static struct wmi_pdev_param_map wmi_pdev_param_map = {
@@ -8986,40 +8984,6 @@ ath10k_wmi_op_gen_echo(struct ath10k *ar, u32 value)
 	return skb;
 }
 
-static void
-ath10k_wmi_peer_mesh_confirm_fill_10_4(struct ath10k *ar, void *buf,
-				       struct wmi_peer_mesh_confirm_arg *arg)
-{
-	struct wmi_10_4_peer_mesh_confirmation_cmd *cmd = buf;
-
-	ether_addr_copy(cmd->peer_macaddr.addr, arg->peer_macaddr);
-	cmd->vdev_id = __cpu_to_le32(arg->vdev_id);
-	cmd->ctrl_flag_bitmap =
-		__cpu_to_le32(WMI_PEER_MESH_CONFIRMATION_VHT_CAPS_VALID);
-	cmd->peer_vht_caps = __cpu_to_le32(arg->peer_vht_caps);
-	cmd->mesh_aid = __cpu_to_le32(arg->peer_aid);
-}
-
-static struct sk_buff *
-ath10k_wmi_10_4_op_gen_peer_mesh_confirm(struct ath10k *ar,
-					 struct wmi_peer_mesh_confirm_arg *arg)
-{
-	size_t len = sizeof(struct wmi_10_4_peer_mesh_confirmation_cmd);
-	struct sk_buff *skb;
-
-	skb = ath10k_wmi_alloc_skb(ar, len);
-	if (!skb)
-		return ERR_PTR(-ENOMEM);
-
-	ath10k_wmi_peer_mesh_confirm_fill_10_4(ar, skb->data, arg);
-
-	ath10k_dbg(ar, ATH10K_DBG_WMI,
-		   "mesh confirm peer addr %pM, vht caps %x, mesh AID %d\n",
-		   arg->peer_macaddr, arg->peer_vht_caps, arg->peer_aid);
-
-	return skb;
-}
-
 int
 ath10k_wmi_barrier(struct ath10k *ar)
 {
@@ -9403,7 +9367,6 @@ static const struct wmi_ops wmi_10_4_ops = {
 	.gen_echo = ath10k_wmi_op_gen_echo,
 	.gen_pdev_get_tpc_config = ath10k_wmi_10_2_4_op_gen_pdev_get_tpc_config,
 	.gen_peer_cfr_capture_conf = ath10k_wmi_10_4_op_gen_peer_cfr_capture_conf,
-	.gen_peer_mesh_confirm = ath10k_wmi_10_4_op_gen_peer_mesh_confirm,
 };
 
 int ath10k_wmi_attach(struct ath10k *ar)

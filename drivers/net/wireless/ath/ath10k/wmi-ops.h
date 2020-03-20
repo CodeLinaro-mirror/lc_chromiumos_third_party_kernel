@@ -234,9 +234,6 @@ struct wmi_ops {
 					      u32 vdev_id,
 					      u8 config_type,
 					      u32 *priority_level);
-	struct sk_buff *(*gen_peer_mesh_confirm)
-					(struct ath10k *ar,
-					 struct wmi_peer_mesh_confirm_arg *arg);
 };
 
 int ath10k_wmi_cmd_send(struct ath10k *ar, struct sk_buff *skb, u32 cmd_id);
@@ -1662,23 +1659,6 @@ ath10k_wmi_report_radar_found(struct ath10k *ar,
 
 	return ath10k_wmi_cmd_send(ar, skb,
 				   ar->wmi.cmd->radar_found_cmdid);
-}
-
-static inline int
-ath10k_wmi_peer_mesh_confirm(struct ath10k *ar,
-			     struct wmi_peer_mesh_confirm_arg *arg)
-{
-	struct sk_buff *skb;
-
-	if (!ar->wmi.ops->gen_peer_mesh_confirm)
-		return -EOPNOTSUPP;
-
-	skb = ar->wmi.ops->gen_peer_mesh_confirm(ar, arg);
-	if (IS_ERR(skb))
-		return PTR_ERR(skb);
-
-	return ath10k_wmi_cmd_send(ar, skb,
-				   ar->wmi.cmd->peer_mesh_confirm_cmdid);
 }
 
 #endif

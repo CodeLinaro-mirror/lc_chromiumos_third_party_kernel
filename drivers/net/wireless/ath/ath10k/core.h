@@ -548,8 +548,6 @@ struct ath10k_vif {
 	u32 tid_conf_changed[IEEE80211_TID_MAX];
 
 	struct ieee80211_tid_config *tid_config;
-
-	u32 vht_cap_info;
 };
 
 struct ath10k_vif_iter {

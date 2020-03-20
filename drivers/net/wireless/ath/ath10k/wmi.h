@@ -216,7 +216,6 @@ enum wmi_service {
 	WMI_SERVICE_RTT_RESPONDER_ROLE,
 	WMI_SERVICE_THREE_WAY_COEX_CONFIG_OVERRIDE,
 	WMI_SERVICE_DBG_DUMP_SUPPORT,
-	WMI_SERVICE_11S_MESH_MUMIMO_SUPPORT,
 
 	/* keep last */
 	WMI_SERVICE_MAX,
@@ -387,8 +386,6 @@ enum wmi_10_4_service {
 	WMI_10_4_SERVICE_RESET_CHIP,
 	WMI_10_4_SERVICE_THREE_WAY_COEX_CONFIG_OVERRIDE,
 	WMI_10_4_SERVICE_DBG_DUMP_SUPPORT,
-	WMI_10_4_SERVICE_TX_ACK_TIMEOUT,
-	WMI_10_4_SERVICE_11S_MESH_MUMIMO_SUPPORT,
 };
 
 static inline char *wmi_service_name(int service_id)
@@ -513,7 +510,6 @@ static inline char *wmi_service_name(int service_id)
 	SVCSTR(WMI_SERVICE_TX_PWR_PER_PEER);
 	SVCSTR(WMI_SERVICE_RTT_RESPONDER_ROLE);
 	SVCSTR(WMI_SERVICE_DBG_DUMP_SUPPORT);
-	SVCSTR(WMI_SERVICE_11S_MESH_MUMIMO_SUPPORT);
 	default:
 		return NULL;
 	}
@@ -852,8 +848,6 @@ static inline void wmi_10_4_svc_map(const __le32 *in, unsigned long *out,
 	       WMI_SERVICE_RESET_CHIP, len);
 	SVCMAP(WMI_10_4_SERVICE_DBG_DUMP_SUPPORT,
 	       WMI_SERVICE_DBG_DUMP_SUPPORT, len);
-	SVCMAP(WMI_10_4_SERVICE_11S_MESH_MUMIMO_SUPPORT,
-	       WMI_SERVICE_11S_MESH_MUMIMO_SUPPORT, len);
 }
 
 #undef SVCMAP
@@ -1057,7 +1051,6 @@ struct wmi_cmd_map {
 	u32 per_peer_per_tid_config_cmdid;
 	u32 set_coex_param_cmdid;
 	u32 radar_found_cmdid;
-	u32 peer_mesh_confirm_cmdid;
 };
 
 /*
@@ -1899,16 +1892,6 @@ enum wmi_10_4_cmd_id {
 	WMI_10_4_RADAR_FOUND_CMDID,
 	WMI_10_4_PEER_SET_CFR_CAPTURE_CONF_CMDID,
 	WMI_10_4_PER_PEER_PER_TID_CONFIG_CMDID,
-	WMI_10_4_BCN_OFFLOAD_CTRL_CMDID,
-	WMI_10_4_PEER_REMOVE_ALL_WDS_ENTRIES_CMDID,
-	WMI_10_4_PEER_CHAN_WIDTH_SWITCH_CMDID,
-	WMI_10_4_VDEV_SET_PCP_TID_MAP_CMDID,
-	WMI_10_4_VDEV_SET_PRECEDENCE_MAP_CMDID,
-	WMI_10_4_PEER_TX_PN_REQUEST_CMDID,
-	WMI_10_4_PDEV_MULT_VDEV_RESTART_REQUEST_CMDID,
-	WMI_10_4_VDEV_DELETE_ALL_PEER_CMDID,
-	WMI_10_4_PEER_FT_ROAMING_PEER_UPDATE_CMDID,
-	WMI_10_4_PEER_MESH_CONFIRMATION_CMDID,
 	WMI_10_4_PDEV_UTF_CMDID = WMI_10_4_END_CMDID - 1,
 };
 
@@ -5248,7 +5231,6 @@ struct wmi_vdev_param_map {
 	u32 rx_decap_type;
 	u32 bw_nss_ratemask;
 	u32 rtt_responder_role;
-	u32 mumimo_in_mesh;
 };
 
 #define WMI_VDEV_PARAM_UNSUPPORTED 0
@@ -5597,8 +5579,6 @@ enum wmi_10_4_vdev_param {
 	WMI_10_4_VDEV_PARAM_SIFS_TRIGGER_RATE,
 	WMI_10_4_VDEV_PARAM_TX_POWER,
 	WMI_10_4_VDEV_PARAM_ENABLE_DISABLE_RTT_RESPONDER_ROLE,
-	WMI_10_4_VDEV_DISABLE_4ADDR_SRC_LRN,
-	WMI_10_4_VDEV_PARAM_ENABLE_MUMIMO_IN_11S_MESH,
 };
 
 #define WMI_VDEV_PARAM_TXBF_SU_TX_BFEE BIT(0)
@@ -7372,25 +7352,6 @@ struct wmi_pdev_chan_info_req_cmd {
 	__le32 type;
 	__le32 reserved;
 } __packed;
-
-struct wmi_10_4_peer_mesh_confirmation_cmd {
-	struct wmi_mac_addr peer_macaddr;
-	__le32 vdev_id;
-	__le32 mesh_aid;
-	__le32 peer_vht_caps;
-	__le32 ctrl_flag_bitmap;
-} __packed;
-
-enum wmi_peer_mesh_confirmation_valid_bitmap {
-	WMI_PEER_MESH_CONFIRMATION_VHT_CAPS_VALID = 0x00000001,
-};
-
-struct wmi_peer_mesh_confirm_arg {
-	u8 peer_macaddr[ETH_ALEN];
-	u32 vdev_id;
-	u16 peer_aid;
-	u32 peer_vht_caps;
-};
 
 struct ath10k;
 struct ath10k_vif;

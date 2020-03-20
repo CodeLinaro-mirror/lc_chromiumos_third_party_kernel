@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2011 Atheros Communications Inc.
  * Copyright (c) 2011-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -5089,22 +5089,6 @@ static u32 get_nss_from_chainmask(u16 chain_mask)
 	return 1;
 }
 
-static int ath10k_mac_set_mumimo_in_mesh(struct ath10k_vif *arvif, u32 enable)
-{
-	struct ath10k *ar = arvif->ar;
-	struct ieee80211_vif *vif = arvif->vif;
-	u32 param = ar->wmi.vdev_param->mumimo_in_mesh;
-
-	if (vif->type != NL80211_IFTYPE_MESH_POINT ||
-	    !test_bit(WMI_SERVICE_11S_MESH_MUMIMO_SUPPORT, ar->wmi.svc_map))
-		return 0;
-
-	ath10k_dbg(ar, ATH10K_DBG_MAC, "%s mumimo in 11s mesh\n",
-		   enable ? "enable" : "disable");
-
-	return ath10k_wmi_vdev_set_param(ar, arvif->vdev_id, param, enable);
-}
-
 static int ath10k_mac_set_txbf_conf(struct ath10k_vif *arvif)
 {
 	u32 value = 0;
@@ -5116,29 +5100,29 @@ static int ath10k_mac_set_txbf_conf(struct ath10k_vif *arvif)
 		return 0;
 
 	nsts = ath10k_mac_get_vht_cap_bf_sts(ar);
-	if (arvif->vht_cap_info & (IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE |
+	if (ar->vht_cap_info & (IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE |
 				IEEE80211_VHT_CAP_MU_BEAMFORMEE_CAPABLE))
 		value |= SM(nsts, WMI_TXBF_STS_CAP_OFFSET);
 
 	sound_dim = ath10k_mac_get_vht_cap_bf_sound_dim(ar);
-	if (arvif->vht_cap_info & (IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE |
+	if (ar->vht_cap_info & (IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE |
 				IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE))
 		value |= SM(sound_dim, WMI_BF_SOUND_DIM_OFFSET);
 
 	if (!value)
 		return 0;
 
-	if (arvif->vht_cap_info & IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE)
+	if (ar->vht_cap_info & IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE)
 		value |= WMI_VDEV_PARAM_TXBF_SU_TX_BFER;
 
-	if (arvif->vht_cap_info & IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE)
+	if (ar->vht_cap_info & IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE)
 		value |= (WMI_VDEV_PARAM_TXBF_MU_TX_BFER |
 			  WMI_VDEV_PARAM_TXBF_SU_TX_BFER);
 
-	if (arvif->vht_cap_info & IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE)
+	if (ar->vht_cap_info & IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE)
 		value |= WMI_VDEV_PARAM_TXBF_SU_TX_BFEE;
 
-	if (arvif->vht_cap_info & IEEE80211_VHT_CAP_MU_BEAMFORMEE_CAPABLE)
+	if (ar->vht_cap_info & IEEE80211_VHT_CAP_MU_BEAMFORMEE_CAPABLE)
 		value |= (WMI_VDEV_PARAM_TXBF_MU_TX_BFEE |
 			  WMI_VDEV_PARAM_TXBF_SU_TX_BFEE);
 
@@ -5172,7 +5156,6 @@ static int ath10k_add_interface(struct ieee80211_hw *hw,
 
 	memset(arvif, 0, sizeof(*arvif));
 	ath10k_mac_txq_init(vif->txq);
-	arvif->vht_cap_info = ar->vht_cap_info;
 
 	arvif->ar = ar;
 	arvif->vif = vif;
@@ -5899,31 +5882,6 @@ static void ath10k_bss_info_changed(struct ieee80211_hw *hw,
 			ath10k_warn(ar,
 				    "failed to set bcast rate on vdev %i: %d\n",
 				    arvif->vdev_id,  ret);
-	}
-
-	if (changed & BSS_CHANGED_VHT_CAPA) {
-		u32 enable, mumimo_enable_mask;
-
-		mumimo_enable_mask = IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE |
-				     IEEE80211_VHT_CAP_MU_BEAMFORMEE_CAPABLE;
-
-		ath10k_dbg(ar, ATH10K_DBG_MAC,
-			   "%s vht_capa changed from %x to :%x\n",
-			   __func__, ar->vht_cap_info, info->vht_capa);
-
-		arvif->vht_cap_info = info->vht_capa;
-		enable = arvif->vht_cap_info & mumimo_enable_mask ? 1 : 0;
-
-		ret = ath10k_mac_set_mumimo_in_mesh(arvif, enable);
-		if (ret)
-			ath10k_warn(ar, "failed to %s mumimo for vdev %d: %d\n",
-				    enable ? "enable" : "disable",
-				    arvif->vdev_id, ret);
-
-		ret = ath10k_mac_set_txbf_conf(arvif);
-		if (ret)
-			ath10k_warn(ar, "failed to set txbf for vdev %d: %d\n",
-				    arvif->vdev_id, ret);
 	}
 
 	mutex_unlock(&ar->conf_mutex);
@@ -8548,31 +8506,6 @@ exit:
 	return ret;
 }
 
-static int ath10k_set_peer_mesh_info(struct ieee80211_hw *hw,
-				     struct ieee80211_vif *vif,
-				     const u8 *mac_addr, u32 cap, u16 peer_aid)
-{
-	int ret = 0;
-	struct ath10k *ar = hw->priv;
-	struct ath10k_vif *arvif = (void *)vif->drv_priv;
-	struct wmi_peer_mesh_confirm_arg arg;
-
-	if (!test_bit(WMI_SERVICE_11S_MESH_MUMIMO_SUPPORT, ar->wmi.svc_map))
-		return ret;
-
-	mutex_lock(&ar->conf_mutex);
-
-	memcpy(arg.peer_macaddr, mac_addr, ETH_ALEN);
-	arg.vdev_id = arvif->vdev_id;
-	arg.peer_vht_caps = cap;
-	arg.peer_aid = peer_aid;
-
-	ret = ath10k_wmi_peer_mesh_confirm(ar, &arg);
-
-	mutex_unlock(&ar->conf_mutex);
-	return ret;
-}
-
 static const struct ieee80211_ops ath10k_ops = {
 	.tx				= ath10k_mac_op_tx,
 	.wake_tx_queue			= ath10k_mac_op_wake_tx_queue,
@@ -8616,7 +8549,6 @@ static const struct ieee80211_ops ath10k_ops = {
 	.sta_pre_rcu_remove		= ath10k_mac_op_sta_pre_rcu_remove,
 	.sta_statistics			= ath10k_sta_statistics,
 	.set_tid_config			= ath10k_mac_op_set_tid_config,
-	.set_peer_mesh_info		= ath10k_set_peer_mesh_info,
 
 	CFG80211_TESTMODE_CMD(ath10k_tm_cmd)
 
