@@ -1279,6 +1279,10 @@ static int sta_apply_mesh_params(struct ieee80211_local *local,
 			sta->mesh->plink_state = params->plink_state;
 			sta->mesh->aid = params->peer_aid;
 
+			if (params->vht_capa) {
+				memcpy(&sta->sta.vht_cap, params->vht_capa,
+				       sizeof(struct ieee80211_vht_cap));
+			}
 			cap = sta->sta.vht_cap.cap;
 			ret = drv_sta_set_peer_mesh_info(local, sdata,
 							 sta->sta.addr, cap,
