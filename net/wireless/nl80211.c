@@ -4735,9 +4735,7 @@ int cfg80211_check_station_change(struct wiphy *wiphy,
 			return -EINVAL;
 		if (params->supported_rates)
 			return -EINVAL;
-		if (params->ext_capab || params->ht_capa ||
-		    (statype != CFG80211_STA_MESH_PEER_USER &&
-		    params->vht_capa))
+		if (params->ext_capab || params->ht_capa || params->vht_capa)
 			return -EINVAL;
 	}
 
@@ -5070,10 +5068,6 @@ static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
 				return -EINVAL;
 		}
 		params.sta_modify_mask |= STATION_PARAM_APPLY_PLINK_STATE;
-
-		if (info->attrs[NL80211_ATTR_VHT_CAPABILITY])
-			params.vht_capa = nla_data(
-				info->attrs[NL80211_ATTR_VHT_CAPABILITY]);
 	}
 
 	if (info->attrs[NL80211_ATTR_LOCAL_MESH_POWER_MODE]) {
