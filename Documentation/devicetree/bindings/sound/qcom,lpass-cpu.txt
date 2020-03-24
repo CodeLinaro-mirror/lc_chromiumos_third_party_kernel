@@ -1,54 +1,158 @@
-* Qualcomm Technologies LPASS CPU DAI
+* Qualcomm Technologies LPASS CPU DAI binding
 
-This node models the Qualcomm Technologies Low-Power Audio SubSystem (LPASS).
+Low-Power Audio SubSystem (LPASS) consist of MI2S interfaces for audio data
+transfer on external codec. LPASS cpu driver is a common code to configure
+MI2S related CPU dai's across different version of LPASS architecture.
 
-Required properties:
+- compatible:
+	Usage: required
+	Value type: <stringlist>
+	Definition: compatible string corresponds to lpass variants driver
+		    must be "qcom, lpass-cpu-sc7180" for sc7180 lpass
+		    must be "qcom,apq8016-lpass-cpu" for apq8016 lpass
+- reg:
+	Usage: required
+	Value type: <prop-encoded-array>
+	Definition: must specify the base address and size of the LPAIF CORE
+		    region of lpass variant.
+- reg-names:
+	Usage: required
+	Value type: <stringlist>
+	Definition: must be "lpass-lpaif"
 
-- compatible		: "qcom,lpass-cpu" or "qcom,apq8016-lpass-cpu"
-- clocks		: Must contain an entry for each entry in clock-names.
-- clock-names		: A list which must include the following entries:
-				* "ahbix-clk"
-				* "mi2s-osr-clk"
-				* "mi2s-bit-clk"
-			: required clocks for "qcom,lpass-cpu-apq8016"
-				* "ahbix-clk"
-				* "mi2s-bit-clk0"
-				* "mi2s-bit-clk1"
-				* "mi2s-bit-clk2"
-				* "mi2s-bit-clk3"
-				* "pcnoc-mport-clk"
-				* "pcnoc-sway-clk"
+- iommus:
+        Usage: required for "qcom, lpass-cpu-sc7180" compatible string
+        Value type: <prop-encoded-array>
+        Definition: sid mask for lpaif memory region to apps_smmu
+                    must be <&apps_smmu 0x1020 0>
 
-- interrupts		: Must contain an entry for each entry in
-			  interrupt-names.
-- interrupt-names	: A list which must include the following entries:
-				* "lpass-irq-lpaif"
-- pinctrl-N		: One property must exist for each entry in
-			  pinctrl-names.  See ../pinctrl/pinctrl-bindings.txt
-			  for details of the property values.
-- pinctrl-names		: Must contain a "default" entry.
-- reg			: Must contain an address for each entry in reg-names.
-- reg-names		: A list which must include the following entries:
-				* "lpass-lpaif"
+- power-domains:
+	Usage: required for "qcom, lpass-cpu-sc7180" compatible string
+	Value type: <phandle>
+	Definition: reference to power-domains
+		    must be <&lpass_hm LPASS_CORE_HM_GDSCR>
 
+- clocks:
+        Usage: required
+	Value type: <phandle>
+	Definition: reference to the clocks that match clock-names
 
+- clock-names:
+	Usage: required
+	Value type: <stringlist>
+	Definition: The clocks needed depend on the compatible string:
+	qcom,lpass-cpu-apq8016:
+		must be "ahbix-clk", "mi2s-osr-clk", "mi2s-bit-clk0",
+		mi2s-bit-clk1", "mi2s-bit-clk2", "mi2s-bit-clk3",
+		"pcnoc-mport-clk", "pcnoc-sway-clk"
+	qcom, lpass-cpu-sc7180:
+		must be "noc", "audio-core", "mclk0", "sysnoc_mport",
+		"pri_ibit", "sec_ibit"
 
-Optional properties:
+- #sound-dai-cells
+	Usage: required
+	Value type: <u32>
+	Definition: Must be 1
 
-- qcom,adsp		: Phandle for the audio DSP node
+- interrupts:
+	Usage: required
+	Value type: <prop-encoded-array>
+	Definition: reference to the interrupts that match interrupt-names
+
+- interrupt-names:
+	Usage: required
+	Value type: <stringlist>
+	Definition: must be "lpass-irq-lpaif"
+
+- qcom,adsp:
+        Usage: optional
+        Value type: <phandle>
+	Definition: Phandle for the audio DSP node
+
+= MI2S DAIs (Digial Audio Interface)
+"dais" child node of the lpass node. It represents mi2s dais, each mi2s dai is
+subnode of "dais" representing board specific dai setup & required dai clocks.
+"dais" node should have following properties.
+
+- id:
+	Usage: required for mi2s interface
+	Value type: <u32>
+	Definition: Must be dai id defined in lpass bindings like MI2S_PRIMARY
+
+- qcom,bitclk-name:
+	Usage: required for mi2s interface
+	Value type: <stringlist>
+	Definition: bitclk name corresponds to MI2S of lpass version
+
+- qcom,mclk-name:
+        Usage: optional for mi2s interface
+        Value type: <stringlist>
+        Definition: external mclk name corresponds to MI2S of lpass version
+
+- qcom,osrclk-name:
+        Usage: optional for mi2s interface
+        Value type: <stringlist>
+        Definition: osrclk name corresponds to MI2S of lpass version
+
+- qcom,spkmode-mask:
+        Usage: optional for mi2s interface
+        Value type: <u32>
+        Definition: board specific property to change default spkmode mask
+                    of MI2S dai based on dataline connection on board.
+
+- qcom,micmode-mask:
+        Usage: optional for mi2s interface
+        Value type: <u32>
+        Definition: board specific property to change default micmode mask
+                    of MI2S dai based on dataline connection on board.
+
+- qcom,loopback-mask:
+        Usage: optional for mi2s interface
+        Value type: <u32>
+        Definition: board specific property to change default loopback mask
+                    of MI2S dai as per requirement.
+
+- qcom,wssrc-mask:
+        Usage: optional for mi2s interface
+        Value type: <u32>
+        Definition: board specific property to change default wssrc mask
+                    of MI2S dai based as per requirement.
 
 Example:
 
-lpass@28100000 {
-	compatible = "qcom,lpass-cpu";
-	clocks = <&lcc AHBIX_CLK>, <&lcc MI2S_OSR_CLK>, <&lcc MI2S_BIT_CLK>;
-	clock-names = "ahbix-clk", "mi2s-osr-clk", "mi2s-bit-clk";
-	interrupts = <0 85 1>;
-	interrupt-names = "lpass-irq-lpaif";
-	pinctrl-names = "default", "idle";
-	pinctrl-0 = <&mi2s_default>;
-	pinctrl-1 = <&mi2s_idle>;
-	reg = <0x28100000 0x10000>;
+lpass_cpu: lpass {
+	compatible = "qcom, lpass-cpu-sc7180";
+
+	reg = <0 0x62F00000 0 0x29000>;
 	reg-names = "lpass-lpaif";
-	qcom,adsp = <&adsp>;
+
+	iommus = <&apps_smmu 0x1020 0>;
+
+	power-domains = <&lpass_hm LPASS_CORE_HM_GDSCR>;
+
+	clocks = <&gcc GCC_LPASS_CFG_NOC_SWAY_CLK>,
+		 <&lpasscorecc LPASS_AUDIO_CORE_CORE_CLK>,
+		 <&lpasscorecc LPASS_AUDIO_CORE_EXT_MCLK0_CLK>,
+		 <&lpasscorecc LPASS_AUDIO_CORE_SYSNOC_MPORT_CORE_CLK>,
+		 <&lpasscorecc LPASS_AUDIO_CORE_LPAIF_PRI_IBIT_CLK>,
+		 <&lpasscorecc LPASS_AUDIO_CORE_LPAIF_SEC_IBIT_CLK>;
+
+	clock-names = "noc", "audio-core", "mclk0", "sysnoc_mport",
+		      "pri_ibit", "sec_ibit";
+
+	#sound-dai-cells = <1>;
+
+	interrupts = <0 160 IRQ_TYPE_LEVEL_HIGH>;
+	interrupt-names = "lpass-irq-lpaif";
+
+	prim-mi2s@0 {
+		id = <MI2S_PRIMARY>;
+		qcom,bitclk-name = "pri_ibit";
+		qcom,mclk-name = "mclk0";
+	};
+
+	sec-mi2s@1 {
+		id = <MI2S_SECONDARY>;
+		qcom,bitclk-name = "sec_ibit";
+	};
 };
