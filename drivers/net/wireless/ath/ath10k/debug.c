@@ -3227,64 +3227,64 @@ static const struct file_operations fops_ftm_resp = {
 	.llseek = default_llseek,
 };
 
-static ssize_t ath10k_write_burst_enable(struct file *file,
-					 const char __user *user_buf,
-					 size_t count, loff_t *ppos)
-{
-	struct ath10k *ar = file->private_data;
-	int ret;
-	u8 enable;
-
-	if (kstrtou8_from_user(user_buf, count, 0, &enable))
-		return -EINVAL;
-
-	mutex_lock(&ar->conf_mutex);
-
-	if (ar->burst_enabled == enable) {
-		ret = count;
-		goto exit;
-	}
-
-	if (ar->state != ATH10K_STATE_ON &&
-	    ar->state != ATH10K_STATE_RESTARTED) {
-		ret = -ENETDOWN;
-		goto exit;
-	}
-
-	ret = ath10k_wmi_pdev_set_param(ar, ar->wmi.pdev_param->burst_enable,
-					enable);
-
-	if (ret) {
-		ath10k_warn(ar, "failed to set burst value %d\n",
-			    ret);
-		goto exit;
-	}
-	ar->burst_enabled = enable;
-
-	ret = count;
-
-exit:
-	mutex_unlock(&ar->conf_mutex);
-
-	return ret;
-}
-
-static ssize_t ath10k_read_burst_enable(struct file *file,
+static ssize_t
+ath10k_dbg_read_cfr_requested_meta_info(struct file *file,
 					char __user *user_buf,
 					size_t count, loff_t *ppos)
 {
 	struct ath10k *ar = file->private_data;
-	size_t len;
-	char buf[32];
+	int len = 0, retval = 0;
+	char *buf;
+	struct ath10k_rfs_cfr_hdr *cfr_ptr = ar->cfr_current;
+	unsigned int i = ar->cfr_rindex;
+	const int size = 3 * 4096;
 
-	len = scnprintf(buf, sizeof(buf), "%d\n", ar->burst_enabled);
+	if (!cfr_ptr) {
+		ath10k_warn(ar, "periodic_cfr_enable is not enabled\n");
+		return -ENOMEM;
+	}
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	buf = kzalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	mutex_lock(&ar->conf_mutex);
+	spin_lock_bh(&ar->data_lock);
+
+	do {
+		len += scnprintf(buf + len, size - len, "%x  %02x:%02x:%02x:",
+				 cfr_ptr[i].head_magic_num, cfr_ptr[i].addr[0],
+				 cfr_ptr[i].addr[1], cfr_ptr[i].addr[2]);
+		len += scnprintf(buf + len, size - len, "%02x:%02x:%02x ",
+				 cfr_ptr[i].addr[3], cfr_ptr[i].addr[4],
+				 cfr_ptr[i].addr[5]);
+		len += scnprintf(buf + len, size - len, "%u %u %u ",
+				 cfr_ptr[i].status, cfr_ptr[i].capture_bw,
+				 cfr_ptr[i].channel_bw);
+		len += scnprintf(buf + len, size - len, "%u %u %u %u ",
+				 cfr_ptr[i].phy_mode, cfr_ptr[i].prim20_chan,
+				 cfr_ptr[i].center_freq1,
+				 cfr_ptr[i].center_freq2);
+		len += scnprintf(buf + len, size - len, "%u %u %u %u ",
+				 cfr_ptr[i].capture_mode,
+				 cfr_ptr[i].capture_type,
+				 cfr_ptr[i].sts_count,
+				 cfr_ptr[i].num_rx_chain);
+		len += scnprintf(buf + len, size - len, "%u %u\n",
+				 cfr_ptr[i].timestamp, cfr_ptr[i].length);
+		i++;
+		i = i % CFR_NUM_OF_REQUESTED_META_INFO;
+	} while (i != ar->cfr_rindex);
+
+	spin_unlock_bh(&ar->data_lock);
+	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	mutex_unlock(&ar->conf_mutex);
+	kfree(buf);
+	return retval;
 }
 
-static const struct file_operations fops_burst_enable = {
-	.read = ath10k_read_burst_enable,
-	.write = ath10k_write_burst_enable,
+static const struct file_operations fops_cfr_requested_meta_info = {
+	.read = ath10k_dbg_read_cfr_requested_meta_info,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -3347,64 +3347,64 @@ static const struct file_operations fops_rts_threshold = {
 	.llseek = default_llseek,
 };
 
-static ssize_t
-ath10k_dbg_read_cfr_requested_meta_info(struct file *file,
+static ssize_t ath10k_write_burst_enable(struct file *file,
+					 const char __user *user_buf,
+					 size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	int ret;
+	u8 enable;
+
+	if (kstrtou8_from_user(user_buf, count, 0, &enable))
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->burst_enabled == enable) {
+		ret = count;
+		goto exit;
+	}
+
+	if (ar->state != ATH10K_STATE_ON &&
+	    ar->state != ATH10K_STATE_RESTARTED) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	ret = ath10k_wmi_pdev_set_param(ar, ar->wmi.pdev_param->burst_enable,
+					enable);
+
+	if (ret) {
+		ath10k_warn(ar, "failed to set burst value %d\n",
+			    ret);
+		goto exit;
+	}
+	ar->burst_enabled = enable;
+
+	ret = count;
+
+exit:
+	mutex_unlock(&ar->conf_mutex);
+
+	return ret;
+}
+
+static ssize_t ath10k_read_burst_enable(struct file *file,
 					char __user *user_buf,
 					size_t count, loff_t *ppos)
 {
 	struct ath10k *ar = file->private_data;
-	int len = 0, retval = 0;
-	char *buf;
-	struct ath10k_rfs_cfr_hdr *cfr_ptr = ar->cfr_current;
-	unsigned int i = ar->cfr_rindex;
-	const int size = 3 * 4096;
+	size_t len;
+	char buf[32];
 
-	if (!cfr_ptr) {
-		ath10k_warn(ar, "periodic_cfr_enable is not enabled\n");
-		return -ENOMEM;
-	}
+	len = scnprintf(buf, sizeof(buf), "%d\n", ar->burst_enabled);
 
-	buf = kzalloc(size, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	mutex_lock(&ar->conf_mutex);
-	spin_lock_bh(&ar->data_lock);
-
-	do {
-		len += scnprintf(buf + len, size - len, "%x  %02x:%02x:%02x:",
-				 cfr_ptr[i].head_magic_num, cfr_ptr[i].addr[0],
-				 cfr_ptr[i].addr[1], cfr_ptr[i].addr[2]);
-		len += scnprintf(buf + len, size - len, "%02x:%02x:%02x ",
-				 cfr_ptr[i].addr[3], cfr_ptr[i].addr[4],
-				 cfr_ptr[i].addr[5]);
-		len += scnprintf(buf + len, size - len, "%u %u %u ",
-				 cfr_ptr[i].status, cfr_ptr[i].capture_bw,
-				 cfr_ptr[i].channel_bw);
-		len += scnprintf(buf + len, size - len, "%u %u %u %u ",
-				 cfr_ptr[i].phy_mode, cfr_ptr[i].prim20_chan,
-				 cfr_ptr[i].center_freq1,
-				 cfr_ptr[i].center_freq2);
-		len += scnprintf(buf + len, size - len, "%u %u %u %u ",
-				 cfr_ptr[i].capture_mode,
-				 cfr_ptr[i].capture_type,
-				 cfr_ptr[i].sts_count,
-				 cfr_ptr[i].num_rx_chain);
-		len += scnprintf(buf + len, size - len, "%u %u\n",
-				 cfr_ptr[i].timestamp, cfr_ptr[i].length);
-		i++;
-		i = i % CFR_NUM_OF_REQUESTED_META_INFO;
-	} while (i != ar->cfr_rindex);
-
-	spin_unlock_bh(&ar->data_lock);
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
-	mutex_unlock(&ar->conf_mutex);
-	kfree(buf);
-	return retval;
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
 
-static const struct file_operations fops_cfr_requested_meta_info = {
-	.read = ath10k_dbg_read_cfr_requested_meta_info,
+static const struct file_operations fops_burst_enable = {
+	.read = ath10k_read_burst_enable,
+	.write = ath10k_write_burst_enable,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -3525,9 +3525,6 @@ int ath10k_debug_register(struct ath10k *ar)
 	debugfs_create_file("ps_state_enable", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_ps_state_enable);
 
-	debugfs_create_file("reset_htt_stats", 0200, ar->debug.debugfs_phy, ar,
-			    &fops_reset_htt_stats);
-
 	if (test_bit(WMI_SERVICE_TPC_STATS_FINAL, ar->wmi.svc_map))
 		debugfs_create_file("tpc_stats_final", 0400,
 				    ar->debug.debugfs_phy, ar,
@@ -3542,15 +3539,17 @@ int ath10k_debug_register(struct ath10k *ar)
 				    ar->debug.debugfs_phy, ar,
 				    &fops_cfr_requested_meta_info);
 	}
+	debugfs_create_file("reset_htt_stats", 0200, ar->debug.debugfs_phy, ar,
+			    &fops_reset_htt_stats);
 
 	debugfs_create_file("ftm_resp", 0600,
 			    ar->debug.debugfs_phy, ar, &fops_ftm_resp);
 
-	debugfs_create_file("burst_enable", 0600, ar->debug.debugfs_phy, ar,
-			    &fops_burst_enable);
-
 	debugfs_create_file("rts_threshold", 0600,
 			    ar->debug.debugfs_phy, ar, &fops_rts_threshold);
+
+	debugfs_create_file("burst_enable", 0600, ar->debug.debugfs_phy, ar,
+			    &fops_burst_enable);
 
 	ath10k_txdelay_debugfs_register(ar);
 

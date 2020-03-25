@@ -9,6 +9,7 @@
 
 #include <net/net_namespace.h>
 #include <net/vsock_addr.h>
+#include <net/sock.h>
 #include <linux/mempool.h>
 #include <linux/socket.h>
 #include <linux/workqueue.h>
@@ -98,9 +99,49 @@ static void csm_destroy_socket(void)
 	up_write(&csm_rwsem_vsocket);
 }
 
-static int csm_sendmsg(int type, const void *buf, size_t len)
+static int csm_vsock_sendmsg(struct kvec *vecs, size_t vecs_size,
+			     size_t total_length)
 {
 	struct msghdr msg = { };
+	int res = -EPIPE;
+
+	if (cmdline_boot_vsock_disabled)
+		return 0;
+
+	down_read(&csm_rwsem_vsocket);
+	if (csm_vsocket) {
+		res = kernel_sendmsg(csm_vsocket, &msg, vecs, vecs_size,
+				     total_length);
+		if (res > 0)
+			res = 0;
+	}
+	up_read(&csm_rwsem_vsocket);
+
+	return res;
+}
+
+static ssize_t csm_user_pipe_write(struct kvec *vecs, size_t vecs_size,
+				   size_t total_length)
+{
+	ssize_t perr;
+	struct iov_iter io = { };
+	loff_t pos = 0;
+
+	if (!csm_user_write_pipe)
+		return 0;
+
+	iov_iter_kvec(&io, ITER_KVEC|WRITE, vecs, vecs_size,
+		      total_length);
+
+	file_start_write(csm_user_write_pipe);
+	perr = vfs_iter_write(csm_user_write_pipe, &io, &pos, 0);
+	file_end_write(csm_user_write_pipe);
+
+	return perr;
+}
+
+static int csm_sendmsg(int type, const void *buf, size_t len)
+{
 	struct csm_msg_hdr hdr = {
 		.msg_type = cpu_to_le32(type),
 		.msg_length = cpu_to_le32(sizeof(hdr) + len),
@@ -114,21 +155,22 @@ static int csm_sendmsg(int type, const void *buf, size_t len)
 			.iov_len = len,
 		}
 	};
-	int res = -EPIPE;
+	int res;
+	ssize_t perr;
 
-	down_read(&csm_rwsem_vsocket);
-	if (csm_vsocket) {
-		res = kernel_sendmsg(csm_vsocket, &msg, vecs, ARRAY_SIZE(vecs),
-				     le32_to_cpu(hdr.msg_length));
-		if (res < 0) {
-			pr_warn_ratelimited("sendmsg error (msg_type=%d, msg_length=%u): %d\n",
-					    type, le32_to_cpu(hdr.msg_length),
-					    res);
-		} else {
-			res = 0;
-		}
+	res = csm_vsock_sendmsg(vecs, ARRAY_SIZE(vecs),
+				le32_to_cpu(hdr.msg_length));
+	if (res < 0) {
+		pr_warn_ratelimited("sendmsg error (msg_type=%d, msg_length=%u): %d\n",
+				    type, le32_to_cpu(hdr.msg_length), res);
 	}
-	up_read(&csm_rwsem_vsocket);
+
+	perr = csm_user_pipe_write(vecs, ARRAY_SIZE(vecs),
+				   le32_to_cpu(hdr.msg_length));
+	if (perr < 0) {
+		pr_warn_ratelimited("vfs_iter_write error (msg_type=%d, msg_length=%u): %zd\n",
+				    type, le32_to_cpu(hdr.msg_length), perr);
+	}
 
 	return res;
 }
@@ -266,7 +308,13 @@ static int csm_recvmsg(void *buf, size_t len, bool expected)
 		}
 		up_read(&csm_rwsem_vsocket);
 
-		if (err == 0 || err == -EAGAIN) {
+		if (err == 0) {
+			err = -ENOTCONN;
+			pr_warn_ratelimited("vsock connection was reset\n");
+			break;
+		}
+
+		if (err == -EAGAIN) {
 			/*
 			 * If nothing is received and nothing was expected
 			 * just bail.
@@ -437,13 +485,15 @@ int __init vsock_initialize(void)
 		return -ENOMEM;
 	}
 
-	task = kthread_run(socket_thread_fn, NULL, "csm-vsock-thread");
-	if (IS_ERR(task)) {
-		pr_err("failed to create socket thread: %ld\n", PTR_ERR(task));
-		vsock_destroy();
-		return PTR_ERR(task);
-	}
+	if (!cmdline_boot_vsock_disabled) {
+		task = kthread_run(socket_thread_fn, NULL, "csm-vsock-thread");
+		if (IS_ERR(task)) {
+			pr_err("failed to create socket thread: %ld\n", PTR_ERR(task));
+			vsock_destroy();
+			return PTR_ERR(task);
+		}
 
-	socket_thread = task;
+		socket_thread = task;
+	}
 	return 0;
 }

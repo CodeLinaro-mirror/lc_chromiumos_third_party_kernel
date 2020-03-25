@@ -8,7 +8,7 @@
  * Copyright (c) 2006, Michael Wu <flamingice@sourmilk.net>
  * Copyright (c) 2013 - 2014 Intel Mobile Communications GmbH
  * Copyright (c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright (c) 2018        Intel Corporation
+ * Copyright (c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -812,6 +812,8 @@ enum mesh_config_capab_flags {
 	IEEE80211_MESHCONF_CAPAB_POWER_SAVE_LEVEL	= 0x40,
 };
 
+#define IEEE80211_MESHCONF_FORM_CONNECTED_TO_GATE 0x1
+
 /**
  * mesh channel switch parameters element's flag indicator
  *
@@ -1555,7 +1557,7 @@ struct ieee80211_vht_operation {
  * struct ieee80211_he_cap_elem - HE capabilities element
  *
  * This structure is the "HE capabilities element" fixed fields as
- * described in P802.11ax_D3.0 section 9.4.2.237.2 and 9.4.2.237.3
+ * described in P802.11ax_D4.0 section 9.4.2.242.2 and 9.4.2.242.3
  */
 struct ieee80211_he_cap_elem {
 	u8 mac_cap_info[6];
@@ -1617,12 +1619,12 @@ struct ieee80211_he_mcs_nss_supp {
  * struct ieee80211_he_operation - HE capabilities element
  *
  * This structure is the "HE operation element" fields as
- * described in P802.11ax_D2.0 section 9.4.2.238
+ * described in P802.11ax_D4.0 section 9.4.2.243
  */
 struct ieee80211_he_operation {
 	__le32 he_oper_params;
 	__le16 he_mcs_nss_set;
-	/* Optional 0,1,3 or 4 bytes: depends on @he_oper_params */
+	/* Optional 0,1,3,4,5,7 or 8 bytes: depends on @he_oper_params */
 	u8 optional[0];
 } __packed;
 
@@ -1630,7 +1632,7 @@ struct ieee80211_he_operation {
  * struct ieee80211_he_mu_edca_param_ac_rec - MU AC Parameter Record field
  *
  * This structure is the "MU AC Parameter Record" fields as
- * described in P802.11ax_D2.0 section 9.4.2.240
+ * described in P802.11ax_D4.0 section 9.4.2.245
  */
 struct ieee80211_he_mu_edca_param_ac_rec {
 	u8 aifsn;
@@ -1642,7 +1644,7 @@ struct ieee80211_he_mu_edca_param_ac_rec {
  * struct ieee80211_mu_edca_param_set - MU EDCA Parameter Set element
  *
  * This structure is the "MU EDCA Parameter Set element" fields as
- * described in P802.11ax_D2.0 section 9.4.2.240
+ * described in P802.11ax_D4.0 section 9.4.2.245
  */
 struct ieee80211_mu_edca_param_set {
 	u8 mu_qos_info;
@@ -1670,6 +1672,7 @@ struct ieee80211_mu_edca_param_set {
 #define IEEE80211_VHT_CAP_RXSTBC_3				0x00000300
 #define IEEE80211_VHT_CAP_RXSTBC_4				0x00000400
 #define IEEE80211_VHT_CAP_RXSTBC_MASK				0x00000700
+#define IEEE80211_VHT_CAP_RXSTBC_SHIFT				8
 #define IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE			0x00000800
 #define IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE			0x00001000
 #define IEEE80211_VHT_CAP_BEAMFORMEE_STS_SHIFT                  13
@@ -1800,6 +1803,9 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 #define IEEE80211_HE_MAC_CAP5_SUBCHAN_SELECVITE_TRANSMISSION	0x04
 #define IEEE80211_HE_MAC_CAP5_UL_2x996_TONE_RU			0x08
 #define IEEE80211_HE_MAC_CAP5_OM_CTRL_UL_MU_DATA_DIS_RX		0x10
+#define IEEE80211_HE_MAC_CAP5_HE_DYNAMIC_SM_PS			0x20
+#define IEEE80211_HE_MAC_CAP5_PUNCTURED_SOUNDING		0x40
+#define IEEE80211_HE_MAC_CAP5_HT_VHT_TRIG_FRAME_RX		0x80
 
 /* 802.11ax HE PHY capabilities */
 #define IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_IN_2G		0x02
@@ -1923,11 +1929,11 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 #define IEEE80211_HE_PHY_CAP8_80MHZ_IN_160MHZ_HE_PPDU			0x08
 #define IEEE80211_HE_PHY_CAP8_HE_ER_SU_1XLTF_AND_08_US_GI		0x10
 #define IEEE80211_HE_PHY_CAP8_MIDAMBLE_RX_TX_2X_AND_1XLTF		0x20
-#define IEEE80211_HE_PHY_CAP8_DCM_MAX_BW_20MHZ				0x00
-#define IEEE80211_HE_PHY_CAP8_DCM_MAX_BW_40MHZ				0x40
-#define IEEE80211_HE_PHY_CAP8_DCM_MAX_BW_80MHZ				0x80
-#define IEEE80211_HE_PHY_CAP8_DCM_MAX_BW_160_OR_80P80_MHZ		0xc0
-#define IEEE80211_HE_PHY_CAP8_DCM_MAX_BW_MASK				0xc0
+#define IEEE80211_HE_PHY_CAP8_DCM_MAX_RU_242				0x00
+#define IEEE80211_HE_PHY_CAP8_DCM_MAX_RU_484				0x40
+#define IEEE80211_HE_PHY_CAP8_DCM_MAX_RU_996				0x80
+#define IEEE80211_HE_PHY_CAP8_DCM_MAX_RU_2x996				0xc0
+#define IEEE80211_HE_PHY_CAP8_DCM_MAX_RU_MASK				0xc0
 
 #define IEEE80211_HE_PHY_CAP9_LONGER_THAN_16_SIGB_OFDM_SYM		0x01
 #define IEEE80211_HE_PHY_CAP9_NON_TRIGGERED_CQI_FEEDBACK		0x02
@@ -1935,6 +1941,11 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 #define IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU		0x08
 #define IEEE80211_HE_PHY_CAP9_RX_FULL_BW_SU_USING_MU_WITH_COMP_SIGB	0x10
 #define IEEE80211_HE_PHY_CAP9_RX_FULL_BW_SU_USING_MU_WITH_NON_COMP_SIGB	0x20
+#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_0US			0x00
+#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_8US			0x40
+#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_16US			0x80
+#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_RESERVED		0xc0
+#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_MASK			0xc0
 
 /* 802.11ax HE TX/RX MCS NSS Support  */
 #define IEEE80211_TX_RX_MCS_NSS_SUPP_HIGHEST_MCS_POS			(3)
@@ -2008,17 +2019,18 @@ ieee80211_he_ppe_size(u8 ppe_thres_hdr, const u8 *phy_cap_info)
 }
 
 /* HE Operation defines */
-#define IEEE80211_HE_OPERATION_BSS_COLOR_MASK			0x0000003f
-#define IEEE80211_HE_OPERATION_DFLT_PE_DURATION_MASK		0x000001c0
-#define IEEE80211_HE_OPERATION_DFLT_PE_DURATION_OFFSET		6
-#define IEEE80211_HE_OPERATION_TWT_REQUIRED			0x00000200
-#define IEEE80211_HE_OPERATION_RTS_THRESHOLD_MASK		0x000ffc00
-#define IEEE80211_HE_OPERATION_RTS_THRESHOLD_OFFSET		10
-#define IEEE80211_HE_OPERATION_PARTIAL_BSS_COLOR		0x00100000
-#define IEEE80211_HE_OPERATION_VHT_OPER_INFO			0x00200000
-#define IEEE80211_HE_OPERATION_MULTI_BSSID_AP			0x10000000
-#define IEEE80211_HE_OPERATION_TX_BSSID_INDICATOR		0x20000000
-#define IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED		0x40000000
+#define IEEE80211_HE_OPERATION_DFLT_PE_DURATION_MASK		0x00000003
+#define IEEE80211_HE_OPERATION_TWT_REQUIRED			0x00000008
+#define IEEE80211_HE_OPERATION_RTS_THRESHOLD_MASK		0x00003ff0
+#define IEEE80211_HE_OPERATION_RTS_THRESHOLD_OFFSET		4
+#define IEEE80211_HE_OPERATION_VHT_OPER_INFO			0x00004000
+#define IEEE80211_HE_OPERATION_CO_HOSTED_BSS			0x00008000
+#define IEEE80211_HE_OPERATION_ER_SU_DISABLE			0x00010000
+#define IEEE80211_HE_OPERATION_6GHZ_OP_INFO			0x00020000
+#define IEEE80211_HE_OPERATION_BSS_COLOR_MASK			0x3f000000
+#define IEEE80211_HE_OPERATION_BSS_COLOR_OFFSET		24
+#define IEEE80211_HE_OPERATION_PARTIAL_BSS_COLOR		0x40000000
+#define IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED		0x80000000
 
 /*
  * ieee80211_he_oper_size - calculate 802.11ax HE Operations IE size
@@ -2043,8 +2055,10 @@ ieee80211_he_oper_size(const u8 *he_oper_ie)
 	he_oper_params = le32_to_cpu(he_oper->he_oper_params);
 	if (he_oper_params & IEEE80211_HE_OPERATION_VHT_OPER_INFO)
 		oper_len += 3;
-	if (he_oper_params & IEEE80211_HE_OPERATION_MULTI_BSSID_AP)
+	if (he_oper_params & IEEE80211_HE_OPERATION_CO_HOSTED_BSS)
 		oper_len++;
+	if (he_oper_params & IEEE80211_HE_OPERATION_6GHZ_OP_INFO)
+		oper_len += 4;
 
 	/* Add the first byte (extension ID) to the total length */
 	oper_len++;
@@ -2474,6 +2488,9 @@ enum ieee80211_eid_ext {
 	WLAN_EID_EXT_HE_OPERATION = 36,
 	WLAN_EID_EXT_UORA = 37,
 	WLAN_EID_EXT_HE_MU_EDCA = 38,
+	WLAN_EID_EXT_MAX_CHANNEL_SWITCH_TIME = 52,
+	WLAN_EID_EXT_MULTIPLE_BSSID_CONFIGURATION = 55,
+	WLAN_EID_EXT_NON_INHERITANCE = 56,
 };
 
 /* Action category code */
@@ -2655,6 +2672,11 @@ enum ieee80211_tdls_actioncode {
  */
 #define WLAN_EXT_CAPA1_EXT_CHANNEL_SWITCHING	BIT(2)
 
+/* Multiple BSSID capability is set in the 6th bit of 3rd byte of the
+ * @WLAN_EID_EXT_CAPABILITY information element
+ */
+#define WLAN_EXT_CAPA3_MULTI_BSSID_SUPPORT	BIT(6)
+
 /* TDLS capabilities in the the 4th byte of @WLAN_EID_EXT_CAPABILITY */
 #define WLAN_EXT_CAPA4_TDLS_BUFFER_STA		BIT(4)
 #define WLAN_EXT_CAPA4_TDLS_PEER_PSM		BIT(5)
@@ -2679,6 +2701,26 @@ enum ieee80211_tdls_actioncode {
 /* Defines the maximal number of MSDUs in an A-MSDU. */
 #define WLAN_EXT_CAPA8_MAX_MSDU_IN_AMSDU_LSB	BIT(7)
 #define WLAN_EXT_CAPA9_MAX_MSDU_IN_AMSDU_MSB	BIT(0)
+
+/*
+ * Fine Timing Measurement Initiator - bit 71 of @WLAN_EID_EXT_CAPABILITY
+ * information element
+ */
+#define WLAN_EXT_CAPA9_FTM_INITIATOR	BIT(7)
+
+/* Defines support for TWT Requester and TWT Responder */
+#define WLAN_EXT_CAPA10_TWT_REQUESTER_SUPPORT	BIT(5)
+#define WLAN_EXT_CAPA10_TWT_RESPONDER_SUPPORT	BIT(6)
+
+/*
+ * When set, indicates that the AP is able to tolerate 26-tone RU UL
+ * OFDMA transmissions using HE TB PPDU from OBSS (not falsely classify the
+ * 26-tone RU UL OFDMA transmissions as radar pulses).
+ */
+#define WLAN_EXT_CAPA10_OBSS_NARROW_BW_RU_TOLERANCE_SUPPORT BIT(7)
+
+/* Defines support for enhanced multi-bssid advertisement*/
+#define WLAN_EXT_CAPA11_EMA_SUPPORT	BIT(1)
 
 /* TDLS specific payload type in the LLC/SNAP header */
 #define WLAN_TDLS_SNAP_RFTYPE	0x2
@@ -2871,6 +2913,34 @@ enum ieee80211_sa_query_action {
 	WLAN_ACTION_SA_QUERY_RESPONSE = 1,
 };
 
+/**
+ * struct ieee80211_bssid_index
+ *
+ * This structure refers to "Multiple BSSID-index element"
+ *
+ * @bssid_index: BSSID index
+ * @dtim_period: optional, overrides transmitted BSS dtim period
+ * @dtim_count: optional, overrides transmitted BSS dtim count
+ */
+struct ieee80211_bssid_index {
+	u8 bssid_index;
+	u8 dtim_period;
+	u8 dtim_count;
+};
+
+/**
+ * struct ieee80211_multiple_bssid_configuration
+ *
+ * This structure refers to "Multiple BSSID Configuration element"
+ *
+ * @bssid_count: total number of active BSSIDs in the set
+ * @profile_periodicity: the least number of beacon frames need to be received
+ *	in order to discover all the nontransmitted BSSIDs in the set.
+ */
+struct ieee80211_multiple_bssid_configuration {
+	u8 bssid_count;
+	u8 profile_periodicity;
+};
 
 #define SUITE(oui, id)	(((oui) << 8) | (id))
 
@@ -2960,85 +3030,6 @@ struct ieee80211_tspec_ie {
 	__le16 sba;
 	__le16 medium_time;
 } __packed;
-
-enum ieee80211_ftm_status_indication {
-	IEEE80211_FTM_STATUS_IND_RESERVED = 0,
-	IEEE80211_FTM_STATUS_IND_SUCCESS,
-	IEEE80211_FTM_STATUS_IND_INCAPABLE,
-	IEEE80211_FTM_STATUS_IND_FAILED,
-};
-
-enum ieee80211_ftm_burst_duration {
-	IEEE80211_FTM_BURST_DUR_250_USEC = 2,
-	IEEE80211_FTM_BURST_DUR_500_USEC = 3,
-	IEEE80211_FTM_BURST_DUR_1_MSEC   = 4,
-	IEEE80211_FTM_BURST_DUR_2_MSEC   = 5,
-	IEEE80211_FTM_BURST_DUR_4_MSEC   = 6,
-	IEEE80211_FTM_BURST_DUR_8_MSEC   = 7,
-	IEEE80211_FTM_BURST_DUR_16_MSEC  = 8,
-	IEEE80211_FTM_BURST_DUR_32_MSEC  = 9,
-	IEEE80211_FTM_BURST_DUR_64_MSEC  = 10,
-	IEEE80211_FTM_BURST_DUR_128_MSEC = 11,
-	IEEE80211_FTM_BURST_DUR_NO_PREF  = 15,
-};
-
-enum ieee80211_ftm_format_and_bw {
-	IEEE80211_FTM_FORMAT_BW_NO_PREF           = 0,
-	IEEE80211_FTM_FORMAT_BW_NON_HT_5          = 4,
-	IEEE80211_FTM_FORMAT_BW_NON_HT_10         = 6,
-	IEEE80211_FTM_FORMAT_BW_NON_HT_20         = 8,
-	IEEE80211_FTM_FORMAT_BW_HT_20             = 9,
-	IEEE80211_FTM_FORMAT_BW_VHT_20            = 10,
-	IEEE80211_FTM_FORMAT_BW_HT_40             = 11,
-	IEEE80211_FTM_FORMAT_BW_VHT_40            = 12,
-	IEEE80211_FTM_FORMAT_BW_VHT_80            = 13,
-	IEEE80211_FTM_FORMAT_BW_VHT_80_80         = 14,
-	IEEE80211_FTM_FORMAT_BW_VHT_TWO_RF_LO_160 = 15,
-	IEEE80211_FTM_FORMAT_BW_VHT_ONE_RF_LO_160 = 16,
-	IEEE80211_FTM_FORMAT_BW_DMG_2160          = 31,
-};
-
-/**
- * struct ieee80211_ftm_params_ie - IEEE802.11 spec definition
- *
- * struct defined according to spec's Figure 8-569 - "Fine Timing
- * Measurement Parameters element format", and Figure 8-570 - "Fine Timing
- * Measurement Parameters field format"
- * Note: Spec refers to Draft 802.11REVmc_D4.3 (Oct. 2015)
- */
-struct ieee80211_ftm_params_ie {
-	u8 element_id;
-	u8 len;
-	u8 status_info;
-	u8 burst_info;
-	u8 min_delta_ftm;
-	__le16 partial_tsf_timer;
-	u8 data1;
-	u8 data2;
-	__le16 burst_period;
-} __packed;
-
-#define IEEE80211_FTM_PARAMS_STATUS_IND_MASK 0x03
-#define IEEE80211_FTM_PARAMS_STATUS_IND_SHIFT 0
-#define IEEE80211_FTM_PARAMS_STATUS_VALUE_MASK 0x7C
-#define IEEE80211_FTM_PARAMS_STATUS_VALUE_SHIFT 2
-
-#define IEEE80211_FTM_PARAMS_BURST_EXPONENT_MASK 0x0F
-#define IEEE80211_FTM_PARAMS_BURST_EXPONENT_SHIFT 0
-#define IEEE80211_FTM_PARAMS_BURST_DURATION_MASK 0xF0
-#define IEEE80211_FTM_PARAMS_BURST_DURATION_SHIFT 4
-
-#define IEEE80211_FTM_PARAMS_DATA1_PARTIAL_TSF_TIMER_NP_MASK 0x01
-#define IEEE80211_FTM_PARAMS_DATA1_PARTIAL_TSF_TIMER_NP_SHIFT 0
-#define IEEE80211_FTM_PARAMS_DATA1_ASAP_CAPABLE_MASK 0x02
-#define IEEE80211_FTM_PARAMS_DATA1_ASAP_CAPABLE_SHIFT 1
-#define IEEE80211_FTM_PARAMS_DATA1_ASAP_MASK 0x04
-#define IEEE80211_FTM_PARAMS_DATA1_ASAP_SHIFT 2
-#define IEEE80211_FTM_PARAMS_DATA1_FTMS_PER_BURST_MASK 0xF8
-#define IEEE80211_FTM_PARAMS_DATA1_FTMS_PER_BURST_SHIFT 3
-
-#define IEEE80211_FTM_PARAMS_DATA2_FORMAT_AND_BW_MASK 0xFC
-#define IEEE80211_FTM_PARAMS_DATA2_FORMAT_AND_BW_SHIFT 2
 
 /**
  * ieee80211_get_qos_ctl - get pointer to qos control bytes
@@ -3309,6 +3300,59 @@ static inline bool ieee80211_action_contains_tpc(struct sk_buff *skb)
 		return false;
 
 	return true;
+}
+
+struct element {
+	u8 id;
+	u8 datalen;
+	u8 data[];
+};
+
+/* element iteration helpers */
+#define for_each_element(element, _data, _datalen)			\
+	for (element = (void *)(_data);					\
+	     (u8 *)(_data) + (_datalen) - (u8 *)element >=		\
+		sizeof(*element) &&					\
+	     (u8 *)(_data) + (_datalen) - (u8 *)element >=		\
+		sizeof(*element) + element->datalen;			\
+	     element = (void *)(element->data + element->datalen))
+
+#define for_each_element_id(element, _id, data, datalen)		\
+	for_each_element(element, data, datalen)			\
+		if (element->id == (_id))
+
+#define for_each_element_extid(element, extid, _data, _datalen)		\
+	for_each_element(element, _data, _datalen)			\
+		if (element->id == WLAN_EID_EXTENSION &&		\
+		    element->datalen > 0 &&				\
+		    element->data[0] == (extid))
+
+#define for_each_subelement(sub, element)				\
+	for_each_element(sub, (element)->data, (element)->datalen)
+
+#define for_each_subelement_id(sub, id, element)			\
+	for_each_element_id(sub, id, (element)->data, (element)->datalen)
+
+#define for_each_subelement_extid(sub, extid, element)			\
+	for_each_element_extid(sub, extid, (element)->data, (element)->datalen)
+
+/**
+ * for_each_element_completed - determine if element parsing consumed all data
+ * @element: element pointer after for_each_element() or friends
+ * @data: same data pointer as passed to for_each_element() or friends
+ * @datalen: same data length as passed to for_each_element() or friends
+ *
+ * This function returns %true if all the data was parsed or considered
+ * while walking the elements. Only use this if your for_each_element()
+ * loop cannot be broken out of, otherwise it always returns %false.
+ *
+ * If some data was malformed, this returns %false since the last parsed
+ * element will not fill the whole remaining data.
+ */
+static inline bool for_each_element_completed(const struct element *element,
+					      const void *data, size_t datalen)
+{
+	return (u8 *)element == (u8 *)data + datalen;
 }
 
 #endif /* LINUX_IEEE80211_H */

@@ -692,7 +692,7 @@ static ssize_t ath10k_dbg_sta_read_tx_success_bytes(struct file *file,
 
 	stats = &arsta->tx_stats->stats[ATH10K_STATS_TYPE_SUCC];
 
-	total_succ_bytes = stats->gi[ATH10K_COUNTER_TYPE_BYTES][0] + 
+	total_succ_bytes = stats->gi[ATH10K_COUNTER_TYPE_BYTES][0] +
 			   stats->gi[ATH10K_COUNTER_TYPE_BYTES][1];
 
 	for (i = 0; i < ATH10K_LEGACY_NUM; i++)

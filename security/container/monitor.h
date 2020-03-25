@@ -48,6 +48,12 @@ struct execute_config {
 
 extern struct execute_config csm_execute_config;
 
+/* pipe to forward vsock packets to user-mode. */
+extern struct file *csm_user_write_pipe;
+
+/* Was vsock disabled at boot time? */
+extern bool cmdline_boot_vsock_disabled;
+
 /* Streams file numbers are unknown from the kernel */
 #define STDIN_FILENO	0
 #define STDOUT_FILENO	1
@@ -80,3 +86,5 @@ bool pb_encode_string_array(pb_ostream_t *stream, const pb_field_t *field,
 			    void * const *arg);
 bool pb_decode_string_array(pb_istream_t *stream, const pb_field_t *field,
 			    void **arg);
+bool pb_encode_uuid_field(pb_ostream_t *stream, const pb_field_t *field,
+			  void * const *arg);

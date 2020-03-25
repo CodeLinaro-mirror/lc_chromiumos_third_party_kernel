@@ -8,7 +8,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH
  * Copyright (C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH
  * Copyright (C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -88,16 +88,10 @@ int iwl_mvm_send_cmd(struct iwl_mvm *mvm, struct iwl_host_cmd *cmd)
 	 * the mutex, this ensures we don't try to send two
 	 * (or more) synchronous commands at a time.
 	 */
-	if (!(cmd->flags & CMD_ASYNC)) {
+	if (!(cmd->flags & CMD_ASYNC))
 		lockdep_assert_held(&mvm->mutex);
-		if (!(cmd->flags & CMD_SEND_IN_IDLE))
-			iwl_mvm_ref(mvm, IWL_MVM_REF_SENDING_CMD);
-	}
 
 	ret = iwl_trans_send_cmd(mvm->trans, cmd);
-
-	if (!(cmd->flags & (CMD_ASYNC | CMD_SEND_IN_IDLE)))
-		iwl_mvm_unref(mvm, IWL_MVM_REF_SENDING_CMD);
 
 	/*
 	 * If the caller wants the SKB, then don't hide any problems, the
@@ -238,6 +232,18 @@ u8 iwl_mvm_mac80211_idx_to_hwrate(int rate_idx)
 	return fw_rate_idx_to_plcp[rate_idx];
 }
 
+u8 iwl_mvm_mac80211_ac_to_ucode_ac(enum ieee80211_ac_numbers ac)
+{
+	static const u8 mac80211_ac_to_ucode_ac[] = {
+		AC_VO,
+		AC_VI,
+		AC_BE,
+		AC_BK
+	};
+
+	return mac80211_ac_to_ucode_ac[ac];
+}
+
 void iwl_mvm_rx_fw_error(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
@@ -248,7 +254,7 @@ void iwl_mvm_rx_fw_error(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 	IWL_ERR(mvm, "FW Error notification: seq 0x%04X service 0x%08X\n",
 		le16_to_cpu(err_resp->bad_cmd_seq_num),
 		le32_to_cpu(err_resp->error_service));
-	IWL_ERR(mvm, "FW Error notification: timestamp 0x%16llX\n",
+	IWL_ERR(mvm, "FW Error notification: timestamp 0x%016llX\n",
 		le64_to_cpu(err_resp->timestamp));
 }
 
@@ -457,12 +463,17 @@ static void iwl_mvm_dump_umac_error_log(struct iwl_mvm *mvm)
 {
 	struct iwl_trans *trans = mvm->trans;
 	struct iwl_umac_error_event_table table;
+	u32 base = mvm->trans->dbg.umac_error_event_table;
 
-	if (!mvm->support_umac_log)
+	if (!mvm->support_umac_log &&
+	    !(mvm->trans->dbg.error_event_table_tlv_status &
+	      IWL_ERROR_EVENT_TABLE_UMAC))
 		return;
 
-	iwl_trans_read_mem_bytes(trans, mvm->umac_error_event_table, &table,
-				 sizeof(table));
+	iwl_trans_read_mem_bytes(trans, base, &table, sizeof(table));
+
+	if (table.valid)
+		mvm->fwrt.dump.umac_err_id = table.error_id;
 
 	if (ERROR_START_OFFSET <= table.valid * ERROR_ELEM_SIZE) {
 		IWL_ERR(trans, "Start IWL Error Log Dump:\n");
@@ -487,11 +498,11 @@ static void iwl_mvm_dump_umac_error_log(struct iwl_mvm *mvm)
 	IWL_ERR(mvm, "0x%08X | isr status reg\n", table.nic_isr_pref);
 }
 
-static void iwl_mvm_dump_lmac_error_log(struct iwl_mvm *mvm, u32 base)
+static void iwl_mvm_dump_lmac_error_log(struct iwl_mvm *mvm, u8 lmac_num)
 {
 	struct iwl_trans *trans = mvm->trans;
 	struct iwl_error_event_table table;
-	u32 val;
+	u32 val, base = mvm->trans->dbg.lmac_error_event_table[lmac_num];
 
 	if (mvm->fwrt.cur_fw_img == IWL_UCODE_INIT) {
 		if (!base)
@@ -520,29 +531,15 @@ static void iwl_mvm_dump_lmac_error_log(struct iwl_mvm *mvm, u32 base)
 		/* reset the device */
 		iwl_trans_sw_reset(trans);
 
-		/* set INIT_DONE flag */
-		iwl_set_bit(trans, CSR_GP_CNTRL,
-			    BIT(trans->cfg->csr->flag_init_done));
-
-		/* and wait for clock stabilization */
-		if (trans->cfg->device_family == IWL_DEVICE_FAMILY_8000)
-			udelay(2);
-
-		err = iwl_poll_bit(trans, CSR_GP_CNTRL,
-				   BIT(trans->cfg->csr->flag_mac_clock_ready),
-				   BIT(trans->cfg->csr->flag_mac_clock_ready),
-				   25000);
-		if (err < 0) {
-			IWL_DEBUG_INFO(trans,
-				       "Failed to reset the card for the dump\n");
+		err = iwl_finish_nic_init(trans);
+		if (err)
 			return;
-		}
 	}
 
 	iwl_trans_read_mem_bytes(trans, base, &table, sizeof(table));
 
 	if (table.valid)
-		mvm->fwrt.dump.rt_status = table.error_id;
+		mvm->fwrt.dump.lmac_err_id[lmac_num] = table.error_id;
 
 	if (ERROR_START_OFFSET <= table.valid * ERROR_ELEM_SIZE) {
 		IWL_ERR(trans, "Start IWL Error Log Dump:\n");
@@ -599,12 +596,14 @@ void iwl_mvm_dump_nic_error_log(struct iwl_mvm *mvm)
 		return;
 	}
 
-	iwl_mvm_dump_lmac_error_log(mvm, mvm->error_event_table[0]);
+	iwl_mvm_dump_lmac_error_log(mvm, 0);
 
-	if (mvm->error_event_table[1])
-		iwl_mvm_dump_lmac_error_log(mvm, mvm->error_event_table[1]);
+	if (mvm->trans->dbg.lmac_error_event_table[1])
+		iwl_mvm_dump_lmac_error_log(mvm, 1);
 
 	iwl_mvm_dump_umac_error_log(mvm);
+
+	iwl_fw_error_print_fseq_regs(&mvm->fwrt);
 }
 
 int iwl_mvm_reconfig_scd(struct iwl_mvm *mvm, int queue, int fifo, int sta_id,
@@ -648,12 +647,12 @@ int iwl_mvm_reconfig_scd(struct iwl_mvm *mvm, int queue, int fifo, int sta_id,
  * this case to clear the state indicating that station creation is in
  * progress.
  */
-int iwl_mvm_send_lq_cmd(struct iwl_mvm *mvm, struct iwl_lq_cmd *lq, bool sync)
+int iwl_mvm_send_lq_cmd(struct iwl_mvm *mvm, struct iwl_lq_cmd *lq)
 {
 	struct iwl_host_cmd cmd = {
 		.id = LQ_CMD,
 		.len = { sizeof(struct iwl_lq_cmd), },
-		.flags = sync ? 0 : CMD_ASYNC,
+		.flags = CMD_ASYNC,
 		.data = { lq, },
 	};
 
@@ -820,10 +819,6 @@ int iwl_mvm_update_low_latency(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		return res;
 
 	iwl_mvm_bt_coex_vif_change(mvm);
-
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
-	iwl_mvm_send_tcm_event(mvm, vif);
-#endif
 
 	return iwl_mvm_power_update_mac(mvm);
 }
@@ -1088,9 +1083,6 @@ static void iwl_mvm_tcm_iter(void *_data, u8 *mac, struct ieee80211_vif *vif)
 		iwl_mvm_update_low_latency(mvm, vif, low_latency,
 					   LOW_LATENCY_TRAFFIC);
 	} else {
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
-		iwl_mvm_send_tcm_event(mvm, vif);
-#endif
 		iwl_mvm_update_quotas(mvm, false, NULL);
 	}
 
@@ -1109,12 +1101,6 @@ static void iwl_mvm_tcm_results(struct iwl_mvm *mvm)
 	ieee80211_iterate_active_interfaces(
 		mvm->hw, IEEE80211_IFACE_ITER_NORMAL,
 		iwl_mvm_tcm_iter, &data);
-
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
-	/* send global only */
-	if (mvm->tcm.result.global_change && !data.any_sent)
-		iwl_mvm_send_tcm_event(mvm, NULL);
-#endif
 
 	if (fw_has_capa(&mvm->fw->ucode_capa, IWL_UCODE_TLV_CAPA_UMAC_SCAN))
 		iwl_mvm_config_scan(mvm);
@@ -1147,17 +1133,12 @@ static void iwl_mvm_tcm_uapsd_nonagg_detected_wk(struct work_struct *wk)
 				"AP isn't using AMPDU with uAPSD enabled");
 }
 
-static void iwl_mvm_uapsd_agg_disconnect_iter(void *data, u8 *mac,
-					      struct ieee80211_vif *vif)
+static void iwl_mvm_uapsd_agg_disconnect(struct iwl_mvm *mvm,
+					 struct ieee80211_vif *vif)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	struct iwl_mvm *mvm = mvmvif->mvm;
-	int *mac_id = data;
 
 	if (vif->type != NL80211_IFTYPE_STATION)
-		return;
-
-	if (mvmvif->id != *mac_id)
 		return;
 
 	if (!vif->bss_conf.assoc)
@@ -1169,10 +1150,10 @@ static void iwl_mvm_uapsd_agg_disconnect_iter(void *data, u8 *mac,
 	    !mvmvif->queue_params[IEEE80211_AC_BK].uapsd)
 		return;
 
-	if (mvm->tcm.data[*mac_id].uapsd_nonagg_detect.detected)
+	if (mvm->tcm.data[mvmvif->id].uapsd_nonagg_detect.detected)
 		return;
 
-	mvm->tcm.data[*mac_id].uapsd_nonagg_detect.detected = true;
+	mvm->tcm.data[mvmvif->id].uapsd_nonagg_detect.detected = true;
 	IWL_INFO(mvm,
 		 "detected AP should do aggregation but isn't, likely due to U-APSD\n");
 	schedule_delayed_work(&mvmvif->uapsd_nonagg_detected_wk, 15 * HZ);
@@ -1185,6 +1166,7 @@ static void iwl_mvm_check_uapsd_agg_expected_tpt(struct iwl_mvm *mvm,
 	u64 bytes = mvm->tcm.data[mac].uapsd_nonagg_detect.rx_bytes;
 	u64 tpt;
 	unsigned long rate;
+	struct ieee80211_vif *vif;
 
 	rate = ewma_rate_read(&mvm->tcm.data[mac].uapsd_nonagg_detect.rate);
 
@@ -1213,9 +1195,11 @@ static void iwl_mvm_check_uapsd_agg_expected_tpt(struct iwl_mvm *mvm,
 			return;
 	}
 
-	ieee80211_iterate_active_interfaces_atomic(
-		mvm->hw, IEEE80211_IFACE_ITER_NORMAL,
-		iwl_mvm_uapsd_agg_disconnect_iter, &mac);
+	rcu_read_lock();
+	vif = rcu_dereference(mvm->vif_id_to_mac[mac]);
+	if (vif)
+		iwl_mvm_uapsd_agg_disconnect(mvm, vif);
+	rcu_read_unlock();
 }
 
 static void iwl_mvm_tcm_iterator(void *_data, u8 *mac,
@@ -1443,6 +1427,17 @@ void iwl_mvm_tcm_rm_vif(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	cancel_delayed_work_sync(&mvmvif->uapsd_nonagg_detected_wk);
 }
 
+u32 iwl_mvm_get_systime(struct iwl_mvm *mvm)
+{
+	u32 reg_addr = DEVICE_SYSTEM_TIME_REG;
+
+	if (mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22000 &&
+	    mvm->trans->cfg->gp2_reg_addr)
+		reg_addr = mvm->trans->cfg->gp2_reg_addr;
+
+	return iwl_read_prph(mvm->trans, reg_addr);
+}
+
 void iwl_mvm_get_sync_time(struct iwl_mvm *mvm, u32 *gp2, u64 *boottime)
 {
 	bool ps_disabled;
@@ -1456,7 +1451,7 @@ void iwl_mvm_get_sync_time(struct iwl_mvm *mvm, u32 *gp2, u64 *boottime)
 		iwl_mvm_power_update_device(mvm);
 	}
 
-	*gp2 = iwl_read_prph(mvm->trans, DEVICE_SYSTEM_TIME_REG);
+	*gp2 = iwl_mvm_get_systime(mvm);
 	*boottime = ktime_get_boot_ns();
 
 	if (!ps_disabled) {
@@ -1464,3 +1459,41 @@ void iwl_mvm_get_sync_time(struct iwl_mvm *mvm, u32 *gp2, u64 *boottime)
 		iwl_mvm_power_update_device(mvm);
 	}
 }
+
+#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
+int iwl_mvm_send_csi_cmd(struct iwl_mvm *mvm)
+{
+	/*
+	 * Note: v1 and v2 are compatible, except for the
+	 * reserved value and the new flag, both of which
+	 * are ignored by older FW, and the additional
+	 * fields which we need to strip.
+	 */
+	struct iwl_channel_estimation_cfg cfg = {
+		.flags = cpu_to_le32(mvm->csi_cfg.flags),
+		.timer = cpu_to_le32(mvm->csi_cfg.timer),
+		.count = cpu_to_le32(mvm->csi_cfg.count),
+		.frame_types = cpu_to_le64(mvm->csi_cfg.frame_types),
+		.rate_n_flags_val = cpu_to_le32(mvm->csi_cfg.rate_n_flags_val),
+		.rate_n_flags_mask =
+			cpu_to_le32(mvm->csi_cfg.rate_n_flags_mask),
+		.min_time_between_collection =
+			cpu_to_le32(mvm->csi_cfg.interval),
+		.num_filter_addrs = cpu_to_le32(mvm->csi_cfg.num_filter_addrs),
+	};
+	u32 id = iwl_cmd_id(CHEST_COLLECTOR_FILTER_CONFIG_CMD,
+			    DATA_PATH_GROUP, 0);
+	unsigned int size = sizeof(cfg);
+	int i;
+
+	for (i = 0; i < mvm->csi_cfg.num_filter_addrs; i++)
+		ether_addr_copy(cfg.filter_addrs[i].addr,
+				mvm->csi_cfg.filter_addrs[i].addr);
+
+	if (!fw_has_capa(&mvm->fw->ucode_capa,
+			 IWL_UCODE_TLV_CAPA_CSI_REPORTING_V2))
+		size = sizeof(struct iwl_channel_estimation_cfg_v1);
+
+	return iwl_mvm_send_cmd_pdu(mvm, id, 0, size, &cfg);
+}
+#endif /* CPTCFG_IWLMVM_VENDOR_CMDS */

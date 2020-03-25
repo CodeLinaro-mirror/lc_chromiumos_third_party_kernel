@@ -1091,6 +1091,20 @@ const char * const vmstat_text[] = {
 	"nr_dirtied",
 	"nr_written",
 	"", /* nr_indirectly_reclaimable */
+#ifdef CONFIG_KSTALED
+	"kstaled_timeout",
+	"kstaled_aging_stalls",
+	"kstaled_reclaim_stalls",
+	"kstaled_background_aging",
+	"kstaled_background_hot",
+	"kstaled_vm_background_hot",
+	"kstaled_direct_aging",
+	"kstaled_direct_hot",
+	"kstaled_shared_aging",
+	"kstaled_shared_hot",
+	"kstaled_thp_aging",
+	"kstaled_thp_hot",
+#endif
 
 	/* enum writeback_stat_item counters */
 	"nr_dirty_threshold",
@@ -1114,6 +1128,9 @@ const char * const vmstat_text[] = {
 
 	"pgfault",
 	"pgmajfault",
+	"pgmajfault_s",
+	"pgmajfault_a",
+	"pgmajfault_f",
 	"pglazyfreed",
 
 	"pgrefill",
@@ -1201,13 +1218,8 @@ const char * const vmstat_text[] = {
 #endif
 #endif /* CONFIG_MEMORY_BALLOON */
 #ifdef CONFIG_DEBUG_TLBFLUSH
-#ifdef CONFIG_SMP
 	"nr_tlb_remote_flush",
 	"nr_tlb_remote_flush_received",
-#else
-	"", /* nr_tlb_remote_flush */
-	"", /* nr_tlb_remote_flush_received */
-#endif /* CONFIG_SMP */
 	"nr_tlb_local_flush_all",
 	"nr_tlb_local_flush_one",
 #endif /* CONFIG_DEBUG_TLBFLUSH */
@@ -1660,6 +1672,8 @@ static void *vmstat_start(struct seq_file *m, loff_t *pos)
 	all_vm_events(v);
 	v[PGPGIN] /= 2;		/* sectors -> kbytes */
 	v[PGPGOUT] /= 2;
+	/* Add up page faults */
+	v[PGMAJFAULT] = v[PGMAJFAULT_S] + v[PGMAJFAULT_A] + v[PGMAJFAULT_F];
 #endif
 	return (unsigned long *)m->private + *pos;
 }
@@ -1956,7 +1970,7 @@ void __init init_mm_internals(void)
 #endif
 #ifdef CONFIG_PROC_FS
 	proc_create("buddyinfo", 0444, NULL, &buddyinfo_file_operations);
-	proc_create("pagetypeinfo", 0444, NULL, &pagetypeinfo_file_operations);
+	proc_create("pagetypeinfo", 0400, NULL, &pagetypeinfo_file_operations);
 	proc_create("vmstat", 0444, NULL, &vmstat_file_operations);
 	proc_create("zoneinfo", 0444, NULL, &zoneinfo_file_operations);
 #endif

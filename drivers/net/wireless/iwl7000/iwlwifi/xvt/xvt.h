@@ -7,7 +7,7 @@
  *
  * Copyright(c) 2007 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -29,7 +29,7 @@
  *
  * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -376,9 +376,7 @@ struct iwl_xvt {
 
 	struct iwl_notif_wait_data notif_wait;
 
-	u32 error_event_table[2];
 	bool fw_running;
-	u32 umac_error_event_table;
 	bool support_umac_log;
 
 	struct iwl_sw_stack_config sw_stack_cfg;
@@ -410,6 +408,11 @@ struct iwl_xvt {
 	u64 expected_tx_amount;
 	wait_queue_head_t tx_done_wq;
 	struct tx_queue_data queue_data[IWL_MAX_HW_QUEUES];
+};
+
+union geo_tx_power_profiles_cmd {
+	struct iwl_geo_tx_power_profiles_cmd geo_cmd;
+	struct iwl_geo_tx_power_profiles_cmd_v1 geo_cmd_v1;
 };
 
 #define IWL_OP_MODE_GET_XVT(_op_mode) \
@@ -445,7 +448,7 @@ int iwl_xvt_user_cmd_execute(struct iwl_testmode *testmode, u32 cmd,
 			     struct iwl_tm_data *data_out, bool *supported_cmd);
 
 /* FW */
-int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type,  bool cont_run);
+int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type);
 
 /* NVM */
 int iwl_xvt_nvm_init(struct iwl_xvt *xvt);
@@ -460,7 +463,7 @@ void iwl_xvt_destroy_reorder_buffer(struct iwl_xvt *xvt,
 static inline bool iwl_xvt_is_unified_fw(struct iwl_xvt *xvt)
 {
 	/* TODO - replace with TLV once defined */
-	return xvt->trans->cfg->use_tfh;
+	return xvt->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22000;
 }
 
 static inline bool iwl_xvt_is_cdb_supported(struct iwl_xvt *xvt)
@@ -519,3 +522,5 @@ static inline int iwl_xvt_dbgfs_register(struct iwl_xvt *xvt,
 #endif /* CPTCFG_IWLWIFI_DEBUGFS */
 
 #endif
+
+int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt);

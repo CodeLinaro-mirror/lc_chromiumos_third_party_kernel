@@ -22,6 +22,8 @@
 #endif
 #define AT_VECTOR_SIZE (2*(AT_VECTOR_SIZE_ARCH + AT_VECTOR_SIZE_BASE + 1))
 
+typedef int vm_fault_t;
+
 struct address_space;
 struct mem_cgroup;
 struct hmm;
@@ -64,6 +66,14 @@ struct page {
 	};
 
 	union {
+		/*
+		 * If the page is neither PageSlab nor mappable to userspace,
+		 * the value stored here may help determine what this page
+		 * is used for.  See page-flags.h for a list of page types
+		 * which are currently stored here.
+		 */
+		unsigned int page_type;
+
 #if defined(CONFIG_HAVE_CMPXCHG_DOUBLE) && \
 	defined(CONFIG_HAVE_ALIGNED_STRUCT_PAGE)
 		/* Used for cmpxchg_double in slub */
@@ -82,11 +92,6 @@ struct page {
 				/*
 				 * Count of ptes mapped in mms, to show when
 				 * page is mapped & limit reverse map searches.
-				 *
-				 * Extra information about page type may be
-				 * stored here for pages that are never mapped,
-				 * in which case the value MUST BE <= -2.
-				 * See page-flags.h for more details.
 				 */
 				atomic_t _mapcount;
 
@@ -239,6 +244,11 @@ struct page_frag_cache {
 };
 
 typedef unsigned long vm_flags_t;
+
+static inline atomic_t *compound_mapcount_ptr(struct page *page)
+{
+	return &page[1].compound_mapcount;
+}
 
 /*
  * A region containing a mapping of a non-memory backed file under NOMMU
@@ -511,6 +521,11 @@ struct mm_struct {
 #if IS_ENABLED(CONFIG_HMM)
 	/* HMM needs to track a few things per mm */
 	struct hmm *hmm;
+#endif
+#ifdef CONFIG_KSTALED
+	struct list_head mm_list;
+	struct rcu_head rcu_head;
+	atomic_t throttle_disabled;
 #endif
 } __randomize_layout;
 

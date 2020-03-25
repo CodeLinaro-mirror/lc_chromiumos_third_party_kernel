@@ -1905,7 +1905,8 @@ int ufshcd_copy_query_response(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 	memcpy(&query_res->upiu_res, &lrbp->ucd_rsp_ptr->qr, QUERY_OSF_SIZE);
 
 	/* Get the descriptor */
-	if (lrbp->ucd_rsp_ptr->qr.opcode == UPIU_QUERY_OPCODE_READ_DESC) {
+	if (hba->dev_cmd.query.descriptor &&
+	    lrbp->ucd_rsp_ptr->qr.opcode == UPIU_QUERY_OPCODE_READ_DESC) {
 		u8 *descp = (u8 *)lrbp->ucd_rsp_ptr +
 				GENERAL_UPIU_REQUEST_SIZE;
 		u16 resp_len;
@@ -6048,19 +6049,19 @@ static u32 ufshcd_find_max_sup_active_icc_level(struct ufs_hba *hba,
 		goto out;
 	}
 
-	if (hba->vreg_info.vcc)
+	if (hba->vreg_info.vcc && hba->vreg_info.vcc->max_uA)
 		icc_level = ufshcd_get_max_icc_level(
 				hba->vreg_info.vcc->max_uA,
 				POWER_DESC_MAX_ACTV_ICC_LVLS - 1,
 				&desc_buf[PWR_DESC_ACTIVE_LVLS_VCC_0]);
 
-	if (hba->vreg_info.vccq)
+	if (hba->vreg_info.vccq && hba->vreg_info.vccq->max_uA)
 		icc_level = ufshcd_get_max_icc_level(
 				hba->vreg_info.vccq->max_uA,
 				icc_level,
 				&desc_buf[PWR_DESC_ACTIVE_LVLS_VCCQ_0]);
 
-	if (hba->vreg_info.vccq2)
+	if (hba->vreg_info.vccq2 && hba->vreg_info.vccq2->max_uA)
 		icc_level = ufshcd_get_max_icc_level(
 				hba->vreg_info.vccq2->max_uA,
 				icc_level,
@@ -6451,87 +6452,6 @@ static void ufshcd_def_desc_sizes(struct ufs_hba *hba)
 	hba->desc_size.hlth_desc = QUERY_DESC_HEALTH_DEF_SIZE;
 }
 
-static struct ufs_ref_clk ufs_ref_clk_freqs[] = {
-	{19200000, REF_CLK_FREQ_19_2_MHZ},
-	{26000000, REF_CLK_FREQ_26_MHZ},
-	{38400000, REF_CLK_FREQ_38_4_MHZ},
-	{52000000, REF_CLK_FREQ_52_MHZ},
-	{0, REF_CLK_FREQ_INVAL},
-};
-
-static inline enum ufs_ref_clk_freq
-ufs_get_bref_clk_from_hz(u32 freq)
-{
-	int i = 0;
-
-	while (ufs_ref_clk_freqs[i].freq_hz != freq) {
-		if (!ufs_ref_clk_freqs[i].freq_hz)
-			return REF_CLK_FREQ_INVAL;
-		i++;
-	}
-
-	return ufs_ref_clk_freqs[i].val;
-}
-
-void ufshcd_parse_dev_ref_clk_freq(struct ufs_hba *hba)
-{
-	struct device *dev = hba->dev;
-	struct device_node *np = dev->of_node;
-	struct clk *refclk = NULL;
-	u32 freq = 0;
-
-	if (!np)
-		return;
-
-	refclk = of_clk_get_by_name(np, "ref_clk");
-	if (!refclk)
-		return;
-
-	freq = clk_get_rate(refclk);
-
-	hba->dev_ref_clk_freq =
-		ufs_get_bref_clk_from_hz(freq);
-
-	if (hba->dev_ref_clk_freq == REF_CLK_FREQ_INVAL)
-		dev_err(hba->dev,
-		"%s: invalid ref_clk setting = %d\n",
-		__func__, freq);
-}
-EXPORT_SYMBOL(ufshcd_parse_dev_ref_clk_freq);
-
-static int ufshcd_set_dev_ref_clk(struct ufs_hba *hba)
-{
-	int err, ref_clk = -1;
-	u32 freq = hba->dev_ref_clk_freq;
-
-	err = ufshcd_query_attr_retry(hba, UPIU_QUERY_OPCODE_READ_ATTR,
-			QUERY_ATTR_IDN_REF_CLK_FREQ, 0, 0, &ref_clk);
-
-	if (err) {
-		dev_err(hba->dev, "%s: failed reading bRefClkFreq. err = %d\n",
-			 __func__, err);
-		goto out;
-	}
-
-	if (ref_clk == hba->dev_ref_clk_freq)
-		goto out; /* nothing to update */
-
-	err = ufshcd_query_attr_retry(hba, UPIU_QUERY_OPCODE_WRITE_ATTR,
-			QUERY_ATTR_IDN_REF_CLK_FREQ, 0, 0, &freq);
-
-	if (err) {
-		dev_err(hba->dev, "%s: bRefClkFreq setting to %u Hz failed\n",
-		__func__, ufs_ref_clk_freqs[freq].freq_hz);
-		goto out;
-	}
-
-	dev_dbg(hba->dev, "%s: bRefClkFreq setting to %u Hz succeeded\n",
-		__func__, ufs_ref_clk_freqs[freq].freq_hz);
-
-out:
-	return err;
-}
-
 /**
  * ufshcd_probe_hba - probe hba to detect device and initialize
  * @hba: per-adapter instance
@@ -6597,12 +6517,6 @@ static int ufshcd_probe_hba(struct ufs_hba *hba)
 			"%s: Failed getting max supported power mode\n",
 			__func__);
 	} else {
-		/*
-		 * Set the right value to bRefClkFreq before attempting to
-		 * switch to HS gears.
-		 */
-		if (hba->dev_ref_clk_freq != REF_CLK_FREQ_INVAL)
-			ufshcd_set_dev_ref_clk(hba);
 		ret = ufshcd_config_pwr_mode(hba, &hba->max_pwr_info.info);
 		if (ret) {
 			dev_err(hba->dev, "%s: Failed setting power mode, err = %d\n",
@@ -6755,6 +6669,15 @@ static int ufshcd_config_vreg_load(struct device *dev, struct ufs_vreg *vreg,
 	if (!vreg)
 		return 0;
 
+	/*
+	 * "set_load" operation shall be required on those regulators
+	 * which specifically configured current limitation. Otherwise
+	 * zero max_uA may cause unexpected behavior when regulator is
+	 * enabled or set as high power mode.
+	 */
+	if (!vreg->max_uA)
+		return 0;
+
 	ret = regulator_set_load(vreg->reg, ua);
 	if (ret < 0) {
 		dev_err(dev, "%s: %s set load (ua=%d) failed, err=%d\n",
@@ -6801,12 +6724,15 @@ static int ufshcd_config_vreg(struct device *dev,
 	name = vreg->name;
 
 	if (regulator_count_voltages(reg) > 0) {
-		min_uV = on ? vreg->min_uV : 0;
-		ret = regulator_set_voltage(reg, min_uV, vreg->max_uV);
-		if (ret) {
-			dev_err(dev, "%s: %s set voltage failed, err=%d\n",
+		if (vreg->min_uV && vreg->max_uV) {
+			min_uV = on ? vreg->min_uV : 0;
+			ret = regulator_set_voltage(reg, min_uV, vreg->max_uV);
+			if (ret) {
+				dev_err(dev,
+					"%s: %s set voltage failed, err=%d\n",
 					__func__, name, ret);
-			goto out;
+				goto out;
+			}
 		}
 
 		uA_load = on ? vreg->max_uA : 0;
@@ -7846,6 +7772,9 @@ int ufshcd_shutdown(struct ufs_hba *hba)
 {
 	int ret = 0;
 
+	if (!hba->is_powered)
+		goto out;
+
 	if (ufshcd_is_ufs_dev_poweroff(hba) && ufshcd_is_link_off(hba))
 		goto out;
 
@@ -7872,7 +7801,6 @@ EXPORT_SYMBOL(ufshcd_shutdown);
 void ufshcd_remove(struct ufs_hba *hba)
 {
 	ufs_sysfs_remove_nodes(hba->dev);
-	ufshcd_configfs_exit(hba);
 	scsi_remove_host(hba->host);
 	/* disable interrupts */
 	ufshcd_disable_intr(hba, hba->intr_mask);
@@ -7949,7 +7877,6 @@ int ufshcd_alloc_host(struct device *dev, struct ufs_hba **hba_handle)
 	hba->host = host;
 	hba->dev = dev;
 	*hba_handle = hba;
-	hba->dev_ref_clk_freq = REF_CLK_FREQ_INVAL;
 
 	INIT_LIST_HEAD(&hba->clk_list_head);
 
@@ -8122,7 +8049,7 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	async_schedule(ufshcd_async_scan, hba);
 	ufs_sysfs_add_nodes(hba->dev);
-	ufshcd_configfs_init(hba, dev_name(hba->dev));
+
 	return 0;
 
 out_remove_scsi_host:

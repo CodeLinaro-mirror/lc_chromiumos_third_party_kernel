@@ -377,7 +377,7 @@ enum wmi_10_4_service {
 	WMI_10_4_SERVICE_RX_FILTER_OUT_COUNT,
 	WMI_10_4_SERVICE_RTT_RESPONDER_ROLE,
 	WMI_10_4_SERVICE_EXT_PEER_TID_CONFIGS_SUPPORT,
- 	WMI_10_4_SERVICE_REPORT_AIRTIME,
+	WMI_10_4_SERVICE_REPORT_AIRTIME,
 	WMI_10_4_SERVICE_TX_PWR_PER_PEER,
 	WMI_10_4_SERVICE_FETCH_PEER_TX_PN,
 	WMI_10_4_SERVICE_MULTIPLE_VDEV_RESTART,
@@ -6876,11 +6876,17 @@ struct wmi_ch_info_ev_arg {
 	__le32 mac_clk_mhz;
 };
 
+/* From 10.4 firmware, not sure all have the same values. */
+enum wmi_vdev_start_status {
+	WMI_VDEV_START_OK = 0,
+	WMI_VDEV_START_CHAN_INVALID,
+};
+
 struct wmi_vdev_start_ev_arg {
 	__le32 vdev_id;
 	__le32 req_id;
 	__le32 resp_type; /* %WMI_VDEV_RESP_ */
-	__le32 status;
+	__le32 status; /* See wmi_vdev_start_status enum above */
 };
 
 struct wmi_peer_kick_ev_arg {

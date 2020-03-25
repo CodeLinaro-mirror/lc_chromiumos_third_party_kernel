@@ -36,12 +36,14 @@ static void *kmap_argument_stack(struct linux_binprm *bprm, void **ctx)
 {
 	char *argv;
 	int err;
-	unsigned long i, pos;
+	unsigned long i, pos, count;
 	void *map;
 	struct page *page;
 
-	/* vma_pages holds the number of pages reserved for the stack */
-	if (likely(bprm->vma_pages == 1)) {
+	/* vma_pages() returns the number of pages reserved for the stack */
+	count = vma_pages(bprm->vma);
+
+	if (likely(count == 1)) {
 		err = get_user_pages_remote(current, bprm->mm, bprm->p, 1,
 					    FOLL_FORCE, &page, NULL, NULL);
 		if (err != 1)
@@ -55,18 +57,17 @@ static void *kmap_argument_stack(struct linux_binprm *bprm, void **ctx)
 		 * of pages. Parsing the argument across kmap pages in different
 		 * addresses would make it impractical.
 		 */
-		argv = vmalloc(bprm->vma_pages * PAGE_SIZE);
+		argv = vmalloc(count * PAGE_SIZE);
 		if (!argv)
 			return NULL;
 
-		for (i = 0; i < bprm->vma_pages; i++) {
+		for (i = 0; i < count; i++) {
 			pos = ALIGN_DOWN(bprm->p, PAGE_SIZE) + i * PAGE_SIZE;
 			err = get_user_pages_remote(current, bprm->mm, pos, 1,
 						    FOLL_FORCE, &page, NULL,
 						    NULL);
 			if (err <= 0) {
-				free_pages((unsigned long)argv,
-					   bprm->vma_pages);
+				vfree(argv);
 				return NULL;
 			}
 
@@ -89,7 +90,7 @@ static void kunmap_argument_stack(struct linux_binprm *bprm, void *addr,
 	if (!addr)
 		return;
 
-	if (likely(bprm->vma_pages == 1)) {
+	if (likely(vma_pages(bprm->vma) == 1)) {
 		page = (struct page *)ctx;
 		kunmap(page);
 		put_page(ctx);
@@ -146,7 +147,7 @@ static bool encode_current_argv(pb_ostream_t *stream, const pb_field_t *field,
 	int i;
 	struct linux_binprm *bprm = ctx->bprm;
 	unsigned long offset = bprm->p % PAGE_SIZE;
-	unsigned long end = bprm->vma_pages * PAGE_SIZE;
+	unsigned long end = vma_pages(bprm->vma) * PAGE_SIZE;
 	char *argv = ctx->stack;
 	char *entry;
 	size_t limit, used = 0;
@@ -230,7 +231,7 @@ static bool encode_current_envp(pb_ostream_t *stream, const pb_field_t *field,
 	int i;
 	struct linux_binprm *bprm = ctx->bprm;
 	unsigned long offset = bprm->p % PAGE_SIZE;
-	unsigned long end = bprm->vma_pages * PAGE_SIZE;
+	unsigned long end = vma_pages(bprm->vma) * PAGE_SIZE;
 	char *argv = ctx->stack;
 	char *entry;
 	size_t limit, used = 0;
@@ -448,7 +449,7 @@ int csm_bprm_check_security(struct linux_binprm *bprm)
 	if (err)
 		goto out_free_buf;
 
-	proc->uuid.funcs.encode = pb_encode_string_field;
+	proc->uuid.funcs.encode = pb_encode_uuid_field;
 	proc->uuid.arg = uuid;
 
 	if (proc->parent_pid) {
@@ -456,7 +457,7 @@ int csm_bprm_check_security(struct linux_binprm *bprm)
 					      sizeof(parent_uuid));
 		/* Report the parent process if available. */
 		if (!err) {
-			proc->parent_uuid.funcs.encode = pb_encode_string_field;
+			proc->parent_uuid.funcs.encode = pb_encode_uuid_field;
 			proc->parent_uuid.arg = parent_uuid;
 		} else if (err != -ENOENT) {
 			goto out_free_buf;
@@ -547,7 +548,7 @@ void csm_task_exit(struct task_struct *task)
 		return;
 	}
 
-	exit->process_uuid.funcs.encode = pb_encode_string_field;
+	exit->process_uuid.funcs.encode = pb_encode_uuid_field;
 	exit->process_uuid.arg = uuid;
 
 	event.which_event = schema_Event_exit_tag;
