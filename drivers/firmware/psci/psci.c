@@ -10,6 +10,7 @@
 #include <linux/arm-smccc.h>
 #include <linux/cpuidle.h>
 #include <linux/errno.h>
+#include <linux/io.h>
 #include <linux/linkage.h>
 #include <linux/of.h>
 #include <linux/pm.h>
@@ -263,6 +264,18 @@ static int get_set_conduit_method(struct device_node *np)
 static int psci_sys_reset(struct notifier_block *nb, unsigned long action,
 			  void *data)
 {
+#if IS_ENABLED(CONFIG_POWER_RESET_MSM_DOWNLOAD_MODE)
+	if (dload_imem_addr) {
+		writel(0, dload_imem_addr);
+		iounmap(dload_imem_addr);
+	}
+#endif
+
+#if IS_ENABLED(CONFIG_POWER_RESET_MSM)
+	if (msm_sdi_disable)
+		writel(1, msm_sdi_disable);
+#endif
+
 	flush_cache_all();
 
 	if ((reboot_mode == REBOOT_WARM || reboot_mode == REBOOT_SOFT) &&
