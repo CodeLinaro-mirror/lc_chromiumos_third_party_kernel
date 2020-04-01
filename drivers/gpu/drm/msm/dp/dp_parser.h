@@ -6,6 +6,8 @@
 #ifndef _DP_PARSER_H_
 #define _DP_PARSER_H_
 
+#include "pll/dp_pll.h"
+
 #define DP_LABEL "MDSS DP DISPLAY"
 #define AUX_CFG_LEN	10
 #define DP_MAX_PIXEL_CLK_KHZ	675000
@@ -60,7 +62,6 @@ struct dp_display_data {
  * @phy_io: phy's mapped memory address
  * @ln_tx0_io: USB-DP lane TX0's mapped memory address
  * @ln_tx1_io: USB-DP lane TX1's mapped memory address
- * @dp_cc_io: DP cc's mapped memory address
  * @qfprom_io: qfprom's mapped memory address
  * @dp_pll_io: DP PLL mapped memory address
  * @usb3_dp_com: USB3 DP PHY combo mapped memory address
@@ -74,7 +75,6 @@ struct dp_io {
 	struct dss_io_data phy_io;
 	struct dss_io_data ln_tx0_io;
 	struct dss_io_data ln_tx1_io;
-	struct dss_io_data dp_cc_io;
 	struct dss_io_data qfprom_io;
 	struct dss_io_data dp_pll_io;
 	struct dss_io_data usb3_dp_com;
@@ -193,6 +193,8 @@ struct dp_parser {
 	bool combo_phy_en;
 	struct dp_io io;
 	struct dp_display_data disp_data;
+	struct msm_dp_pll *pll;
+	struct device *pll_dev;
 	const struct dp_regulator_cfg *regulator_cfg;
 	u8 l_map[4];
 	struct dp_aux_cfg aux_cfg[AUX_CFG_LEN];

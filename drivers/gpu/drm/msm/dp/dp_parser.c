@@ -59,7 +59,6 @@ static void dp_parser_unmap_io_resources(struct dp_parser *parser)
 	msm_dss_iounmap(&io->ln_tx0_io);
 	msm_dss_iounmap(&io->ln_tx0_io);
 	msm_dss_iounmap(&io->dp_pll_io);
-	msm_dss_iounmap(&io->dp_cc_io);
 	msm_dss_iounmap(&io->usb3_dp_com);
 	msm_dss_iounmap(&io->qfprom_io);
 }
@@ -132,12 +131,6 @@ static int dp_parser_ctrl_res(struct dp_parser *parser)
 		goto err;
 	}
 
-	rc = msm_dss_ioremap_byname(pdev, &io->dp_cc_io, "dp_mmss_cc");
-	if (rc) {
-		DRM_ERROR("unable to remap dp MMSS_CC resources\n");
-		goto err;
-	}
-
 	if (msm_dss_ioremap_byname(pdev, &io->qfprom_io, "qfprom_physical"))
 		pr_warn("unable to remap dp qfprom resources\n");
 
@@ -151,25 +144,25 @@ static const char *dp_get_phy_aux_config_property(u32 cfg_type)
 {
 	switch (cfg_type) {
 	case PHY_AUX_CFG0:
-		return "qcom,aux-cfg0-settings";
+		return "aux-cfg0-settings";
 	case PHY_AUX_CFG1:
-		return "qcom,aux-cfg1-settings";
+		return "aux-cfg1-settings";
 	case PHY_AUX_CFG2:
-		return "qcom,aux-cfg2-settings";
+		return "aux-cfg2-settings";
 	case PHY_AUX_CFG3:
-		return "qcom,aux-cfg3-settings";
+		return "aux-cfg3-settings";
 	case PHY_AUX_CFG4:
-		return "qcom,aux-cfg4-settings";
+		return "aux-cfg4-settings";
 	case PHY_AUX_CFG5:
-		return "qcom,aux-cfg5-settings";
+		return "aux-cfg5-settings";
 	case PHY_AUX_CFG6:
-		return "qcom,aux-cfg6-settings";
+		return "aux-cfg6-settings";
 	case PHY_AUX_CFG7:
-		return "qcom,aux-cfg7-settings";
+		return "aux-cfg7-settings";
 	case PHY_AUX_CFG8:
-		return "qcom,aux-cfg8-settings";
+		return "aux-cfg8-settings";
 	case PHY_AUX_CFG9:
-		return "qcom,aux-cfg9-settings";
+		return "aux-cfg9-settings";
 	default:
 		return "unknown";
 	}
@@ -227,11 +220,11 @@ static int dp_parser_misc(struct dp_parser *parser)
 
 	parser->max_pclk_khz = DP_MAX_PIXEL_CLK_KHZ;
 	rc = of_property_read_u32(of_node,
-		"qcom,max-pclk-frequency-khz", &parser->max_pclk_khz);
+		"max-pclk-frequency-khz", &parser->max_pclk_khz);
 
 	parser->max_dp_lanes = DP_MAX_NUM_DP_LANES;
 	rc = of_property_read_u32(of_node,
-		"qcom,max-lanes-for-dp", &parser->max_dp_lanes);
+		"max-lanes-for-dp", &parser->max_dp_lanes);
 
 	return 0;
 }
@@ -273,21 +266,21 @@ static int dp_parser_gpio(struct dp_parser *parser)
 	struct device_node *of_node = dev->of_node;
 
 	parser->usbplug_cc_gpio = of_get_named_gpio(of_node,
-					"qcom,usbplug-cc-gpio", 0);
+					"usbplug-cc-gpio", 0);
 	if (!gpio_is_valid(parser->usbplug_cc_gpio)) {
 		DRM_ERROR("usbplug-cc-gpio not specified\n");
 		return -EINVAL;
 	}
 
 	parser->aux_en_gpio = of_get_named_gpio(of_node,
-					"qcom,aux-en-gpio", 0);
+					"aux-en-gpio", 0);
 	if (!gpio_is_valid(parser->aux_en_gpio)) {
 		DRM_ERROR("aux-en-gpio not specified\n");
 		return -EINVAL;
 	}
 
 	parser->aux_sel_gpio = of_get_named_gpio(of_node,
-					"qcom,aux-sel-gpio", 0);
+					"aux-sel-gpio", 0);
 	if (!gpio_is_valid(parser->aux_sel_gpio)) {
 		DRM_ERROR("aux-sel-gpio not specified\n");
 		return -EINVAL;

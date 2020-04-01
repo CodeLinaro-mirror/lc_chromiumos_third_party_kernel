@@ -5,6 +5,7 @@
 
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
 
+#include <linux/rational.h>
 #include <linux/delay.h>
 #include <linux/iopoll.h>
 #include <drm/drm_dp_helper.h>
@@ -119,11 +120,6 @@ static inline void dp_write_ahb(struct dp_catalog_private *catalog,
 	 * this function uses writel() instread of writel_relaxed()
 	 */
 	writel(data, catalog->io->dp_ahb.base + offset);
-}
-
-static inline u32 dp_read_cc(struct dp_catalog_private *catalog, u32 offset)
-{
-	return readl_relaxed(catalog->io->dp_cc_io.base + offset);
 }
 
 static inline void dp_write_phy(struct dp_catalog_private *catalog,
@@ -542,17 +538,37 @@ void dp_catalog_ctrl_config_msa(struct dp_catalog *dp_catalog,
 					bool fixed_nvid)
 {
 	u32 pixel_m, pixel_n;
-	u32 mvid, nvid;
+	u32 mvid, nvid, div, pixel_div = 0, dispcc_input_rate;
 	u32 const nvid_fixed = DP_LINK_CONSTANT_N_VALUE;
 	u32 const link_rate_hbr2 = 540000;
 	u32 const link_rate_hbr3 = 810000;
+	unsigned long den, num;
 
 	struct dp_catalog_private *catalog = container_of(dp_catalog,
 				struct dp_catalog_private, dp_catalog);
 
-	pixel_m = dp_read_cc(catalog, MMSS_DP_PIXEL_M);
-	pixel_n = dp_read_cc(catalog, MMSS_DP_PIXEL_N);
-	DRM_DEBUG_DP("pixel_m=0x%x, pixel_n=0x%x\n", pixel_m, pixel_n);
+	div = dp_read_phy(catalog, REG_DP_PHY_VCO_DIV);
+	div &= 0x03;
+
+	if (div == 0)
+		pixel_div = 6;
+	else if (div == 1)
+		pixel_div = 2;
+	else if (div == 2)
+		pixel_div = 4;
+	else
+		DRM_ERROR("Invalid pixel mux divider\n");
+
+	dispcc_input_rate = (rate * 10) / pixel_div;
+
+	rational_best_approximation(dispcc_input_rate, stream_rate_khz,
+			(unsigned long)(1 << 16) - 1,
+			(unsigned long)(1 << 16) - 1, &den, &num);
+
+	den = ~(den - num);
+	den = den & 0xFFFF;
+	pixel_m = num;
+	pixel_n = den;
 
 	mvid = (pixel_m & 0xFFFF) * 5;
 	nvid = (0xFFFF & (~pixel_n)) + (pixel_m & 0xFFFF);
