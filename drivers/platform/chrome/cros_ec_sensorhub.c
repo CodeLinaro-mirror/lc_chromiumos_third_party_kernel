@@ -111,7 +111,7 @@ static int cros_ec_sensorhub_register(struct device *dev,
 
 #if IS_ENABLED(CONFIG_IIO_CROS_EC_SENSORS_RING)
 	if (cros_ec_check_features(ec, EC_FEATURE_MOTION_SENSE_FIFO)) {
-		ret = cros_ec_sensorhub_allocate_single_sensor(
+		ret = cros_ec_sensorhub_allocate_sensor(
 				dev, "cros-ec-ring", 0);
 		if (ret)
 			return ret;
