@@ -2878,8 +2878,8 @@ static ssize_t ath10k_read_tx_wmi_mgmt(struct file *file,
 	tx_queue_len = skb_queue_len(q);
 	spin_unlock_bh(&ar->data_lock);
 
-	len = scnprintf(buf, sizeof(buf), "tx_queue_len: %u,
-			num_tx_wmi_mgmt: %llu, num_tx_work: %llu\n",
+	len = scnprintf(buf, sizeof(buf),
+			"tx_queue_len: %u num_tx_wmi_mgmt: %llu num_tx_work: %llu\n",
 			tx_queue_len, ar->debug.num_tx_wmi_mgmt,
 			ar->debug.num_tx_work);
 
