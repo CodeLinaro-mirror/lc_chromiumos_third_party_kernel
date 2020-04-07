@@ -56,6 +56,9 @@ struct virtio_gpu_object_params {
 	bool dumb;
 	/* 3d */
 	bool virgl;
+	bool resource_v2;
+	enum virtio_gpu_memory_type guest_memory_type;
+	enum virtio_gpu_caching_type caching_type;
 	uint32_t target;
 	uint32_t bind;
 	uint32_t depth;
@@ -69,10 +72,20 @@ struct virtio_gpu_object {
 	struct drm_gem_shmem_object base;
 	uint32_t hw_res_handle;
 
+	bool create_callback_done;
+	/* These variables are only valid if create_callback_done is true */
+	uint32_t num_planes;
+	uint64_t format_modifier;
+	uint32_t strides[4];
+	uint32_t offsets[4];
+
 	struct sg_table *pages;
 	uint32_t mapped;
 	bool dumb;
+	bool resource_v2;
 	bool created;
+	enum virtio_gpu_memory_type guest_memory_type;
+	enum virtio_gpu_caching_type caching_type;
 };
 #define gem_to_virtio_gpu_obj(gobj) \
 	container_of((gobj), struct virtio_gpu_object, base.base)
@@ -203,6 +216,9 @@ struct virtio_gpu_device {
 	struct virtio_gpu_drv_capset *capsets;
 	uint32_t num_capsets;
 	struct list_head cap_cache;
+
+	struct idr request_idr;
+	spinlock_t request_idr_lock;
 };
 
 struct virtio_gpu_fpriv {
@@ -210,7 +226,7 @@ struct virtio_gpu_fpriv {
 };
 
 /* virtio_ioctl.c */
-#define DRM_VIRTIO_NUM_IOCTLS 10
+#define DRM_VIRTIO_NUM_IOCTLS 13
 extern struct drm_ioctl_desc virtio_gpu_ioctls[DRM_VIRTIO_NUM_IOCTLS];
 
 /* virtio_kms.c */
@@ -319,7 +335,7 @@ void virtio_gpu_cmd_transfer_to_host_3d(struct virtio_gpu_device *vgdev,
 					struct drm_virtgpu_3d_box *box,
 					struct virtio_gpu_object_array *objs,
 					struct virtio_gpu_fence *fence);
-void
+int
 virtio_gpu_cmd_resource_create_3d(struct virtio_gpu_device *vgdev,
 				  struct virtio_gpu_object *bo,
 				  struct virtio_gpu_object_params *params,
@@ -362,6 +378,12 @@ int virtio_gpu_object_create(struct virtio_gpu_device *vgdev,
 			     struct virtio_gpu_object **bo_ptr,
 			     struct virtio_gpu_fence *fence);
 /* virtgpu_prime.c */
+struct dma_buf_ops;
+extern const struct dma_buf_ops virtgpu_dmabuf_ops;
+struct dma_buf *virtgpu_gem_prime_export(struct drm_gem_object *obj,
+					 int flags);
+struct drm_gem_object *virtgpu_gem_prime_import(struct drm_device *dev,
+						struct dma_buf *buf);
 struct drm_gem_object *virtgpu_gem_prime_import_sg_table(
 	struct drm_device *dev, struct dma_buf_attachment *attach,
 	struct sg_table *sgt);
