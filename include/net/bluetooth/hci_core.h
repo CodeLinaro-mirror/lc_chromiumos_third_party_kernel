@@ -88,6 +88,31 @@ struct discovery_state {
 	unsigned long		scan_duration;
 };
 
+#define SUSPEND_NOTIFIER_TIMEOUT	msecs_to_jiffies(2000) /* 2 seconds */
+
+enum suspend_tasks {
+	SUSPEND_PAUSE_DISCOVERY,
+	SUSPEND_UNPAUSE_DISCOVERY,
+
+	SUSPEND_PAUSE_ADVERTISING,
+	SUSPEND_UNPAUSE_ADVERTISING,
+
+	SUSPEND_SCAN_DISABLE,
+	SUSPEND_SCAN_ENABLE,
+	SUSPEND_DISCONNECTING,
+
+	SUSPEND_POWERING_DOWN,
+
+	SUSPEND_PREPARE_NOTIFIER,
+	__SUSPEND_NUM_TASKS
+};
+
+enum suspended_state {
+	BT_RUNNING = 0,
+	BT_SUSPEND_DISCONNECT,
+	BT_SUSPEND_COMPLETE,
+};
+
 struct hci_conn_hash {
 	struct list_head list;
 	unsigned int     acl_num;
@@ -182,6 +207,7 @@ struct adv_info {
 	__u16	timeout;
 	__u16	remaining_time;
 	__u16	duration;
+	__u8	individual_duration_flag;
 	__u16	adv_data_len;
 	__u8	adv_data[HCI_MAX_AD_LENGTH];
 	__u16	scan_rsp_len;
@@ -193,7 +219,29 @@ struct adv_info {
 };
 
 #define HCI_MAX_ADV_INSTANCES		5
-#define HCI_DEFAULT_ADV_DURATION	2
+#define HCI_DEFAULT_ADV_DURATION	2000
+
+/*
+ * Refer to BLUETOOTH SPECIFICATION Version 4.2 [Vol 2, Part E]
+ * Section 7.8.5 about
+ * - the default min/max intervals, and
+ * - the valid range of min/max intervals.
+ */
+#define HCI_DEFAULT_LE_ADV_MIN_INTERVAL	0x0800
+#define HCI_DEFAULT_LE_ADV_MAX_INTERVAL	0x0800
+#define HCI_VALID_LE_ADV_MIN_INTERVAL	0x0020
+#define HCI_VALID_LE_ADV_MAX_INTERVAL	0x4000
+#define ADV_DURATION_MIN_GRACE_PERIOD	5
+
+/* Multiply m by 0.625 (or 5 / 8) to derive time in ms. */
+#define CONVERT_TO_ADV_INTERVAL_MS(m) ((m * 5) >> 3)
+
+/*
+ * We want to multiply the duration (d) by a factor near 0.1
+ * to derive a grace period in ms. This is done by multiplying
+ * d by 0.109375 (or 7 / 64)
+ */
+#define ADV_DURATION_GRACE_PERIOD(d) ((d * 7) >> 6)
 
 #define HCI_MAX_SHORT_NAME_LENGTH	10
 
@@ -237,6 +285,7 @@ struct hci_dev {
 	__u8		dev_name[HCI_MAX_NAME_LENGTH];
 	__u8		short_name[HCI_MAX_SHORT_NAME_LENGTH];
 	__u8		eir[HCI_MAX_EIR_LENGTH];
+	__u8		event_mask[HCI_SET_EVENT_MASK_SIZE];
 	__u16		appearance;
 	__u8		dev_class[3];
 	__u8		major_class;
@@ -260,12 +309,15 @@ struct hci_dev {
 	__u8		stored_num_keys;
 	__u8		io_capability;
 	__s8		inq_tx_power;
+	__u8		err_data_reporting;
 	__u16		page_scan_interval;
 	__u16		page_scan_window;
 	__u8		page_scan_type;
 	__u8		le_adv_channel_map;
 	__u16		le_adv_min_interval;
 	__u16		le_adv_max_interval;
+	__u16		le_adv_duration;
+	__u8		le_adv_param_changed;
 	__u8		le_scan_type;
 	__u16		le_scan_interval;
 	__u16		le_scan_window;
@@ -328,6 +380,9 @@ struct hci_dev {
 	unsigned int	sco_cnt;
 	unsigned int	le_cnt;
 
+	unsigned int	count_adv_change_in_progress;
+	unsigned int	count_scan_change_in_progress;
+
 	unsigned int	acl_mtu;
 	unsigned int	sco_mtu;
 	unsigned int	le_mtu;
@@ -365,7 +420,8 @@ struct hci_dev {
 	struct work_struct	cmd_work;
 	struct work_struct	tx_work;
 
-	struct work_struct	discov_update;
+	struct work_struct	start_discov_update;
+	struct work_struct	stop_discov_update;
 	struct work_struct	bg_scan_update;
 	struct work_struct	scan_update;
 	struct work_struct	connectable_update;
@@ -389,11 +445,28 @@ struct hci_dev {
 	void			*smp_bredr_data;
 
 	struct discovery_state	discovery;
+
+	int			discovery_old_state;
+	bool			discovery_paused;
+	int			advertising_old_state;
+	bool			advertising_paused;
+
+	struct notifier_block	suspend_notifier;
+	struct work_struct	suspend_prepare;
+	enum suspended_state	suspend_state_next;
+	enum suspended_state	suspend_state;
+	bool			scanning_paused;
+	bool			suspended;
+
+	wait_queue_head_t	suspend_wait_q;
+	DECLARE_BITMAP(suspend_tasks, __SUSPEND_NUM_TASKS);
+
 	struct hci_conn_hash	conn_hash;
 
 	struct list_head	mgmt_pending;
 	struct list_head	blacklist;
 	struct list_head	whitelist;
+	struct list_head	wakeable;
 	struct list_head	uuids;
 	struct list_head	link_keys;
 	struct list_head	long_term_keys;
@@ -575,6 +648,7 @@ struct hci_conn_params {
 
 	struct hci_conn *conn;
 	bool explicit_connect;
+	bool wakeable;
 };
 
 extern struct list_head hci_dev_list;
@@ -1195,12 +1269,12 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
 #define lmp_csb_slave_capable(dev)  ((dev)->features[2][0] & LMP_CSB_SLAVE)
 #define lmp_sync_train_capable(dev) ((dev)->features[2][0] & LMP_SYNC_TRAIN)
 #define lmp_sync_scan_capable(dev)  ((dev)->features[2][0] & LMP_SYNC_SCAN)
-#define lmp_sc_capable(dev)         ((dev)->features[2][1] & LMP_SC)
+#define lmp_sc_capable(dev)         (0)
 #define lmp_ping_capable(dev)       ((dev)->features[2][1] & LMP_PING)
 
 /* ----- Host capabilities ----- */
 #define lmp_host_ssp_capable(dev)  ((dev)->features[1][0] & LMP_HOST_SSP)
-#define lmp_host_sc_capable(dev)   ((dev)->features[1][0] & LMP_HOST_SC)
+#define lmp_host_sc_capable(dev)   (0)
 #define lmp_host_le_capable(dev)   (!!((dev)->features[1][0] & LMP_HOST_LE))
 #define lmp_host_le_br_capable(dev) (!!((dev)->features[1][0] & LMP_HOST_LE_BREDR))
 
@@ -1209,23 +1283,33 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
 #define bredr_sc_enabled(dev)  (lmp_sc_capable(dev) && \
 				hci_dev_test_flag(dev, HCI_SC_ENABLED))
 
-#define scan_1m(dev) (((dev)->le_tx_def_phys & HCI_LE_SET_PHY_1M) || \
-		      ((dev)->le_rx_def_phys & HCI_LE_SET_PHY_1M))
+/* Disable 5.0 features for unified behavior accross chromium BlueZ kernels */
+#define SPEC_5_x_LE_FEATURES_ENABLE (0)
 
-#define scan_2m(dev) (((dev)->le_tx_def_phys & HCI_LE_SET_PHY_2M) || \
-		      ((dev)->le_rx_def_phys & HCI_LE_SET_PHY_2M))
+#define scan_1m(dev) ((((dev)->le_tx_def_phys & HCI_LE_SET_PHY_1M) || \
+		      ((dev)->le_rx_def_phys & HCI_LE_SET_PHY_1M)) & \
+		      SPEC_5_x_LE_FEATURES_ENABLE)
 
-#define scan_coded(dev) (((dev)->le_tx_def_phys & HCI_LE_SET_PHY_CODED) || \
-			 ((dev)->le_rx_def_phys & HCI_LE_SET_PHY_CODED))
+#define scan_2m(dev) ((((dev)->le_tx_def_phys & HCI_LE_SET_PHY_2M) || \
+		      ((dev)->le_rx_def_phys & HCI_LE_SET_PHY_2M)) & \
+		      SPEC_5_x_LE_FEATURES_ENABLE)
+
+#define scan_coded(dev) ((((dev)->le_tx_def_phys & HCI_LE_SET_PHY_CODED) || \
+			 ((dev)->le_rx_def_phys & HCI_LE_SET_PHY_CODED)) & \
+			 SPEC_5_x_LE_FEATURES_ENABLE)
 
 /* Use ext scanning if set ext scan param and ext scan enable is supported */
-#define use_ext_scan(dev) (((dev)->commands[37] & 0x20) && \
-			   ((dev)->commands[37] & 0x40))
+#define use_ext_scan(dev) ((((dev)->commands[37] & 0x20) && \
+			   ((dev)->commands[37] & 0x40)) & \
+			   SPEC_5_x_LE_FEATURES_ENABLE)
+
 /* Use ext create connection if command is supported */
-#define use_ext_conn(dev) ((dev)->commands[37] & 0x80)
+#define use_ext_conn(dev) (((dev)->commands[37] & 0x80) & \
+			   SPEC_5_x_LE_FEATURES_ENABLE)
 
 /* Extended advertising support */
-#define ext_adv_capable(dev) (((dev)->le_features[1] & HCI_LE_EXT_ADV))
+#define ext_adv_capable(dev) ((((dev)->le_features[1] & HCI_LE_EXT_ADV)) & \
+			   SPEC_5_x_LE_FEATURES_ENABLE)
 
 /* ----- HCI protocols ----- */
 #define HCI_PROTO_DEFER             0x01

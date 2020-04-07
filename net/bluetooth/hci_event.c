@@ -39,6 +39,12 @@
 #define ZERO_KEY "\x00\x00\x00\x00\x00\x00\x00\x00" \
 		 "\x00\x00\x00\x00\x00\x00\x00\x00"
 
+/* Minimum encryption key length, value adopted from BLE (7 bytes) */
+#define MIN_ENC_KEY_LEN 7
+
+/* Intel manufacturer ID  and specific events */
+#define MAUFACTURER_ID_INTEL      0x0002
+
 /* Handle HCI Event packets */
 
 static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb)
@@ -901,6 +907,37 @@ static void hci_cc_read_inq_rsp_tx_power(struct hci_dev *hdev,
 	hdev->inq_tx_power = rp->tx_power;
 }
 
+static void hci_cc_read_def_err_data_reporting(struct hci_dev *hdev,
+					       struct sk_buff *skb)
+{
+	struct hci_rp_read_def_err_data_reporting *rp = (void *)skb->data;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, rp->status);
+
+	if (rp->status)
+		return;
+
+	hdev->err_data_reporting = rp->err_data_reporting;
+}
+
+static void hci_cc_write_def_err_data_reporting(struct hci_dev *hdev,
+						struct sk_buff *skb)
+{
+	__u8 status = *((__u8 *)skb->data);
+	struct hci_cp_write_def_err_data_reporting *cp;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	if (status)
+		return;
+
+	cp = hci_sent_cmd_data(hdev, HCI_OP_WRITE_DEF_ERR_DATA_REPORTING);
+	if (!cp)
+		return;
+
+	hdev->err_data_reporting = cp->err_data_reporting;
+}
+
 static void hci_cc_pin_code_reply(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_rp_pin_code_reply *rp = (void *) skb->data;
@@ -1169,7 +1206,8 @@ static void hci_cc_le_set_adv_enable(struct hci_dev *hdev, struct sk_buff *skb)
 	} else {
 		hci_dev_clear_flag(hdev, HCI_LE_ADV);
 	}
-
+	hci_dev_clear_flag(hdev, HCI_LE_ADV_CHANGE_IN_PROGRESS);
+	hdev->count_adv_change_in_progress--;
 	hci_dev_unlock(hdev);
 }
 
@@ -1286,6 +1324,8 @@ static void le_set_scan_enable_complete(struct hci_dev *hdev, u8 enable)
 {
 	hci_dev_lock(hdev);
 
+	hci_dev_clear_flag(hdev, HCI_LE_SCAN_CHANGE_IN_PROGRESS);
+	hdev->count_scan_change_in_progress--;
 	switch (enable) {
 	case LE_SCAN_ENABLE:
 		hci_dev_set_flag(hdev, HCI_LE_SCAN);
@@ -1738,6 +1778,37 @@ static void hci_cc_read_tx_power(struct hci_dev *hdev, struct sk_buff *skb)
 	}
 
 unlock:
+	hci_dev_unlock(hdev);
+}
+
+static void hci_cc_set_event_mask(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	u8 status = *((u8 *)skb->data);
+	u8 *events;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	if (status) {
+		BT_ERR("Set Event mask failed! status %d", status);
+		return;
+	}
+
+	hci_dev_lock(hdev);
+	events = hci_sent_cmd_data(hdev, HCI_OP_SET_EVENT_MASK);
+	if (events)
+		memcpy(hdev->event_mask, events, sizeof(hdev->event_mask));
+	else
+		BT_ERR("Set Event mask failed! events is NULL");
+
+	BT_DBG("Event mask byte 0: 0x%02x  byte 1: 0x%02x",
+	       hdev->event_mask[0], hdev->event_mask[1]);
+	BT_DBG("Event mask byte 2: 0x%02x  byte 3: 0x%02x",
+	       hdev->event_mask[2], hdev->event_mask[3]);
+	BT_DBG("Event mask byte 4: 0x%02x  byte 5: 0x%02x",
+	       hdev->event_mask[4], hdev->event_mask[5]);
+	BT_DBG("Event mask byte 6: 0x%02x  byte 7: 0x%02x",
+	       hdev->event_mask[6], hdev->event_mask[7]);
+
 	hci_dev_unlock(hdev);
 }
 
@@ -2202,9 +2273,21 @@ static void hci_cs_disconnect(struct hci_dev *hdev, u8 status)
 	hci_dev_lock(hdev);
 
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(cp->handle));
-	if (conn)
+	if (conn) {
+		u8 type = conn->type;
+
 		mgmt_disconnect_failed(hdev, &conn->dst, conn->type,
 				       conn->dst_type, status);
+
+		/* If the disconnection failed for any reason, the upper layer
+		 * does not retry to disconnect in current implementation.
+		 * Hence, we need to do some basic cleanup here and re-enable
+		 * advertising if necessary.
+		 */
+		hci_conn_del(conn);
+		if (type == LE_LINK)
+			hci_req_reenable_advertising(hdev);
+	}
 
 	hci_dev_unlock(hdev);
 }
@@ -2474,6 +2557,7 @@ static void hci_inquiry_result_evt(struct hci_dev *hdev, struct sk_buff *skb)
 static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_conn_complete *ev = (void *) skb->data;
+	struct inquiry_entry *ie;
 	struct hci_conn *conn;
 
 	BT_DBG("%s", hdev->name);
@@ -2482,14 +2566,30 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	conn = hci_conn_hash_lookup_ba(hdev, ev->link_type, &ev->bdaddr);
 	if (!conn) {
-		if (ev->link_type != SCO_LINK)
-			goto unlock;
+		/* Connection may not exist if auto-connected. Check the inquiry
+		 * cache to see if we've already discovered this bdaddr before.
+		 * If found and link is an ACL type, create a connection class
+		 * automatically.
+		 */
+		ie = hci_inquiry_cache_lookup(hdev, &ev->bdaddr);
+		if (ie && ev->link_type == ACL_LINK) {
+			conn = hci_conn_add(hdev, ev->link_type, &ev->bdaddr,
+					    HCI_ROLE_SLAVE);
+			if (!conn) {
+				bt_dev_err(hdev, "no memory for new conn");
+				goto unlock;
+			}
+		} else {
+			if (ev->link_type != SCO_LINK)
+				goto unlock;
 
-		conn = hci_conn_hash_lookup_ba(hdev, ESCO_LINK, &ev->bdaddr);
-		if (!conn)
-			goto unlock;
+			conn = hci_conn_hash_lookup_ba(hdev, ESCO_LINK,
+						       &ev->bdaddr);
+			if (!conn)
+				goto unlock;
 
-		conn->type = SCO_LINK;
+			conn->type = SCO_LINK;
+		}
 	}
 
 	if (!ev->status) {
@@ -2743,6 +2843,14 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	hci_disconn_cfm(conn, ev->reason);
 	hci_conn_del(conn);
 
+	/* The suspend notifier is waiting for all devices to disconnect so
+	 * clear the bit from pending tasks and inform the wait queue.
+	 */
+	if (list_empty(&hdev->conn_hash.list) &&
+	    test_and_clear_bit(SUSPEND_DISCONNECTING, hdev->suspend_tasks)) {
+		wake_up(&hdev->suspend_wait_q);
+	}
+
 	/* Re-enable advertising if necessary, since it might
 	 * have been disabled by the connection. From the
 	 * HCI_LE_Set_Advertise_Enable command description in
@@ -2895,16 +3003,29 @@ static void read_enc_key_size_complete(struct hci_dev *hdev, u8 status,
 	if (!conn)
 		goto unlock;
 
-	/* If we fail to read the encryption key size, assume maximum
-	 * (which is the same we do also when this HCI command isn't
-	 * supported.
+	/* If we fail to read the encryption key size, abort the connection
+	 * since the encryption key entropy is not guaranteed to be large
+	 * enough.
 	 */
 	if (rp->status) {
 		bt_dev_err(hdev, "failed to read key size for handle %u",
 			   handle);
 		conn->enc_key_size = HCI_LINK_KEY_SIZE;
+#ifdef CONFIG_BT_ENFORCE_CLASSIC_SECURITY
+		WARN(1, "Read Encryption Key Size command failed, chip may not support this");
+		hci_disconnect(conn, HCI_ERROR_REMOTE_USER_TERM);
+		hci_conn_drop(conn);
+		goto unlock;
+#endif
 	} else {
 		conn->enc_key_size = rp->key_size;
+	}
+
+	if (conn->enc_key_size < MIN_ENC_KEY_LEN) {
+		WARN(1, "Dropping connection with weak encryption key length");
+		hci_disconnect(conn, HCI_ERROR_REMOTE_USER_TERM);
+		hci_conn_drop(conn);
+		goto unlock;
 	}
 
 	if (conn->state == BT_CONFIG) {
@@ -3014,7 +3135,14 @@ static void hci_encrypt_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		if (hci_req_run_skb(&req, read_enc_key_size_complete)) {
 			bt_dev_err(hdev, "sending read key size failed");
 			conn->enc_key_size = HCI_LINK_KEY_SIZE;
+#ifdef CONFIG_BT_ENFORCE_CLASSIC_SECURITY
+			WARN(1, "Failed sending HCI Read Encryption Key Size, chip may not support this");
+			hci_disconnect(conn, HCI_ERROR_REMOTE_USER_TERM);
+			hci_conn_drop(conn);
+			goto unlock;
+#else
 			goto notify;
+#endif
 		}
 
 		goto unlock;
@@ -3302,6 +3430,14 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb,
 		hci_cc_read_inq_rsp_tx_power(hdev, skb);
 		break;
 
+	case HCI_OP_READ_DEF_ERR_DATA_REPORTING:
+		hci_cc_read_def_err_data_reporting(hdev, skb);
+		break;
+
+	case HCI_OP_WRITE_DEF_ERR_DATA_REPORTING:
+		hci_cc_write_def_err_data_reporting(hdev, skb);
+		break;
+
 	case HCI_OP_PIN_CODE_REPLY:
 		hci_cc_pin_code_reply(hdev, skb);
 		break;
@@ -3460,6 +3596,10 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb,
 
 	case HCI_OP_LE_SET_ADV_SET_RAND_ADDR:
 		hci_cc_le_set_adv_set_random_addr(hdev, skb);
+		break;
+
+	case HCI_OP_SET_EVENT_MASK:
+		hci_cc_set_event_mask(hdev, skb);
 		break;
 
 	default:
@@ -3767,6 +3907,49 @@ static void hci_num_comp_blocks_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	}
 
 	queue_work(hdev->workqueue, &hdev->tx_work);
+}
+
+static void hci_vendor_evt(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	u8 evt_id;
+	u16 i;
+	u8 *b;
+	char line[HCI_MAX_EVENT_SIZE * 3 + 1] = {0x00,};
+
+	if (hdev->manufacturer == MAUFACTURER_ID_INTEL) {
+		if (skb->len < 1)
+			return;
+
+		BT_INFO("Manufacturer ID 0x%04X:", hdev->manufacturer);
+
+		evt_id = *((u8 *)skb->data);
+		skb_pull(skb, sizeof(evt_id));
+
+		switch (evt_id) {
+		case HCI_EV_INTEL_BOOT_UP:
+		case HCI_EV_INTEL_FATAL_EXCEPTION:
+		case HCI_EV_INTEL_DEBUG_EXCEPTION:
+			if (skb->len < 1) {
+				BT_WARN("Evt ID:%02X", evt_id);
+				return;
+			}
+			b = (u8 *)skb->data;
+			for (i = 0; i < skb->len && i < HCI_MAX_EVENT_SIZE; ++i)
+				sprintf(line + strlen(line), " %02X", b[i]);
+			BT_WARN("Evt ID: %02X data:%s", evt_id, line);
+			break;
+		default:
+			if (skb->len < 1) {
+				BT_ERR("Unknown Evt ID:%02x", evt_id);
+				return;
+			}
+			b = (u8 *)skb->data;
+			for (i = 0; i < skb->len && i < HCI_MAX_EVENT_SIZE; ++i)
+				sprintf(line + strlen(line), " %02X", b[i]);
+			BT_ERR("Unknown Evt ID: %02X data:%s", evt_id, line);
+			break;
+		}
+	}
 }
 
 static void hci_mode_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
@@ -4231,6 +4414,11 @@ static void hci_sync_conn_complete_evt(struct hci_dev *hdev,
 		break;
 	}
 
+	if (ev->air_mode == SCO_AIRMODE_TRANSP) {
+		if (hdev->notify)
+			hdev->notify(hdev, HCI_NOTIFY_AIR_MODE_TRANSP);
+	}
+
 	hci_connect_cfm(conn, ev->status);
 	if (ev->status)
 		hci_conn_del(conn);
@@ -4553,6 +4741,16 @@ static void hci_user_confirm_request_evt(struct hci_dev *hdev,
 		    conn->io_capability != HCI_IO_NO_INPUT_OUTPUT &&
 		    (loc_mitm || rem_mitm)) {
 			BT_DBG("Confirming auto-accept as acceptor");
+			confirm_hint = 1;
+			goto confirm;
+		}
+
+		/* If there already exists link key in local host, leave the
+		 * decision to user space since the remote device could be
+		 * legitimate or malicious.
+		 */
+		if (hci_find_link_key(hdev, &ev->bdaddr)) {
+			bt_dev_dbg(hdev, "Local host already has link key");
 			confirm_hint = 1;
 			goto confirm;
 		}
@@ -6052,6 +6250,10 @@ void hci_event_packet(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_EV_NUM_COMP_BLOCKS:
 		hci_num_comp_blocks_evt(hdev, skb);
+		break;
+
+	case HCI_EV_VENDOR:
+		hci_vendor_evt(hdev, skb);
 		break;
 
 	default:
