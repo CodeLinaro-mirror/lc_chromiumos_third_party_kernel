@@ -35,6 +35,13 @@ config DRM_DUMB_VGA_DAC
 	  Support for non-programmable RGB to VGA DAC bridges, such as ADI
 	  ADV7123, TI THS8134 and THS8135 or passive resistor ladder DACs.
 
+config DRM_ITE_IT6505
+	tristate "ITE IT6505 DP bridge"
+	depends on OF
+	select DRM_KMS_HELPER
+	help
+	  ITE IT6505 DP bridge chip driver.
+
 config DRM_LVDS_CODEC
 	tristate "Transparent LVDS encoders and decoders support"
 	depends on OF
@@ -71,6 +78,17 @@ config DRM_PARADE_PS8622
 	select BACKLIGHT_CLASS_DEVICE
 	---help---
 	  Parade eDP-LVDS bridge chip driver.
+
+config DRM_PARADE_PS8640
+	tristate "Parade PS8640 MIPI DSI to eDP Converter"
+	depends on OF
+	select DRM_KMS_HELPER
+	select DRM_MIPI_DSI
+	select DRM_PANEL
+	help
+	  Choose this option if you have PS8640 for display
+	  The PS8640 is a high-performance and low-power
+	  MIPI DSI to eDP converter
 
 config DRM_SIL_SII8620
 	tristate "Silicon Image SII8620 HDMI/MHL bridge"

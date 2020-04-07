@@ -29,6 +29,7 @@
 
 #include <linux/list.h>
 #include <linux/irqreturn.h>
+#include <linux/uuid.h>
 
 #include <drm/drm_device.h>
 
@@ -654,6 +655,15 @@ struct drm_driver {
 				struct vm_area_struct *vma);
 
 	/**
+	 * @gem_prime_get_uuid
+	 *
+	 * get_uuid hook for GEM drivers. Retrieves the virtio uuid of the
+	 * given GEM buffer.
+	 */
+	int (*gem_prime_get_uuid)(struct drm_gem_object *obj,
+				  uuid_t *uuid);
+
+	/**
 	 * @dumb_create:
 	 *
 	 * This creates a new dumb buffer in the driver's backing storage manager (GEM,
@@ -777,6 +787,8 @@ struct drm_driver {
 	int (*context_dtor) (struct drm_device *dev, int context);
 	int dev_priv_size;
 };
+
+extern bool drm_master_relax;
 
 int drm_dev_init(struct drm_device *dev,
 		 struct drm_driver *driver,
