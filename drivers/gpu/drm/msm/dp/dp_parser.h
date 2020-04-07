@@ -187,9 +187,10 @@ struct dp_parser {
 	struct platform_device *pdev;
 	struct dss_module_power mp[DP_MAX_PM];
 	struct dp_pinctrl pinctrl;
-	unsigned int aux_en_gpio;
-	unsigned int aux_sel_gpio;
-	unsigned int usbplug_cc_gpio;
+	int aux_en_gpio;
+	int aux_sel_gpio;
+	int usbplug_cc_gpio;
+	int hpd_gpio;
 	bool combo_phy_en;
 	struct dp_io io;
 	struct dp_display_data disp_data;

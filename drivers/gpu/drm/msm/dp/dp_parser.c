@@ -241,6 +241,19 @@ static int dp_parser_pinctrl(struct dp_parser *parser)
 		return -EINVAL;
 	}
 
+	if (parser->hpd_gpio) {
+		pinctrl->state_hpd_active = pinctrl_lookup_state(pinctrl->pin,
+					"mdss_dp_hpd_ctrl");
+		if (IS_ERR_OR_NULL(pinctrl->state_hpd_active)) {
+			DRM_ERROR("failed to get dp hpd pinctrl state %d\n",
+				PTR_ERR_OR_ZERO(pinctrl->state_hpd_active));
+			return -EINVAL;
+		}
+
+		return pinctrl_select_state(pinctrl->pin,
+				 pinctrl->state_hpd_active);
+	}
+
 	pinctrl->state_active = pinctrl_lookup_state(pinctrl->pin,
 					"mdss_dp_active");
 	if (IS_ERR(pinctrl->state_active)) {
@@ -264,6 +277,15 @@ static int dp_parser_gpio(struct dp_parser *parser)
 {
 	struct device *dev = &parser->pdev->dev;
 	struct device_node *of_node = dev->of_node;
+
+	if (of_find_property(of_node, "qcom,dp-hpd-gpio", NULL)) {
+		parser->hpd_gpio = of_get_named_gpio(of_node,
+					"qcom,dp-hpd-gpio", 0);
+		parser->usbplug_cc_gpio = -EINVAL;
+		parser->aux_en_gpio = -EINVAL;
+		parser->aux_sel_gpio = -EINVAL;
+		return 0;
+	}
 
 	parser->usbplug_cc_gpio = of_get_named_gpio(of_node,
 					"usbplug-cc-gpio", 0);
@@ -455,6 +477,12 @@ static int dp_parser_parse(struct dp_parser *parser)
 	}
 
 	rc = dp_parser_pinctrl(parser);
+
+	if (rc)
+		parser->hpd_gpio = -EINVAL;
+	else if (parser->hpd_gpio >= 0)
+		parser->combo_phy_en = false;
+
 	return rc;
 }
 

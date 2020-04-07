@@ -10,6 +10,9 @@
 
 #include <linux/types.h>
 #include <linux/device.h>
+#include <linux/of_gpio.h>
+
+#include "dp_parser.h"
 
 enum plug_orientation {
 	ORIENTATION_NONE,
