@@ -155,6 +155,11 @@ properties:
      data-lanes:
        description: Maximum number of lanes that can be used for Display port.
 
+     dp-hpd-gpio:
+       maxItems: 1
+       description: Specifies HPD gpio for DP connector without
+                    USB PHY or AUX switch.
+
      usbplug-cc-gpio:
        maxItems: 1
        description: Specifies the usbplug orientation gpio.
@@ -281,6 +286,8 @@ examples:
         aux-en-gpio = <&msmgpio 55 1>;
         aux-sel-gpio = <&msmgpio 110 1>;
         usbplug-cc-gpio = <&msmgpio 90 1>;
+
+        dp-hpd-gpio = <&msmgpio 117 0>;
 
         ports {
             #address-cells = <1>;
