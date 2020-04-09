@@ -2416,6 +2416,8 @@ static struct notifier_block cpuset_track_online_nodes_nb = {
 void __init cpuset_init_smp(void)
 {
 	cpumask_copy(top_cpuset.cpus_allowed, cpu_active_mask);
+	cpumask_copy(top_cpuset.cpus_requested, cpu_active_mask);
+
 	top_cpuset.mems_allowed = node_states[N_MEMORY];
 	top_cpuset.old_mems_allowed = top_cpuset.mems_allowed;
 
