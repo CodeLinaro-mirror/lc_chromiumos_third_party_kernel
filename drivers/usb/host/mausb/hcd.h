@@ -9,6 +9,8 @@
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
 
+#include "hpal.h"
+
 #define DRIVER_NAME "mausb_host"
 #define DEVICE_NAME "mausb_host_hcd"
 
@@ -56,6 +58,13 @@ struct hub_ctx {
 
 int mausb_host_driver_init(void);
 void mausb_host_driver_deinit(void);
+
+void mausb_port_has_changed(const enum mausb_device_type device_type,
+			    const enum mausb_device_speed device_speed,
+			    void *ma_dev);
+void mausb_hcd_disconnect(const u8 port_number,
+			  const enum mausb_device_type device_type,
+			  const enum mausb_device_speed device_speed);
 
 #define PORT_C_MASK \
 		((USB_PORT_STAT_C_CONNECTION \
@@ -130,11 +139,13 @@ struct mausb_endpoint_ctx {
 
 struct mausb_urb_ctx {
 	struct urb		*urb;
+	struct mausb_data_iter	iterator;
 	struct rb_node		rb_node;
 	struct work_struct	work;
 };
 
 int mausb_hcd_create_and_add(struct device *dev);
+void mausb_hcd_urb_complete(struct urb *urb, u32 actual_length, int status);
 void mausb_clear_hcd_madev(u8 port_number);
 
 #endif /* __MAUSB_HCD_H__ */
