@@ -69,6 +69,7 @@ struct mss {
 struct mausb_device {
 	struct mausb_device_address dev_addr;
 	struct net		    *net_ns;
+	struct mausb_ring_buffer    *ring_buffer;
 	struct list_head	    list_entry;
 
 	struct mausb_ip_ctx *mgmt_channel;
@@ -135,6 +136,10 @@ static inline u64 mausb_event_id(struct mausb_device *dev)
 
 int mausb_initiate_dev_connection(struct mausb_device_address device_address,
 				  u8 madev_address);
+int mausb_enqueue_event_from_user(u8 madev_addr, u16 num_of_events,
+				  u16 num_of_completed);
+int mausb_enqueue_event_to_user(struct mausb_device *dev,
+				struct mausb_event *event);
 int mausb_data_req_enqueue_event(struct mausb_device *dev, u16 ep_handle,
 				 struct urb *request);
 int mausb_signal_event(struct mausb_device *dev, struct mausb_event *event,
@@ -284,6 +289,33 @@ void mausb_reset_data_iterator(struct mausb_data_iter *iterator);
 void mausb_uninit_data_iterator(struct mausb_data_iter *iterator);
 void mausb_data_iterator_seek(struct mausb_data_iter *iterator, u32 seek_delta);
 
+struct mausb_ring_buffer {
+	atomic_t mausb_ring_events;
+	atomic_t mausb_completed_user_events;
+
+	struct mausb_event *to_user_buffer;
+	int		head;
+	int		tail;
+	spinlock_t	lock; /* Protect ring buffer */
+	u64		id;
+
+	struct mausb_event *from_user_buffer;
+	int current_from_user;
+
+	struct list_head list_entry;
+	bool buffer_full;
+};
+
+int mausb_ring_buffer_init(struct mausb_ring_buffer *ring);
+int mausb_ring_buffer_put(struct mausb_ring_buffer *ring,
+			  struct mausb_event *event);
+int mausb_ring_buffer_move_tail(struct mausb_ring_buffer *ring, u32 count);
+void mausb_ring_buffer_cleanup(struct mausb_ring_buffer *ring);
+void mausb_ring_buffer_destroy(struct mausb_ring_buffer *ring);
+void mausb_cleanup_ring_buffer_event(struct mausb_event *event);
+void mausb_disconect_event_unsafe(struct mausb_ring_buffer *ring,
+				  uint8_t madev_addr);
+
 static inline unsigned int mausb_get_page_order(unsigned int num_of_elems,
 						unsigned int elem_size)
 {
@@ -292,6 +324,18 @@ static inline unsigned int mausb_get_page_order(unsigned int num_of_elems,
 	unsigned int order = (unsigned int)ilog2(num_of_pages) +
 					(is_power_of_2(num_of_pages) ? 0 : 1);
 	return order;
+}
+
+static inline
+struct mausb_event *mausb_ring_current_from_user(struct mausb_ring_buffer *ring)
+{
+	return ring->from_user_buffer + ring->current_from_user;
+}
+
+static inline void mausb_ring_next_from_user(struct mausb_ring_buffer *ring)
+{
+	ring->current_from_user = (ring->current_from_user + 1) &
+				  (MAUSB_RING_BUFFER_SIZE - 1);
 }
 
 #endif /* __MAUSB_HPAL_H__ */
