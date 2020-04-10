@@ -12,3 +12,4 @@ mausb_host-y += ip_link.o
 mausb_host-y += hcd.o
 mausb_host-y += hpal.o
 mausb_host-y += hpal_events.o
+mausb_host-y += hpal_data.o
