@@ -133,6 +133,8 @@ static inline u64 mausb_event_id(struct mausb_device *dev)
 	return val;
 }
 
+int mausb_initiate_dev_connection(struct mausb_device_address device_address,
+				  u8 madev_address);
 int mausb_data_req_enqueue_event(struct mausb_device *dev, u16 ep_handle,
 				 struct urb *request);
 int mausb_signal_event(struct mausb_device *dev, struct mausb_event *event,
@@ -160,6 +162,7 @@ static inline void mausb_remove_event(struct mausb_device *dev,
 }
 
 void mausb_release_ma_dev_async(struct kref *kref);
+void mausb_on_madev_connected(struct mausb_device *dev);
 void mausb_complete_request(struct urb *urb, u32 actual_length, int status);
 void mausb_complete_urb(struct mausb_event *event);
 void mausb_reset_connection_timer(struct mausb_device *dev);
@@ -241,6 +244,9 @@ enum mausb_channel mausb_transfer_type_to_channel(u8 transfer_type)
 {
 	return transfer_type >> 3;
 }
+
+void mausb_ip_callback(void *ctx, enum mausb_channel channel,
+		       enum mausb_link_action action, int status, void *data);
 
 struct mausb_data_iter {
 	u32 length;
