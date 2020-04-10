@@ -5,6 +5,7 @@
 #include <linux/module.h>
 
 #include "hcd.h"
+#include "mausb_address.h"
 #include "utils.h"
 
 MODULE_LICENSE("GPL");
@@ -21,8 +22,16 @@ static int mausb_host_init(void)
 	if (status < 0)
 		goto cleanup_dev;
 
+	status = mausb_register_power_state_listener();
+	if (status < 0)
+		goto cleanup;
+
+	mausb_initialize_mss();
+
 	return 0;
 
+cleanup:
+	mausb_host_driver_deinit();
 cleanup_dev:
 	mausb_host_dev_deregister();
 	return status;
@@ -30,6 +39,8 @@ cleanup_dev:
 
 static void mausb_host_exit(void)
 {
+	mausb_unregister_power_state_listener();
+	mausb_deinitialize_mss();
 	mausb_host_driver_deinit();
 	mausb_host_dev_deregister();
 }
