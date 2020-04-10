@@ -8,7 +8,7 @@
 #include <net/net_namespace.h>
 
 #include "hcd.h"
-#include "hpal_events.h"
+#include "hpal_data.h"
 #include "utils.h"
 
 #define MAUSB_DELETE_MADEV_TIMEOUT_MS 3000
@@ -1390,6 +1390,7 @@ int mausb_send_transfer_ack(struct mausb_device *dev, struct mausb_event *event)
 int mausb_send_data_msg(struct mausb_device *dev, struct mausb_event *event)
 {
 	struct mausb_urb_ctx *urb_ctx;
+	int status = 0;
 
 	if (event->status != 0) {
 		dev_err(mausb_host_dev.this_device, "Event %d failed with status %d",
@@ -1403,9 +1404,22 @@ int mausb_send_data_msg(struct mausb_device *dev, struct mausb_event *event)
 		/* Transfer will be deleted from dequeue task */
 		dev_warn(mausb_host_dev.this_device, "Urb is already cancelled for event=%d",
 			 event->type);
+		return status;
 	}
 
-	return 0;
+	if (mausb_isoch_data_event(event)) {
+		if (event->data.direction == MAUSB_DATA_MSG_DIRECTION_IN)
+			status = mausb_send_isoch_in_msg(dev, event);
+		else
+			status = mausb_send_isoch_out_msg(dev, event, urb_ctx);
+	} else {
+		if (event->data.direction == MAUSB_DATA_MSG_DIRECTION_IN)
+			status = mausb_send_in_data_msg(dev, event);
+		else
+			status = mausb_send_out_data_msg(dev, event, urb_ctx);
+	}
+
+	return status;
 }
 
 int mausb_receive_data_msg(struct mausb_device *dev, struct mausb_event *event)
@@ -1425,8 +1439,23 @@ int mausb_receive_data_msg(struct mausb_device *dev, struct mausb_event *event)
 	}
 
 	urb_ctx = mausb_find_urb_in_tree((struct urb *)event->data.urb);
-	if (!urb_ctx)
+	if (!urb_ctx) {
+		/* Transfer will be deleted from dequeue task */
 		dev_warn(mausb_host_dev.this_device, "Urb is already cancelled");
+		goto cleanup;
+	}
+
+	if (mausb_isoch_data_event(event)) {
+		if (event->data.direction == MAUSB_DATA_MSG_DIRECTION_IN)
+			mausb_receive_isoch_in_data(dev, event, urb_ctx);
+		else
+			mausb_receive_isoch_out(event);
+	} else {
+		if (event->data.direction == MAUSB_DATA_MSG_DIRECTION_IN)
+			mausb_receive_in_data(event, urb_ctx);
+		else
+			mausb_receive_out_data(event, urb_ctx);
+	}
 
 cleanup:
 	mausb_release_event_resources(event);
