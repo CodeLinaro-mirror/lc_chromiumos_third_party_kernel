@@ -11,8 +11,6 @@
 #define MAUSB_KERNEL_DEV_NAME "mausb_host"
 #define MAUSB_READ_DEVICE_TIMEOUT_MS 500
 
-struct miscdevice mausb_host_dev;
-
 static int mausb_host_dev_open(struct inode *inode, struct file *filp)
 {
 	filp->private_data = NULL;
@@ -33,11 +31,15 @@ static const struct file_operations mausb_host_dev_fops = {
 	.release = mausb_host_dev_release,
 };
 
+struct miscdevice mausb_host_dev = {
+	.minor	= MISC_DYNAMIC_MINOR,
+	.name	= MAUSB_KERNEL_DEV_NAME,
+	.fops	= &mausb_host_dev_fops,
+	.mode	= 0644,
+};
+
 int mausb_host_dev_register(void)
 {
-	mausb_host_dev.minor = MISC_DYNAMIC_MINOR;
-	mausb_host_dev.name = MAUSB_KERNEL_DEV_NAME;
-	mausb_host_dev.fops = &mausb_host_dev_fops;
 	return misc_register(&mausb_host_dev);
 }
 
