@@ -5,14 +5,20 @@
 #include "hpal.h"
 
 #include <linux/circ_buf.h>
+#include <net/net_namespace.h>
 
 #include "hcd.h"
 #include "utils.h"
 
+#define MAUSB_DELETE_MADEV_TIMEOUT_MS 3000
+
 struct mss mss;
 
+static int mausb_start_connection_timer(struct mausb_device *dev);
 static int mausb_power_state_cb(struct notifier_block *nb, unsigned long action,
 				void *data);
+static void mausb_signal_empty_mss(void);
+static void mausb_remove_madev_from_list(u8 madev_addr);
 static void mausb_execute_urb_dequeue(struct work_struct *dequeue_work);
 static int mausb_start_heartbeat_timer(void);
 
@@ -173,6 +179,56 @@ static bool mausb_return_urb_ctx_to_tree(struct mausb_urb_ctx *urb_ctx,
 	return true;
 }
 
+static void mausb_complete_urbs_from_tree(void)
+{
+	struct mausb_urb_ctx *urb_ctx = NULL;
+	struct urb	     *current_urb = NULL;
+	struct rb_node	     *current_node = NULL;
+	unsigned long flags;
+	int status = 0;
+	int ret;
+
+	dev_dbg(mausb_host_dev.this_device, "Completing all urbs from tree");
+
+	spin_lock_irqsave(&mhcd->lock, flags);
+
+	while ((current_node = rb_first(&mhcd->mausb_urbs))) {
+		urb_ctx = rb_entry(current_node, struct mausb_urb_ctx, rb_node);
+
+		current_urb = urb_ctx->urb;
+		mausb_delete_urb_ctx_from_tree(urb_ctx);
+		mausb_uninit_data_iterator(&urb_ctx->iterator);
+		kfree(urb_ctx);
+
+		ret = usb_hcd_check_unlink_urb(current_urb->hcpriv,
+					       current_urb, status);
+		if (ret == -EIDRM)
+			dev_warn(mausb_host_dev.this_device, "Urb=%p is already unlinked",
+				 current_urb);
+		else
+			usb_hcd_unlink_urb_from_ep(current_urb->hcpriv,
+						   current_urb);
+
+		spin_unlock_irqrestore(&mhcd->lock, flags);
+
+		/* Prepare urb for completion */
+		dev_dbg(mausb_host_dev.this_device, "Completing urb=%p",
+			current_urb);
+
+		current_urb->status	   = -EPROTO;
+		current_urb->actual_length = 0;
+		atomic_dec(&current_urb->use_count);
+		usb_hcd_giveback_urb(current_urb->hcpriv, current_urb,
+				     current_urb->status);
+
+		spin_lock_irqsave(&mhcd->lock, flags);
+	}
+
+	spin_unlock_irqrestore(&mhcd->lock, flags);
+
+	dev_dbg(mausb_host_dev.this_device, "Completed all urbs from tree");
+}
+
 /*After this function call only valid thing to do with urb is to give it back*/
 struct mausb_urb_ctx *mausb_unlink_and_delete_urb_from_tree(struct urb *urb,
 							    int status)
@@ -278,6 +334,163 @@ static inline void mausb_port_has_changed_event(struct mausb_device *dev,
 		mausb_port_has_changed(USB20HUB, HIGH_SPEED, dev);
 }
 
+static void mausb_socket_disconnect_event(struct work_struct *work)
+{
+	struct mausb_device *dev = container_of(work, struct mausb_device,
+						socket_disconnect_work);
+	struct mausb_event event;
+
+	dev_info(mausb_host_dev.this_device, "Disconnect madev_addr=%d",
+		 dev->madev_addr);
+
+	mausb_ip_disconnect(dev->ctrl_channel);
+	mausb_destroy_ip_ctx(dev->ctrl_channel);
+	dev->ctrl_channel = NULL;
+
+	mausb_ip_disconnect(dev->bulk_channel);
+	mausb_destroy_ip_ctx(dev->bulk_channel);
+	dev->bulk_channel = NULL;
+
+	mausb_ip_disconnect(dev->isoch_channel);
+	mausb_destroy_ip_ctx(dev->isoch_channel);
+	dev->isoch_channel = NULL;
+
+	if (dev->mgmt_channel) {
+		memset(&event, 0, sizeof(event));
+		event.type = MAUSB_EVENT_TYPE_NETWORK_DISCONNECTED;
+		event.data.device_id = dev->id;
+
+		dev_info(mausb_host_dev.this_device, "Releasing MAUSB device ref");
+		kref_put(&dev->refcount, mausb_release_ma_dev_async);
+	}
+
+	mausb_ip_disconnect(dev->mgmt_channel);
+	mausb_destroy_ip_ctx(dev->mgmt_channel);
+	dev->mgmt_channel = NULL;
+
+	memset(dev->channel_map, 0, sizeof(dev->channel_map));
+}
+
+static void mausb_disconnect_ma_dev(struct mausb_device *dev)
+{
+	dev_info(mausb_host_dev.this_device, "Disconnecting MAUSB device madev_addr=%d",
+		 dev->madev_addr);
+
+	if (!dev->dev_connected) {
+		dev_warn(mausb_host_dev.this_device, "MAUSB device is not connected");
+		kref_put(&dev->refcount, mausb_release_ma_dev_async);
+		return;
+	}
+	mausb_hcd_disconnect(dev->port_number, dev->dev_type, dev->dev_speed);
+
+	if (dev->dev_type == USB30HUB)
+		mausb_hcd_disconnect(dev->port_number, USB20HUB, HIGH_SPEED);
+}
+
+static void mausb_hcd_disconnect_event(struct work_struct *work)
+{
+	struct mausb_device *ma_dev = container_of(work, struct mausb_device,
+						   hcd_disconnect_work);
+
+	mausb_disconnect_ma_dev(ma_dev);
+}
+
+static void mausb_delete_madev(struct work_struct *work)
+{
+	struct mausb_device *dev = container_of(work, struct mausb_device,
+						madev_delete_work);
+	struct mausb_event	event;
+	struct completion	completion;
+	struct completion	*user_event;
+	struct mausb_completion mausb_completion;
+	long status;
+	unsigned long timeout = msecs_to_jiffies(MAUSB_DELETE_MADEV_TIMEOUT_MS);
+
+	dev_info(mausb_host_dev.this_device, "Deleting MAUSB device madev_addr=%d",
+		 dev->madev_addr);
+
+	del_timer_sync(&dev->connection_timer);
+
+	/* Client IS responsive */
+	if (!atomic_read(&dev->unresponsive_client)) {
+		memset(&event, 0, sizeof(event));
+		event.type = MAUSB_EVENT_TYPE_DELETE_MA_DEV;
+		event.mgmt.delete_ma_dev.device_id = dev->id;
+		event.mgmt.delete_ma_dev.event_id  = mausb_event_id(dev);
+
+		init_completion(&completion);
+		mausb_completion.completion_event = &completion;
+		mausb_completion.event_id = event.mgmt.delete_ma_dev.event_id;
+		mausb_completion.mausb_event = &event;
+
+		mausb_insert_event(dev, &mausb_completion);
+
+		dev_dbg(mausb_host_dev.this_device, "Deleting MAUSB device...");
+
+		status = wait_for_completion_interruptible_timeout(&completion,
+								   timeout);
+
+		dev_dbg(mausb_host_dev.this_device, "Deleting MAUSB device event finished with %ld",
+			status);
+
+		mausb_remove_event(dev, &mausb_completion);
+
+		user_event = &dev->user_finished_event;
+
+		status = wait_for_completion_interruptible_timeout(user_event,
+								   timeout);
+		dev_info(mausb_host_dev.this_device, "User event finished with %ld",
+			 status);
+	}
+
+	flush_workqueue(dev->workq);
+	destroy_workqueue(dev->workq);
+
+	mausb_clear_hcd_madev(dev->port_number);
+
+	mausb_remove_madev_from_list(dev->madev_addr);
+
+	put_net(dev->net_ns);
+
+	kfree(dev);
+	mausb_signal_empty_mss();
+
+	dev_dbg(mausb_host_dev.this_device, "MAUSB device deleted.");
+}
+
+static void mausb_ping_work(struct work_struct *work)
+{
+	struct mausb_device *dev = container_of(work, struct mausb_device,
+						ping_work);
+
+	if (mausb_start_connection_timer(dev) < 0) {
+		dev_err(mausb_host_dev.this_device, "Session timeout - disconnnecting device madev_addr=%d",
+			dev->madev_addr);
+		queue_work(dev->workq, &dev->socket_disconnect_work);
+		queue_work(dev->workq, &dev->hcd_disconnect_work);
+		return;
+	}
+}
+
+static void mausb_heartbeat_work(struct work_struct *work)
+{
+	struct mausb_device *dev = container_of(work, struct mausb_device,
+						heartbeat_work);
+
+	dev_err(mausb_host_dev.this_device, "App is unresponsive - disconnect device");
+	atomic_set(&dev->unresponsive_client, 1);
+	mausb_complete_urbs_from_tree();
+	queue_work(dev->workq, &dev->socket_disconnect_work);
+	queue_work(dev->workq, &dev->hcd_disconnect_work);
+}
+
+static void mausb_connection_timer_func(unsigned long data)
+{
+	struct mausb_device *dev = (struct mausb_device *)data;
+
+	queue_work(dev->workq, &dev->ping_work);
+}
+
 static void mausb_heartbeat_timer_func(unsigned long data)
 {
 	unsigned long flags;
@@ -302,6 +515,100 @@ static void mausb_heartbeat_timer_func(unsigned long data)
 	}
 }
 
+static struct mausb_device *
+mausb_create_madev(struct mausb_device_address dev_addr, u8 madev_address,
+		   int *status)
+{
+	struct mausb_device *dev;
+	unsigned long flags;
+	char workq_name[16];
+	struct workqueue_struct *workq;
+
+	memset(workq_name, 0, sizeof(workq_name));
+	sprintf(workq_name, "%x", madev_address);
+	strcat(workq_name, "_madev_workq");
+
+	dev_vdbg(mausb_host_dev.this_device, "madev_workq_name = %s",
+		 workq_name);
+
+	workq = alloc_ordered_workqueue(workq_name, WQ_MEM_RECLAIM);
+	if (!workq) {
+		*status = -ENOMEM;
+		return NULL;
+	}
+
+	spin_lock_irqsave(&mss.lock, flags);
+
+	if (mss.deinit_in_progress) {
+		spin_unlock_irqrestore(&mss.lock, flags);
+		dev_alert(mausb_host_dev.this_device, "Device creating failed - mss deinit in progress");
+		flush_workqueue(workq);
+		destroy_workqueue(workq);
+		*status = -ESHUTDOWN;
+		return NULL;
+	}
+
+	dev = mausb_get_dev_from_addr_unsafe(madev_address);
+	if (dev) {
+		spin_unlock_irqrestore(&mss.lock, flags);
+		dev_warn(mausb_host_dev.this_device, "MAUSB device already connected, madev_address=%x",
+			 madev_address);
+		flush_workqueue(workq);
+		destroy_workqueue(workq);
+		*status = -EEXIST;
+		return NULL;
+	}
+
+	dev = kzalloc(sizeof(*dev), GFP_ATOMIC);
+
+	if (!dev) {
+		spin_unlock_irqrestore(&mss.lock, flags);
+		dev_alert(mausb_host_dev.this_device, "Could not allocate MAUSB device!");
+		flush_workqueue(workq);
+		destroy_workqueue(workq);
+		*status = -ENOMEM;
+		return NULL;
+	}
+
+	dev_dbg(mausb_host_dev.this_device, "Create MAUSB device.");
+
+	dev->workq = workq;
+
+	INIT_WORK(&dev->socket_disconnect_work, mausb_socket_disconnect_event);
+	INIT_WORK(&dev->hcd_disconnect_work, mausb_hcd_disconnect_event);
+	INIT_WORK(&dev->madev_delete_work, mausb_delete_madev);
+	INIT_WORK(&dev->ping_work, mausb_ping_work);
+	INIT_WORK(&dev->heartbeat_work, mausb_heartbeat_work);
+
+	kref_init(&dev->refcount);
+
+	dev->event_id = 0;
+	spin_lock_init(&dev->event_id_lock);
+
+	INIT_LIST_HEAD(&dev->completion_events);
+	spin_lock_init(&dev->completion_events_lock);
+	spin_lock_init(&dev->num_of_user_events_lock);
+	spin_lock_init(&dev->connection_timer_lock);
+
+	init_completion(&dev->user_finished_event);
+	atomic_set(&dev->unresponsive_client, 0);
+
+	setup_timer(&dev->connection_timer, mausb_connection_timer_func,
+		    (unsigned long)dev);
+
+	dev->dev_addr = dev_addr;
+	dev->madev_addr = madev_address;
+	dev->net_ns = get_net(current->nsproxy->net_ns);
+
+	list_add_tail(&dev->list_entry, &mss.madev_list);
+
+	reinit_completion(&mss.empty);
+
+	spin_unlock_irqrestore(&mss.lock, flags);
+
+	return dev;
+}
+
 void mausb_release_ma_dev_async(struct kref *kref)
 {
 	struct mausb_device *dev = container_of(kref, struct mausb_device,
@@ -310,6 +617,46 @@ void mausb_release_ma_dev_async(struct kref *kref)
 	dev_info(mausb_host_dev.this_device, "Scheduling work for MAUSB device to be deleted");
 
 	schedule_work(&dev->madev_delete_work);
+}
+
+int mausb_initiate_dev_connection(struct mausb_device_address dev_addr,
+				  u8 madev_address)
+{
+	int error = 0;
+	struct mausb_device *dev;
+	unsigned long flags;
+
+	spin_lock_irqsave(&mss.lock, flags);
+	dev = mausb_get_dev_from_addr_unsafe(madev_address);
+	spin_unlock_irqrestore(&mss.lock, flags);
+
+	if (dev) {
+		dev_warn(mausb_host_dev.this_device, "MAUSB device already connected, madev_address=%x",
+			 madev_address);
+		return -EEXIST;
+	}
+
+	dev = mausb_create_madev(dev_addr, madev_address, &error);
+	if (!dev)
+		return error;
+
+	dev_info(mausb_host_dev.this_device, "New MAUSB device created madev_addr=%d",
+		 madev_address);
+
+	error = mausb_init_ip_ctx(&dev->mgmt_channel, dev->net_ns,
+				  dev->dev_addr.ip.address,
+				  dev->dev_addr.ip.port.management, dev,
+				  mausb_ip_callback, MAUSB_MGMT_CHANNEL);
+	if (error) {
+		dev_err(mausb_host_dev.this_device, "Mgmt ip context init failed: error=%d",
+			error);
+		kref_put(&dev->refcount, mausb_release_ma_dev_async);
+		return error;
+	}
+
+	mausb_ip_connect_async(dev->mgmt_channel);
+
+	return 0;
 }
 
 int mausb_enqueue_event_from_user(u8 madev_addr, u16 num_of_events,
@@ -410,6 +757,26 @@ int mausb_signal_event(struct mausb_device *dev,
 	spin_unlock_irqrestore(&dev->completion_events_lock, flags);
 
 	return -ETIMEDOUT;
+}
+
+static int mausb_start_connection_timer(struct mausb_device *dev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->connection_timer_lock, flags);
+
+	if (++dev->receive_failures_num > MAUSB_MAX_RECEIVE_FAILURES) {
+		dev_err(mausb_host_dev.this_device, "Missed more than %d ping responses",
+			MAUSB_MAX_RECEIVE_FAILURES);
+		spin_unlock_irqrestore(&dev->connection_timer_lock, flags);
+		return -ETIMEDOUT;
+	}
+
+	mod_timer(&dev->connection_timer, jiffies + msecs_to_jiffies(1000));
+
+	spin_unlock_irqrestore(&dev->connection_timer_lock, flags);
+
+	return 0;
 }
 
 void mausb_reset_connection_timer(struct mausb_device *dev)
@@ -657,6 +1024,37 @@ struct mausb_device *mausb_get_dev_from_addr_unsafe(u8 madev_addr)
 	return NULL;
 }
 
+static void mausb_remove_madev_from_list(u8 madev_addr)
+{
+	unsigned long flags;
+	struct mausb_device *ma_dev = NULL;
+	struct mausb_device *tmp = NULL;
+
+	spin_lock_irqsave(&mss.lock, flags);
+
+	list_for_each_entry_safe(ma_dev, tmp, &mss.madev_list, list_entry) {
+		if (ma_dev->madev_addr == madev_addr) {
+			list_del(&ma_dev->list_entry);
+			break;
+		}
+	}
+
+	if (list_empty(&mss.madev_list))
+		reinit_completion(&mss.rings_events.mausb_ring_has_events);
+
+	spin_unlock_irqrestore(&mss.lock, flags);
+}
+
+static void mausb_signal_empty_mss(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&mss.lock, flags);
+	if (list_empty(&mss.madev_list))
+		complete(&mss.empty);
+	spin_unlock_irqrestore(&mss.lock, flags);
+}
+
 static inline
 struct mausb_ip_ctx *mausb_get_data_channel(struct mausb_device *ma_dev,
 					    enum mausb_channel channel)
@@ -806,6 +1204,139 @@ void mausb_cleanup_chunks_list(struct list_head *chunks_list)
 	list_for_each_entry_safe(data_chunk, tmp, chunks_list, list_entry) {
 		list_del(&data_chunk->list_entry);
 		kfree(data_chunk);
+	}
+}
+
+static void mausb_init_ip_ctx_helper(struct mausb_device *dev,
+				     struct mausb_ip_ctx **ip_ctx,
+				     u16 port,
+				     enum mausb_channel channel)
+{
+	int status = mausb_init_ip_ctx(ip_ctx, dev->net_ns,
+				       dev->dev_addr.ip.address, port, dev,
+				       mausb_ip_callback, channel);
+	if (status < 0) {
+		dev_err(mausb_host_dev.this_device, "Init ip context failed with error=%d",
+			status);
+		queue_work(dev->workq, &dev->socket_disconnect_work);
+		return;
+	}
+
+	dev->channel_map[channel] = *ip_ctx;
+	mausb_ip_connect_async(*ip_ctx);
+}
+
+static void mausb_connect_callback(struct mausb_device *dev,
+				   enum mausb_channel channel, int status)
+{
+	struct mausb_device_address *dev_addr = &dev->dev_addr;
+
+	dev_info(mausb_host_dev.this_device, "Connect callback for channel=%d with status=%d",
+		      channel, status);
+
+	if (status < 0) {
+		queue_work(dev->workq, &dev->socket_disconnect_work);
+		return;
+	}
+
+	if (channel == MAUSB_MGMT_CHANNEL) {
+		if (dev_addr->ip.port.control == 0) {
+			dev->channel_map[MAUSB_CTRL_CHANNEL] =
+				dev->mgmt_channel;
+			channel = MAUSB_CTRL_CHANNEL;
+		} else {
+			mausb_init_ip_ctx_helper(dev, &dev->ctrl_channel,
+						 dev_addr->ip.port.control,
+						 MAUSB_CTRL_CHANNEL);
+			return;
+		}
+	}
+
+	if (channel == MAUSB_CTRL_CHANNEL) {
+		if (dev_addr->ip.port.bulk == 0) {
+			dev->channel_map[MAUSB_BULK_CHANNEL] =
+				dev->channel_map[MAUSB_CTRL_CHANNEL];
+			channel = MAUSB_BULK_CHANNEL;
+		} else {
+			mausb_init_ip_ctx_helper(dev, &dev->bulk_channel,
+						 dev_addr->ip.port.bulk,
+						 MAUSB_BULK_CHANNEL);
+			return;
+		}
+	}
+
+	if (channel == MAUSB_BULK_CHANNEL) {
+		if (dev_addr->ip.port.isochronous == 0) {
+			/* if there is no isoch port use tcp for it */
+			dev->channel_map[MAUSB_ISOCH_CHANNEL] =
+				dev->channel_map[MAUSB_BULK_CHANNEL];
+			channel = MAUSB_ISOCH_CHANNEL;
+		} else {
+			mausb_init_ip_ctx_helper(dev, &dev->isoch_channel,
+						 dev_addr->ip.port.isochronous,
+						 MAUSB_ISOCH_CHANNEL);
+			return;
+		}
+	}
+
+	if (channel == MAUSB_ISOCH_CHANNEL) {
+		dev->channel_map[MAUSB_INTR_CHANNEL] =
+				dev->channel_map[MAUSB_CTRL_CHANNEL];
+	}
+}
+
+static void mausb_handle_connect_event(struct mausb_device *dev,
+				       enum mausb_channel channel, int status,
+				       void *data)
+{
+	mausb_connect_callback(dev, channel, status);
+}
+
+static void mausb_handle_receive_event(struct mausb_device *dev,
+				       enum mausb_channel channel, int status,
+				       void *data)
+{
+	struct mausb_event event;
+
+	event.madev_addr = dev->madev_addr;
+
+	if (status <= 0) {
+		dev_err(mausb_host_dev.this_device, "Receive event error status=%d",
+			status);
+		queue_work(dev->workq, &dev->socket_disconnect_work);
+		queue_work(dev->workq, &dev->hcd_disconnect_work);
+		return;
+	}
+
+	mausb_reset_connection_timer(dev);
+}
+
+void mausb_ip_callback(void *ctx, enum mausb_channel channel,
+		       enum mausb_link_action action, int status, void *data)
+{
+	struct mausb_device *dev = (struct mausb_device *)ctx;
+
+	switch (action) {
+	case MAUSB_LINK_CONNECT:
+		mausb_handle_connect_event(dev, channel, status, data);
+		break;
+	case MAUSB_LINK_SEND:
+		/*
+		 * Currently there is nothing to do, as send operation is
+		 * synchronous
+		 */
+		break;
+	case MAUSB_LINK_RECV:
+		mausb_handle_receive_event(dev, channel, status, data);
+		break;
+	case MAUSB_LINK_DISCONNECT:
+		/*
+		 * Currently there is nothing to do, as disconnect operation is
+		 * synchronous
+		 */
+		break;
+	default:
+		dev_warn(mausb_host_dev.this_device, "Unknown network action");
 	}
 }
 
