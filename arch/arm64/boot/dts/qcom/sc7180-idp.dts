@@ -336,6 +336,11 @@
 	status = "okay";
 };
 
+&ipa {
+	status = "okay";
+	modem-init;
+};
+
 &mdp {
 	status = "okay";
 };
@@ -398,8 +403,8 @@
 &uart3 {
 	status = "okay";
 
-	bluetooth: wcn3990-bt {
-		compatible = "qcom,wcn3990-bt";
+	bluetooth: wcn3991-bt {
+		compatible = "qcom,wcn3991-bt";
 		vddio-supply = <&vreg_l10a_1p8>;
 		vddxo-supply = <&vreg_l1c_1p8>;
 		vddrf-supply = <&vreg_l2c_1p3>;

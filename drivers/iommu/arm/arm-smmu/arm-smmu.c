@@ -630,7 +630,6 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 	int irq, start, ret = 0;
 	unsigned long ias, oas;
 	struct io_pgtable_ops *pgtbl_ops;
-	struct io_pgtable_cfg pgtbl_cfg;
 	enum io_pgtable_fmt fmt;
 	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
 	struct arm_smmu_cfg *cfg = &smmu_domain->cfg;
@@ -768,7 +767,7 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 	else
 		cfg->asid = cfg->cbndx;
 
-	pgtbl_cfg = (struct io_pgtable_cfg) {
+	smmu_domain->pgtbl_cfg = (struct io_pgtable_cfg) {
 		.pgsize_bitmap	= smmu->pgsize_bitmap,
 		.ias		= ias,
 		.oas		= oas,
@@ -778,24 +777,25 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 	};
 
 	if (smmu->impl && smmu->impl->init_context) {
-		ret = smmu->impl->init_context(smmu_domain, &pgtbl_cfg, dev);
+		ret = smmu->impl->init_context(smmu_domain, &smmu_domain->pgtbl_cfg, dev);
 		if (ret)
 			goto out_clear_smmu;
 	}
 
 	if (smmu_domain->non_strict)
-		pgtbl_cfg.quirks |= IO_PGTABLE_QUIRK_NON_STRICT;
+		smmu_domain->pgtbl_cfg.quirks |= IO_PGTABLE_QUIRK_NON_STRICT;
 
-	pgtbl_ops = alloc_io_pgtable_ops(fmt, &pgtbl_cfg, smmu_domain);
+	pgtbl_ops = alloc_io_pgtable_ops(fmt, &smmu_domain->pgtbl_cfg,
+					 smmu_domain);
 	if (!pgtbl_ops) {
 		ret = -ENOMEM;
 		goto out_clear_smmu;
 	}
 
 	/* Update the domain's page sizes to reflect the page table format */
-	domain->pgsize_bitmap = pgtbl_cfg.pgsize_bitmap;
+	domain->pgsize_bitmap = smmu_domain->pgtbl_cfg.pgsize_bitmap;
 
-	if (pgtbl_cfg.quirks & IO_PGTABLE_QUIRK_ARM_TTBR1) {
+	if (smmu_domain->pgtbl_cfg.quirks & IO_PGTABLE_QUIRK_ARM_TTBR1) {
 		domain->geometry.aperture_start = ~0UL << ias;
 		domain->geometry.aperture_end = ~0UL;
 	} else {
@@ -805,7 +805,7 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 	domain->geometry.force_aperture = true;
 
 	/* Initialise the context bank with our page table cfg */
-	arm_smmu_init_context_bank(smmu_domain, &pgtbl_cfg);
+	arm_smmu_init_context_bank(smmu_domain, &smmu_domain->pgtbl_cfg);
 	arm_smmu_write_context_bank(smmu, cfg->cbndx);
 
 	/*

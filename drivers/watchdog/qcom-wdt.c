@@ -1,17 +1,25 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014, 2019, The Linux Foundation. All rights reserved.
  */
 #include <linux/bits.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/device.h>
+#include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 #include <linux/watchdog.h>
 #include <linux/of_device.h>
+#include <soc/qcom/memory_dump.h>
+
+static struct qcom_wdt *wdata;
+
+#define MAX_CPU_CTX_SIZE	2048
 
 enum wdt_reg {
 	WDT_RST,
@@ -42,9 +50,12 @@ static const u32 reg_offset_data_kpss[] = {
 
 struct qcom_wdt {
 	struct watchdog_device	wdd;
+	struct device		*dev;
 	unsigned long		rate;
 	void __iomem		*base;
 	const u32		*layout;
+	cpumask_t		alive_mask;
+	unsigned int		cpu_scandump_sizes[NR_CPUS];
 };
 
 static void __iomem *wdt_addr(struct qcom_wdt *wdt, enum wdt_reg reg)
@@ -77,6 +88,34 @@ static irqreturn_t qcom_wdt_isr(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
+static void keep_alive_response(void *info)
+{
+	int cpu = smp_processor_id();
+	struct qcom_wdt *wdt = (struct qcom_wdt *)info;
+
+	cpumask_set_cpu(cpu, &wdt->alive_mask);
+	/* Make sure alive mask is cleared and set in order */
+	smp_mb();
+}
+
+/*
+ * If this function does not return, it implies one of the
+ * other cpu's is not responsive.
+ */
+static void ping_other_cpus(struct qcom_wdt *wdt)
+{
+	int cpu;
+
+	cpumask_clear(&wdt->alive_mask);
+	/* Make sure alive mask is cleared and set in order */
+	smp_mb();
+	for_each_online_cpu(cpu) {
+		/*if (!cpu_isolated(cpu))*/
+			smp_call_function_single(cpu, keep_alive_response,
+						 wdt, 1);
+	}
+}
+
 static int qcom_wdt_start(struct watchdog_device *wdd)
 {
 	struct qcom_wdt *wdt = to_qcom_wdt(wdd);
@@ -102,6 +141,9 @@ static int qcom_wdt_ping(struct watchdog_device *wdd)
 {
 	struct qcom_wdt *wdt = to_qcom_wdt(wdd);
 
+	/* ping other CPUs here */
+	ping_other_cpus(wdt);
+
 	writel(1, wdt_addr(wdt, WDT_RST));
 	return 0;
 }
@@ -118,6 +160,40 @@ static int qcom_wdt_set_pretimeout(struct watchdog_device *wdd,
 {
 	wdd->pretimeout = timeout;
 	return qcom_wdt_start(wdd);
+}
+
+void qcom_wdt_bite(void)
+{
+	u32 timeout;
+
+	if (!wdata)
+		return;
+
+	pr_info("Causing a watchdog bite!");
+
+	/*
+	 * Trigger watchdog bite:
+	 *    Setup BITE_TIME to be 128ms, and enable WDT.
+	 */
+	timeout = 128 * wdata->rate / 1000;
+
+	writel(0, wdt_addr(wdata, WDT_EN));
+	writel(1, wdt_addr(wdata, WDT_RST));
+	writel(timeout, wdt_addr(wdata, WDT_BARK_TIME));
+	writel(timeout, wdt_addr(wdata, WDT_BITE_TIME));
+	writel(1, wdt_addr(wdata, WDT_EN));
+
+	/*
+	 * Actually make sure the above sequence hits hardware before sleeping.
+	 */
+	wmb();
+
+	msleep(150);
+	pr_err("Wdog - STS: 0x%x, CTL: 0x%x, BARK TIME: 0x%x, BITE TIME: 0x%x",
+		__raw_readl(wdt_addr(wdata, WDT_STS)),
+		__raw_readl(wdt_addr(wdata, WDT_EN)),
+		__raw_readl(wdt_addr(wdata, WDT_BARK_TIME)),
+		__raw_readl(wdt_addr(wdata, WDT_BITE_TIME)));
 }
 
 static int qcom_wdt_restart(struct watchdog_device *wdd, unsigned long action,
@@ -145,6 +221,96 @@ static int qcom_wdt_restart(struct watchdog_device *wdd, unsigned long action,
 
 	msleep(150);
 	return 0;
+}
+
+static void qcom_wdt_configure_bark_dump(struct qcom_wdt *wdt)
+{
+	int ret;
+	struct msm_dump_entry dump_entry;
+	struct msm_dump_data *cpu_data;
+	int cpu;
+	void *cpu_buf;
+
+	cpu_data = kzalloc(sizeof(struct msm_dump_data) *
+			   num_present_cpus(), GFP_KERNEL);
+	if (!cpu_data)
+		goto out0;
+
+	cpu_buf = kzalloc(MAX_CPU_CTX_SIZE * num_present_cpus(),
+			  GFP_KERNEL);
+	if (!cpu_buf)
+		goto out1;
+
+	for_each_cpu(cpu, cpu_present_mask) {
+		cpu_data[cpu].addr = virt_to_phys(cpu_buf +
+						cpu * MAX_CPU_CTX_SIZE);
+		cpu_data[cpu].len = MAX_CPU_CTX_SIZE;
+		snprintf(cpu_data[cpu].name, sizeof(cpu_data[cpu].name),
+			"KCPU_CTX%d", cpu);
+		dump_entry.id = MSM_DUMP_DATA_CPU_CTX + cpu;
+		dump_entry.addr = virt_to_phys(&cpu_data[cpu]);
+		ret = msm_dump_data_register(MSM_DUMP_TABLE_APPS,
+					     &dump_entry);
+		/*
+		 * Don't free the buffers in case of error since
+		 * registration may have succeeded for some cpus.
+		 */
+		if (ret)
+			pr_err("cpu %d reg dump setup failed\n", cpu);
+	}
+
+	return;
+out1:
+	kfree(cpu_data);
+out0:
+	return;
+}
+
+static void qcom_wdt_configure_scandump(struct qcom_wdt *wdt)
+{
+	int ret;
+	struct msm_dump_entry dump_entry;
+	struct msm_dump_data *cpu_data;
+	int cpu;
+	static dma_addr_t dump_addr;
+	static void *dump_vaddr;
+	unsigned int scandump_size;
+
+	for_each_cpu(cpu, cpu_present_mask) {
+		scandump_size = wdt->cpu_scandump_sizes[cpu];
+		cpu_data = devm_kzalloc(wdt->dev,
+					sizeof(struct msm_dump_data),
+					GFP_KERNEL);
+		if (!cpu_data)
+			continue;
+
+		dump_vaddr = (void *) dma_alloc_coherent(wdt->dev,
+							 scandump_size,
+							 &dump_addr,
+							 GFP_KERNEL);
+		if (!dump_vaddr) {
+			dev_err(wdt->dev, "Couldn't get memory for dump\n");
+			continue;
+		}
+		memset(dump_vaddr, 0x0, scandump_size);
+
+		cpu_data->addr = dump_addr;
+		cpu_data->len = scandump_size;
+		snprintf(cpu_data->name, sizeof(cpu_data->name),
+			"KSCANDUMP%d", cpu);
+		dump_entry.id = MSM_DUMP_DATA_SCANDUMP_PER_CPU + cpu;
+		dump_entry.addr = virt_to_phys(cpu_data);
+		ret = msm_dump_data_register(MSM_DUMP_TABLE_APPS,
+					     &dump_entry);
+		if (ret) {
+			dev_err(wdt->dev, "Dump setup failed, id = %d\n",
+				MSM_DUMP_DATA_SCANDUMP_PER_CPU + cpu);
+			dma_free_coherent(wdt->dev, scandump_size,
+					  dump_vaddr,
+					  dump_addr);
+			devm_kfree(wdt->dev, cpu_data);
+		}
+	}
 }
 
 static const struct watchdog_ops qcom_wdt_ops = {
@@ -189,6 +355,7 @@ static int qcom_wdt_probe(struct platform_device *pdev)
 	u32 percpu_offset;
 	int irq, ret;
 	struct clk *clk;
+	int cpu, num_scandump_sizes;
 
 	regs = of_device_get_match_data(dev);
 	if (!regs) {
@@ -221,6 +388,18 @@ static int qcom_wdt_probe(struct platform_device *pdev)
 		return PTR_ERR(clk);
 	}
 
+	num_scandump_sizes = of_property_count_elems_of_size(np,
+							"qcom,scandump-sizes",
+							sizeof(u32));
+	if (num_scandump_sizes < 0 || num_scandump_sizes != num_possible_cpus())
+		dev_info(&pdev->dev, "%s scandump sizes property not correct\n",
+			__func__);
+	else
+		for_each_cpu(cpu, cpu_present_mask)
+			of_property_read_u32_index(np, "qcom,scandump-sizes",
+						   cpu,
+					&wdt->cpu_scandump_sizes[cpu]);
+
 	ret = clk_prepare_enable(clk);
 	if (ret) {
 		dev_err(dev, "failed to setup clock\n");
@@ -244,6 +423,12 @@ static int qcom_wdt_probe(struct platform_device *pdev)
 		dev_err(dev, "invalid clock rate\n");
 		return -EINVAL;
 	}
+
+	wdt->dev = &pdev->dev;
+
+	cpumask_clear(&wdt->alive_mask);
+	qcom_wdt_configure_scandump(wdt);
+	qcom_wdt_configure_bark_dump(wdt);
 
 	/* check if there is pretimeout support */
 	irq = platform_get_irq_optional(pdev, 0);
@@ -279,6 +464,8 @@ static int qcom_wdt_probe(struct platform_device *pdev)
 	 */
 	wdt->wdd.timeout = min(wdt->wdd.max_timeout, 30U);
 	watchdog_init_timeout(&wdt->wdd, 0, dev);
+
+	wdata = wdt;
 
 	ret = devm_watchdog_register_device(dev, &wdt->wdd);
 	if (ret)

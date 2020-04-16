@@ -12,6 +12,7 @@
 #define _TRACE_IOMMU_H
 
 #include <linux/tracepoint.h>
+#include <linux/iommu.h>
 
 struct device;
 
@@ -85,47 +86,53 @@ DEFINE_EVENT(iommu_device_event, detach_device_from_domain,
 
 TRACE_EVENT(map,
 
-	TP_PROTO(unsigned long iova, phys_addr_t paddr, size_t size),
+	TP_PROTO(struct iommu_domain *domain, unsigned long iova,
+		 phys_addr_t paddr, size_t size),
 
-	TP_ARGS(iova, paddr, size),
+	TP_ARGS(domain, iova, paddr, size),
 
 	TP_STRUCT__entry(
+		__string(name, domain->name)
 		__field(u64, iova)
 		__field(u64, paddr)
 		__field(size_t, size)
 	),
 
 	TP_fast_assign(
+		__assign_str(name, domain->name);
 		__entry->iova = iova;
 		__entry->paddr = paddr;
 		__entry->size = size;
 	),
 
-	TP_printk("IOMMU: iova=0x%016llx paddr=0x%016llx size=%zu",
-			__entry->iova, __entry->paddr, __entry->size
+	TP_printk("IOMMU:%s iova=0x%016llx paddr=0x%016llx size=%zu",
+		  __get_str(name), __entry->iova, __entry->paddr, __entry->size
 	)
 );
 
 TRACE_EVENT(unmap,
 
-	TP_PROTO(unsigned long iova, size_t size, size_t unmapped_size),
+	TP_PROTO(struct iommu_domain *domain, unsigned long iova, size_t size,
+		 size_t unmapped_size),
 
-	TP_ARGS(iova, size, unmapped_size),
+	TP_ARGS(domain, iova, size, unmapped_size),
 
 	TP_STRUCT__entry(
+		__string(name, domain->name)
 		__field(u64, iova)
 		__field(size_t, size)
 		__field(size_t, unmapped_size)
 	),
 
 	TP_fast_assign(
+		__assign_str(name, domain->name);
 		__entry->iova = iova;
 		__entry->size = size;
 		__entry->unmapped_size = unmapped_size;
 	),
 
-	TP_printk("IOMMU: iova=0x%016llx size=%zu unmapped_size=%zu",
-			__entry->iova, __entry->size, __entry->unmapped_size
+	TP_printk("IOMMU:%s iova=0x%016llx size=%zu unmapped_size=%zu",
+			__get_str(name), __entry->iova, __entry->size, __entry->unmapped_size
 	)
 );
 

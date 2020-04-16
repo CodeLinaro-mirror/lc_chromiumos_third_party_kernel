@@ -535,6 +535,7 @@ struct rproc {
 	struct work_struct crash_handler;
 	unsigned int crash_cnt;
 	bool recovery_disabled;
+	bool coredump_disabled;
 	int max_notifyid;
 	struct resource_table *table_ptr;
 	struct resource_table *cached_table;

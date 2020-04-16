@@ -19,6 +19,7 @@
 #include <linux/profile.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
+#include <linux/nmi.h>
 #include <linux/err.h>
 #include <linux/cpu.h>
 #include <linux/smp.h>
@@ -31,6 +32,8 @@
 #include <linux/of.h>
 #include <linux/irq_work.h>
 #include <linux/kexec.h>
+#include <linux/kgdb.h>
+#include <linux/sched/debug.h>
 
 #include <asm/alternative.h>
 #include <asm/atomic.h>
@@ -72,7 +75,8 @@ enum ipi_msg_type {
 	IPI_CPU_CRASH_STOP,
 	IPI_TIMER,
 	IPI_IRQ_WORK,
-	IPI_WAKEUP
+	IPI_WAKEUP,
+	IPI_CALL_NMI_FUNC
 };
 
 #ifdef CONFIG_HOTPLUG_CPU
@@ -769,7 +773,13 @@ static const char *ipi_types[NR_IPI] __tracepoint_string = {
 	S(IPI_TIMER, "Timer broadcast interrupts"),
 	S(IPI_IRQ_WORK, "IRQ work interrupts"),
 	S(IPI_WAKEUP, "CPU wake-up interrupts"),
+	S(IPI_CALL_NMI_FUNC, "NMI function call interrupts"),
 };
+
+int arch_get_ipinr_nmi(void)
+{
+	return IPI_CALL_NMI_FUNC;
+}
 
 static void smp_cross_call(const struct cpumask *target, unsigned int ipinr)
 {
@@ -826,6 +836,11 @@ void arch_irq_work_raise(void)
 		smp_cross_call(cpumask_of(smp_processor_id()), IPI_IRQ_WORK);
 }
 #endif
+
+void arch_send_call_nmi_func_ipi_mask(const struct cpumask *mask)
+{
+	smp_cross_call(mask, IPI_CALL_NMI_FUNC);
+}
 
 static void local_cpu_stop(void)
 {
@@ -932,6 +947,32 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 			  cpu);
 		break;
 #endif
+
+	case IPI_CALL_NMI_FUNC:
+		printk_nmi_enter();
+		irq_enter();
+		nmi_cpu_backtrace(regs);
+		irq_exit();
+		printk_nmi_exit();
+#ifdef CONFIG_KGDB
+		/* Handle it as a normal interrupt if not in NMI context */
+		if (!in_nmi())
+			irq_enter();
+		if (atomic_read(&kgdb_active) != -1) {
+			/*
+			 * For kgdb to work properly, we need printk to operate
+			 * in normal context.
+			 */
+			if (in_nmi())
+				printk_nmi_exit();
+			kgdb_nmicallback(raw_smp_processor_id(), regs);
+			if (in_nmi())
+				printk_nmi_enter();
+		}
+		if (!in_nmi())
+			irq_exit();
+#endif
+		break;
 
 	default:
 		pr_crit("CPU%u: Unknown IPI message 0x%x\n", cpu, ipinr);
@@ -1068,4 +1109,14 @@ bool cpus_are_stuck_in_kernel(void)
 	bool smp_spin_tables = (num_possible_cpus() > 1 && !have_cpu_die());
 
 	return !!cpus_stuck_in_kernel || smp_spin_tables;
+}
+
+static void raise_nmi(cpumask_t *mask)
+{
+	smp_cross_call(mask, IPI_CALL_NMI_FUNC);
+}
+
+void arch_trigger_cpumask_backtrace(const cpumask_t *mask, bool exclude_self)
+{
+	nmi_trigger_cpumask_backtrace(mask, exclude_self, raise_nmi);
 }

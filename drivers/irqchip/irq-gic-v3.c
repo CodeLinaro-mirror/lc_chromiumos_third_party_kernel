@@ -599,17 +599,29 @@ static inline void gic_handle_nmi(u32 irqnr, struct pt_regs *regs)
 	if (irqs_enabled)
 		nmi_enter();
 
-	if (static_branch_likely(&supports_deactivate_key))
-		gic_write_eoir(irqnr);
 	/*
 	 * Leave the PSR.I bit set to prevent other NMIs to be
 	 * received while handling this one.
 	 * PSR.I will be restored when we ERET to the
 	 * interrupted context.
 	 */
-	err = handle_domain_nmi(gic_data.domain, irqnr, regs);
-	if (err)
-		gic_deactivate_unhandled(irqnr);
+	if (likely(irqnr > 15)) {
+		if (static_branch_likely(&supports_deactivate_key))
+			gic_write_eoir(irqnr);
+
+		err = handle_domain_nmi(gic_data.domain, irqnr, regs);
+		if (err)
+			gic_deactivate_unhandled(irqnr);
+	} else {
+		gic_write_eoir(irqnr);
+		if (static_branch_likely(&supports_deactivate_key))
+			gic_write_dir(irqnr);
+#ifdef CONFIG_SMP
+		handle_IPI(irqnr, regs);
+#else
+		WARN_ONCE(true, "Unexpected SGI received!\n");
+#endif
+	}
 
 	if (irqs_enabled)
 		nmi_exit();
@@ -1003,6 +1015,11 @@ static int gic_dist_supports_lpis(void)
 		!gicv3_nolpi);
 }
 
+int __weak arch_get_ipinr_nmi(void)
+{
+	return -1;
+}
+
 static void gic_cpu_init(void)
 {
 	void __iomem *rbase;
@@ -1026,6 +1043,15 @@ static void gic_cpu_init(void)
 		writel_relaxed(~0, rbase + GICR_IGROUPR0 + i / 8);
 
 	gic_cpu_config(rbase, gic_data.ppi_nr + 16, gic_redist_wait_for_rwp);
+
+	if (gic_supports_nmi()) {
+		int ipinr;
+
+		ipinr = arch_get_ipinr_nmi();
+		if (ipinr >= 0 && ipinr < 16)
+			writeb_relaxed(GICD_INT_NMI_PRI,
+				       rbase + GICD_IPRIORITYR + ipinr);
+	}
 
 	/* initialise system registers */
 	gic_cpu_sys_reg_init();

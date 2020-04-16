@@ -26,6 +26,13 @@ config QCOM_COMMAND_DB
 	  resource on a RPM-hardened platform must use this database to get
 	  SoC specific identifier and information for the shared resources.
 
+config QCOM_DCC_V2
+       bool "Qualcomm Technologies Data Capture and Compare enigne support for V2"
+       help
+         This option enables driver for Data Capture and Compare engine. DCC
+         driver provides interface to configure DCC block and read back
+         captured data from DCC's internal SRAM.
+
 config QCOM_GENI_SE
 	tristate "QCOM GENI Serial Engine Driver"
 	depends on ARCH_QCOM || COMPILE_TEST
@@ -146,6 +153,23 @@ config QCOM_SMD_RPM
 	  Say M here if you want to include support for the Qualcomm RPM as a
 	  module. This will build a module called "qcom-smd-rpm".
 
+config QCOM_CPUSS_DUMP
+	bool "CPU Subsystem Dumping support"
+	help
+	  Add support to dump various hardware entities such as the instruction
+	  and data tlb's as well as the unified tlb, which are a part of the
+	  cpu subsystem to an allocated buffer. This allows for analysis of the
+	  the entities if corruption is suspected.
+	  If unsure, say N
+
+config QCOM_MEMORY_DUMP_V2
+	bool "QCOM Memory Dump V2 Support"
+	help
+	  This enables memory dump feature. It allows various client
+	  subsystems to register respective dump regions. At the time
+	  of deadlocks or cpu hangs these dump regions are captured to
+	  give a snapshot of the system at the time of the crash.
+
 config QCOM_SMEM_STATE
 	bool
 
@@ -203,4 +227,5 @@ config QCOM_APR
           application processor and QDSP6. APR is
           used by audio driver to configure QDSP6
           ASM, ADM and AFE modules.
+
 endmenu

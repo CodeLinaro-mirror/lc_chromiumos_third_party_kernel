@@ -10,6 +10,7 @@
 #include <linux/arm-smccc.h>
 #include <linux/cpuidle.h>
 #include <linux/errno.h>
+#include <linux/io.h>
 #include <linux/linkage.h>
 #include <linux/of.h>
 #include <linux/pm.h>
@@ -21,6 +22,7 @@
 
 #include <uapi/linux/psci.h>
 
+#include <asm/cacheflush.h>
 #include <asm/cpuidle.h>
 #include <asm/cputype.h>
 #include <asm/system_misc.h>
@@ -258,6 +260,19 @@ static int get_set_conduit_method(struct device_node *np)
 
 static void psci_sys_reset(enum reboot_mode reboot_mode, const char *cmd)
 {
+	if (!in_panic) {
+#if IS_ENABLED(CONFIG_POWER_RESET_MSM_DOWNLOAD_MODE)
+	writel(0, dload_imem_addr);
+	iounmap(dload_imem_addr);
+#endif
+
+#if IS_ENABLED(CONFIG_POWER_RESET_MSM)
+	writel(1, msm_sdi_disable);
+#endif
+	}
+
+	flush_cache_all();
+
 	if ((reboot_mode == REBOOT_WARM || reboot_mode == REBOOT_SOFT) &&
 	    psci_system_reset2_supported) {
 		/*
