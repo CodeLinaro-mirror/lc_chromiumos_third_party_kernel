@@ -47,6 +47,7 @@ ceva	Ceva, Inc.
 chipidea	Chipidea, Inc
 chipone		ChipOne
 chipspark	ChipSPARK
+chrontel	Chrontel, Inc.
 chrp	Common Hardware Reference Platform
 chunghwa	Chunghwa Picture Tubes Ltd.
 ciaa	Computadora Industrial Abierta Argentina
