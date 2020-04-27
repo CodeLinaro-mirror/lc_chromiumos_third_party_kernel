@@ -1541,11 +1541,17 @@ static int ieee80211_del_station(struct wiphy *wiphy, struct net_device *dev,
 				 struct station_del_parameters *params)
 {
 	struct ieee80211_sub_if_data *sdata;
+	int ret;
 
 	sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 
-	if (params->mac)
-		return sta_info_destroy_addr_bss(sdata, params->mac);
+	if (params->mac) {
+		ret = sta_info_destroy_addr_bss(sdata, params->mac);
+		if (!ret)
+			sdata_info(sdata, "Deleted sta: %pM\n", params->mac);
+
+		return ret;
+	}
 
 	sta_info_flush(sdata);
 	return 0;
