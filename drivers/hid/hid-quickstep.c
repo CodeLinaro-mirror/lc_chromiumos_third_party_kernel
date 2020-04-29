@@ -20,7 +20,7 @@
 enum change_type { OFF, ON };
 
 struct qs_event {
-	struct timespec time;
+	struct timespec64 time;
 	enum change_type direction;
 };
 
@@ -127,10 +127,10 @@ static void quickstep_remove(struct hid_device *hdev)
 static int quickstep_raw_event(struct hid_device *hdev,
 	struct hid_report *report, u8 *msg, int size)
 {
-	struct timespec time;
+	struct timespec64 time;
 	struct qs_data *data = hid_get_drvdata(hdev);
 
-	getnstimeofday(&time);
+	ktime_get_real_ts64(&time);
 
 	data->events[data->head % MAX_CROSSINGS].time = time;
 	data->events[data->head % MAX_CROSSINGS].direction = msg[0] ? ON : OFF;
