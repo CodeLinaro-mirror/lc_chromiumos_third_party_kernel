@@ -459,6 +459,7 @@ struct ath10k_sta {
 	struct rate_info txrate;
 	struct ieee80211_tx_info tx_info;
 	u32 last_tx_bitrate;
+	u32 tx_retry_count;
 
 	struct work_struct update_wk;
 	u64 rx_duration;

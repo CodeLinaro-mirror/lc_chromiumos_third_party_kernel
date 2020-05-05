@@ -8430,6 +8430,9 @@ static void ath10k_sta_statistics(struct ieee80211_hw *hw,
 	}
 	sinfo->txrate.flags = arsta->txrate.flags;
 	sinfo->filled |= 1ULL << NL80211_STA_INFO_TX_BITRATE;
+
+	sinfo->tx_retries = arsta->tx_retry_count;
+	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_RETRIES);
 }
 
 static int ath10k_mac_op_set_tid_config(struct ieee80211_hw *hw,
