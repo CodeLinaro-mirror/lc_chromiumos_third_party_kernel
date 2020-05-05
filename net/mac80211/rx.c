@@ -4352,6 +4352,8 @@ void ieee80211_rx_napi(struct ieee80211_hw *hw, struct ieee80211_sta *pubsta,
 	struct ieee80211_rate *rate = NULL;
 	struct ieee80211_supported_band *sband;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	int len;
+	u8 index;
 
 	WARN_ON_ONCE(softirq_count() == 0);
 
@@ -4452,6 +4454,45 @@ void ieee80211_rx_napi(struct ieee80211_hw *hw, struct ieee80211_sta *pubsta,
 			((struct ieee80211_hdr *)skb->data)->frame_control,
 			skb->len);
 
+	if (ieee80211_is_data_qos(
+	    ((struct ieee80211_hdr *)skb->data)->frame_control))
+		index = 32;
+	else if(ieee80211_is_data(
+		((struct ieee80211_hdr *)skb->data)->frame_control))
+		index = 30;
+	else
+		goto skip_eapol_count;
+
+	if (unlikely(((skb->data[index] << 8) | skb->data[index + 1]) ==
+								ETH_P_PAE)) {
+		spin_lock_bh(&hw->con_pkt_trace_lock);
+
+		if ((hw->con_pkt_trace_wr_idx_rx == hw->con_pkt_trace_rd_idx_rx)
+		    && hw->con_pkt_trace_num_entries_rx) {
+			hw->con_pkt_trace_rd_idx_rx =
+				CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx_rx);
+			hw->con_pkt_trace_num_entries_rx--;
+		}
+
+		memset(
+		hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_wr_idx_rx], '\0',
+		sizeof(hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_wr_idx_rx]));
+		len = scnprintf(
+			hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_wr_idx_rx],
+			CON_PKT_ENTRY_LEN,
+			"%llu:mac80211:rx:eapol->%pM",
+			ktime_to_ms(ktime_get()), skb->data);
+		hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_wr_idx_rx][len] =
+									'\0';
+
+		hw->con_pkt_trace_wr_idx_rx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_wr_idx_rx);
+		hw->con_pkt_trace_num_entries_rx++;
+
+		spin_unlock_bh(&hw->con_pkt_trace_lock);
+	}
+
+skip_eapol_count:
 	__ieee80211_rx_handle_packet(hw, pubsta, skb, napi);
 
 	rcu_read_unlock();

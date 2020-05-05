@@ -1078,6 +1078,10 @@ static void ath10k_process_rx(struct ath10k *ar, struct sk_buff *skb)
 	struct ieee80211_rx_status *status;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
 	char tid[32];
+	struct ieee80211_hw *hw = ar->hw;
+	struct ieee80211_sta *sta;
+	int len;
+	u8 peer_addr[ETH_ALEN], index;
 
 	status = IEEE80211_SKB_RXCB(skb);
 
@@ -1108,6 +1112,59 @@ static void ath10k_process_rx(struct ath10k *ar, struct sk_buff *skb)
 			skb->data, skb->len);
 	trace_ath10k_rx_hdr(ar, skb->data, skb->len);
 	trace_ath10k_rx_payload(ar, skb->data, skb->len);
+
+	if (ieee80211_is_data_qos(hdr->frame_control))
+		index = 32;
+	else if (ieee80211_is_data(hdr->frame_control))
+		index = 30;
+	else
+		goto exit;
+
+	if (unlikely(((skb->data[index] << 8) | skb->data[index + 1]) ==
+								ETH_P_PAE)) {
+		rcu_read_lock();
+
+		sta = ieee80211_find_sta_by_ifaddr(ar->hw,
+						   ieee80211_get_SA(hdr),
+						   NULL);
+		if (!sta) {
+			ath10k_err(ar, "Sta entry not found\n");
+			rcu_read_unlock();
+			goto exit;
+		}
+
+		ether_addr_copy(peer_addr, sta->addr);
+
+		rcu_read_unlock();
+
+		spin_lock_bh(&hw->con_pkt_trace_lock);
+
+		if ((hw->con_pkt_trace_wr_idx_rx == hw->con_pkt_trace_rd_idx_rx)
+		     && hw->con_pkt_trace_num_entries_rx) {
+			hw->con_pkt_trace_rd_idx_rx =
+				CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx_rx);
+			hw->con_pkt_trace_num_entries_rx--;
+		}
+
+		memset(
+		hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_wr_idx_rx], '\0',
+		sizeof(hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_wr_idx_rx]));
+		len = scnprintf(
+			hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_wr_idx_rx],
+			CON_PKT_ENTRY_LEN,
+			"%llu:ath10k:rx:eapol->%pM",
+			ktime_to_ms(ktime_get()), peer_addr);
+		hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_wr_idx_rx][len] =
+									'\0';
+
+		hw->con_pkt_trace_wr_idx_rx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_wr_idx_rx);
+		hw->con_pkt_trace_num_entries_rx++;
+
+		spin_unlock_bh(&hw->con_pkt_trace_lock);
+	}
+
+exit:
 
 	ieee80211_rx_napi(ar->hw, NULL, skb, &ar->napi);
 }

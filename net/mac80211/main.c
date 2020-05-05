@@ -629,6 +629,10 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	local->hw.con_pkt_trace_wr_idx = 0;
 	local->hw.con_pkt_trace_num_entries = 0;
 
+	local->hw.con_pkt_trace_rd_idx_rx = 0;
+	local->hw.con_pkt_trace_wr_idx_rx = 0;
+	local->hw.con_pkt_trace_num_entries_rx = 0;
+
 	local->ext_capa[7] = WLAN_EXT_CAPA8_OPMODE_NOTIF;
 
 	wiphy->extended_capabilities = local->ext_capa;

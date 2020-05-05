@@ -2385,6 +2385,10 @@ struct ieee80211_hw {
 	u32 con_pkt_trace_rd_idx;
 	u32 con_pkt_trace_wr_idx;
 	u32 con_pkt_trace_num_entries;
+	char con_pkt_trace_buf_rx[CON_PKT_ENTRIES_MAX][CON_PKT_ENTRY_LEN];
+	u32 con_pkt_trace_rd_idx_rx;
+	u32 con_pkt_trace_wr_idx_rx;
+	u32 con_pkt_trace_num_entries_rx;
 };
 
 static inline bool _ieee80211_hw_check(struct ieee80211_hw *hw,

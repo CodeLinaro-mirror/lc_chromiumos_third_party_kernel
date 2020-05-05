@@ -502,17 +502,20 @@ static int con_pkt_trace_open(struct inode *inode, struct file *file)
 
 	spin_lock_bh(&hw->con_pkt_trace_lock);
 
-	if (hw->con_pkt_trace_num_entries == 0) {
+	if (hw->con_pkt_trace_num_entries == 0 &&
+	    hw->con_pkt_trace_num_entries_rx == 0) {
 		file->private_data = NULL;
 		goto exit;
 	}
 
-	if (hw->con_pkt_trace_num_entries > CON_PKT_ENTRIES_MAX) {
+	if (hw->con_pkt_trace_num_entries > CON_PKT_ENTRIES_MAX ||
+	    hw->con_pkt_trace_num_entries_rx > CON_PKT_ENTRIES_MAX) {
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	trace_len = hw->con_pkt_trace_num_entries * CON_PKT_ENTRY_LEN;
+	trace_len = (hw->con_pkt_trace_num_entries * CON_PKT_ENTRY_LEN) +
+		     (hw->con_pkt_trace_num_entries_rx * CON_PKT_ENTRY_LEN);
 
 	spin_unlock_bh(&hw->con_pkt_trace_lock);
 
@@ -539,6 +542,24 @@ static int con_pkt_trace_open(struct inode *inode, struct file *file)
 	}
 
 	hw->con_pkt_trace_num_entries = 0;
+
+	while ((hw->con_pkt_trace_rd_idx_rx != hw->con_pkt_trace_wr_idx_rx) ||
+	       hw->con_pkt_trace_num_entries_rx > 0) {
+		len += scnprintf(buf + len, trace_len - len, "%s\n",
+			hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_rd_idx_rx]);
+		hw->con_pkt_trace_rd_idx_rx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx_rx);
+		hw->con_pkt_trace_num_entries_rx--;
+	}
+
+	if (hw->con_pkt_trace_num_entries_rx) {
+		len += scnprintf(buf + len, trace_len - len, "%s\n",
+			hw->con_pkt_trace_buf_rx[hw->con_pkt_trace_rd_idx_rx]);
+		hw->con_pkt_trace_rd_idx_rx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx_rx);
+	}
+
+	hw->con_pkt_trace_num_entries_rx = 0;
 
 	spin_unlock_bh(&hw->con_pkt_trace_lock);
 
