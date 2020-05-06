@@ -1185,7 +1185,7 @@ static void virtio_gpu_cmd_resource_uuid_cb(struct virtio_gpu_device *vgdev,
 	}
 	spin_unlock(&vgdev->resource_export_lock);
 
-	drm_gem_object_put_unlocked(&obj->gem_base);
+	drm_gem_object_put_unlocked(&obj->base.base);
 	wake_up_all(&vgdev->resp_wq);
 }
 
@@ -1215,7 +1215,7 @@ virtio_gpu_cmd_resource_assign_uuid(struct virtio_gpu_device *vgdev,
 
 	/* Reuse the data_buf pointer for the object pointer. */
 	vbuf->data_buf = bo;
-	drm_gem_object_get(&bo->gem_base);
+	drm_gem_object_get(&bo->base.base);
 	virtio_gpu_queue_ctrl_buffer(vgdev, vbuf);
 	return 0;
 }
