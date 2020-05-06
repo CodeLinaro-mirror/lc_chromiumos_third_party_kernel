@@ -15,6 +15,16 @@
 
 struct iio_dev;
 
+/* Maximal number of sensors supported by the EC. */
+#define CROS_EC_SENSOR_MAX 16
+
+/*
+ * Maximal number of sensors supported by the hub:
+ * We add one for the lid angle inclinometer sensor,
+ * and cros_ec_sensor_ring device.
+ */
+#define CROS_EC_SENSOR_PDEV_MAX (CROS_EC_SENSOR_MAX + 2)
+
 /**
  * struct cros_ec_sensor_platform - ChromeOS EC sensor platform information.
  * @sensor_num: Id of the sensor, as reported by the EC.
@@ -184,6 +194,20 @@ int cros_ec_sensorhub_register_push_data(struct cros_ec_sensorhub *sensorhub,
 
 void cros_ec_sensorhub_unregister_push_data(struct cros_ec_sensorhub *sensorhub,
 					    u8 sensor_num);
+
+#if IS_ENABLED(CONFIG_IIO_CROS_EC_SENSORS_RING)
+#define CROS_EC_SENSOR_BROADCAST (CROS_EC_SENSOR_PDEV_MAX - 1)
+typedef int (*cros_ec_sensorhub_push_samples_cb_t)(
+		struct iio_dev *indio_dev,
+		struct cros_ec_sensors_ring_sample *sample);
+
+int cros_ec_sensorhub_register_push_sample(
+		struct cros_ec_sensorhub *sensor_hub,
+		struct iio_dev *indio_dev,
+		cros_ec_sensorhub_push_samples_cb_t cb);
+void cros_ec_sensorhub_unregister_push_sample(
+		struct cros_ec_sensorhub *sensor_hub);
+#endif
 
 int cros_ec_sensorhub_ring_add(struct cros_ec_sensorhub *sensorhub);
 void cros_ec_sensorhub_ring_remove(void *arg);
