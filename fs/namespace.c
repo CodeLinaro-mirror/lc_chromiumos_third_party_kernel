@@ -714,8 +714,14 @@ mountpoint:
 			goto done;
 	}
 
-	if (!new)
-		new = kmalloc(sizeof(struct mountpoint), GFP_KERNEL);
+	if (!new) {
+		/*
+		 * We are allocating as GFP_NOFS to appease lockdep:
+		 * since we are holding i_mutex we should not try to
+		 * recurse into filesystem code.
+		 */
+		new = kmalloc(sizeof(struct mountpoint), GFP_NOFS);
+	}
 	if (!new)
 		return ERR_PTR(-ENOMEM);
 
@@ -3093,6 +3099,17 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 	if (!(flags & MS_NOATIME))
 		mnt_flags |= MNT_RELATIME;
 
+	/*
+	 * The nosymfollow option used to be extracted from data_page by an LSM.
+	 * It is now passed in as MS_NOSYMFOLLOW.  We need to also check in
+	 * the old place until all callers have been updated to use the flag.
+	 */
+	if (data_page) {
+		if (!strncmp((char *)data_page, "nosymfollow", 11) ||
+		    strstr((char *)data_page, ",nosymfollow"))
+			flags |= MS_NOSYMFOLLOW;
+	}
+
 	/* Separate the per-mountpoint flags */
 	if (flags & MS_NOSUID)
 		mnt_flags |= MNT_NOSUID;
@@ -3108,6 +3125,8 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 		mnt_flags &= ~(MNT_RELATIME | MNT_NOATIME);
 	if (flags & MS_RDONLY)
 		mnt_flags |= MNT_READONLY;
+	if (flags & MS_NOSYMFOLLOW)
+		mnt_flags |= MNT_NOSYMFOLLOW;
 
 	/* The default atime for remount is preservation */
 	if ((flags & MS_REMOUNT) &&
