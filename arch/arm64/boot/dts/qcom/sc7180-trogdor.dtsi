@@ -659,7 +659,7 @@ hp_i2c: &i2c9 {
 		#sound-dai-cells = <1>;
 
 		interrupt-parent = <&tlmm>;
-		interrupts = <28 IRQ_TYPE_LEVEL_HIGH>;
+		interrupts = <28 IRQ_TYPE_EDGE_BOTH>;
 
 		AVDD-supply = <&pp1800_alc5682>;
 		MICVDD-supply = <&pp3300_codec>;
@@ -1216,7 +1216,7 @@ ap_spi_fp: &spi10 {
 		pinconf {
 			pins = "gpio28";
 			/* TODO: confirm we want internal pull down */
-			bias-pull-down;
+			bias-pull-up;
 		};
 	};
 
