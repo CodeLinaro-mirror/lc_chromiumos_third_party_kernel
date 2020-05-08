@@ -200,6 +200,8 @@ struct sfe_ipv6_tcp_connection_match {
 					/* remark priority of SKB */
 #define SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK (1<<6)
 					/* remark DSCP of packet */
+/* Indicates that QoS policy (e.g. Priority, DSCP) has been resolved. */
+#define SFE_IPV6_CONNECTION_MATCH_FLAG_QOS_RESOLVED BIT(7)
 
 /*
  * IPv6 connection matching structure.
@@ -315,6 +317,9 @@ struct sfe_ipv6_connection {
 					/* Pointer to the previous entry in the list of all connections */
 	u32 mark;			/* mark for outgoing packet */
 	u32 debug_read_seq;		/* sequence number for debug dump */
+	int flow_accel_delay_pkts;	/* Number of packets that must be
+					 * received until flow is eligible for
+					 * acceleration */
 };
 
 /*
@@ -1061,6 +1066,7 @@ static void sfe_ipv6_gen_sync_connection(struct sfe_ipv6 *si, struct sfe_ipv6_co
 	/*
 	 * Fill in the update message.
 	 */
+	sis->is_v6 = 1;
 	sis->protocol = c->protocol;
 	sis->src_ip.ip6[0] = c->src_ip[0];
 	sis->src_ip_xlate.ip6[0] = c->src_ip_xlate[0];
@@ -1164,6 +1170,7 @@ static int sfe_ipv6_recv_udp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 	__be16 dest_port;
 	struct sfe_ipv6_connection_match *cm;
 	struct net_device *xmit_dev;
+	bool force_slow_path = false;
 
 	/*
 	 * Is our packet too short to contain a valid UDP header?
@@ -1222,6 +1229,14 @@ static int sfe_ipv6_recv_udp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 		return 0;
 	}
 
+	/* Account for each packet received while delaying SFE flow
+	 * acceleration offload.
+	 */
+	if (unlikely(cm->connection->flow_accel_delay_pkts > 0)) {
+		cm->connection->flow_accel_delay_pkts--;
+		force_slow_path = true;
+	}
+
 #ifdef CONFIG_XFRM
 	/*
 	 * We can't accelerate the flow on this direction, just let it go
@@ -1262,6 +1277,27 @@ static int sfe_ipv6_recv_udp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 
 		DEBUG_TRACE("larger than mtu\n");
 		sfe_ipv6_flush_connection(si, c, SFE_SYNC_REASON_FLUSH);
+		return 0;
+	}
+
+	/* If QoS policy (e.g. Priority, DSCP) has not been resolved
+	 * yet for this flow direction then kick packet back up to go
+	 * through slow path.  The QoS policy will then be snooped and
+	 * applied at the POSTROUTING Netfilter hook.
+	 */
+	if (unlikely(!(cm->flags &
+		       SFE_IPV6_CONNECTION_MATCH_FLAG_QOS_RESOLVED))) {
+		si->packets_not_forwarded++;
+		spin_unlock_bh(&si->lock);
+		return 0;
+	}
+
+	/* Kick packet back up to slow path if we're delaying SFE flow
+	 * acceleration offload to allow policies to inspect additional packets.
+	 */
+	if (unlikely(force_slow_path)) {
+		si->packets_not_forwarded++;
+		spin_unlock_bh(&si->lock);
 		return 0;
 	}
 
@@ -1502,6 +1538,7 @@ static int sfe_ipv6_recv_tcp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 	struct sfe_ipv6_connection_match *counter_cm;
 	u32 flags;
 	struct net_device *xmit_dev;
+	bool force_slow_path = false;
 
 	/*
 	 * Is our packet too short to contain a valid UDP header?
@@ -1536,10 +1573,6 @@ static int sfe_ipv6_recv_tcp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 	 */
 	cm = sfe_ipv6_find_connection_match(si, dev, IPPROTO_TCP, src_ip, src_port, dest_ip, dest_port);
 	if (unlikely(!cm)) {
-		if (IS_ENABLED(CONFIG_NET_SCH_ARL) && (flags & TCP_FLAG_ACK))
-			arl_latency_sample_ingress_v6(skb,
-						      (struct ipv6hdr *)iph,
-						      (struct tcphdr *)tcph);
 		/*
 		 * We didn't get a connection but as TCP is connection-oriented that
 		 * may be because this is a non-fast connection (not running established).
@@ -1577,6 +1610,14 @@ static int sfe_ipv6_recv_tcp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 		DEBUG_TRACE("flush on find\n");
 		sfe_ipv6_flush_connection(si, c, SFE_SYNC_REASON_FLUSH);
 		return 0;
+	}
+
+	/* Account for each packet received while delaying SFE flow
+	 * acceleration offload.
+	 */
+	if (unlikely(cm->connection->flow_accel_delay_pkts > 0)) {
+		cm->connection->flow_accel_delay_pkts--;
+		force_slow_path = true;
 	}
 
 #ifdef CONFIG_XFRM
@@ -1640,6 +1681,29 @@ static int sfe_ipv6_recv_tcp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 	}
 
 	counter_cm = cm->counter_match;
+
+	/* If QoS policy (e.g. Priority, DSCP) has not been resolved
+	 * yet for both directions then kick packet back up to go
+	 * through slow path.  The QoS policy will then be snooped and
+	 * applied at the POSTROUTING Netfilter hook.
+	 */
+	if (unlikely(!(cm->flags &
+		       SFE_IPV6_CONNECTION_MATCH_FLAG_QOS_RESOLVED &&
+		       counter_cm->flags &
+		       SFE_IPV6_CONNECTION_MATCH_FLAG_QOS_RESOLVED))) {
+		si->packets_not_forwarded++;
+		spin_unlock_bh(&si->lock);
+		return 0;
+	}
+
+	/* Kick packet back up to slow path if we're delaying SFE flow
+	 * acceleration offload to allow policies to inspect additional packets.
+	 */
+	if (unlikely(force_slow_path)) {
+		si->packets_not_forwarded++;
+		spin_unlock_bh(&si->lock);
+		return 0;
+	}
 
 	/*
 	 * Are we doing sequence number checking?
@@ -1797,10 +1861,6 @@ static int sfe_ipv6_recv_tcp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 			counter_cm->protocol_state.tcp.max_end = max_end;
 		}
 	}
-
-	if (IS_ENABLED(CONFIG_NET_SCH_ARL) && (flags & TCP_FLAG_ACK))
-		arl_latency_sample_ingress_v6(skb, (struct ipv6hdr *)iph,
-					      (struct tcphdr *)tcph);
 
 	/*
 	 * From this point on we're good to modify the packet.
@@ -2315,6 +2375,30 @@ sfe_ipv6_update_protocol_state(struct sfe_ipv6_connection *c,
 	}
 }
 
+/* Applies QoS policy (e.g. Priority, DSCP) to the unidirectional "connection
+ * match" flow associated with the "connection create" request.
+ */
+static void
+sfe_ipv6_update_qos_state(struct sfe_ipv6_connection *c,
+			  struct sfe_connection_create *sic)
+{
+	struct sfe_ipv6_connection_match *cm;
+
+	if (sic->flags & SFE_CREATE_FLAG_QOS_IS_ORIG_DIR)
+		cm = c->original_match;
+	else
+		cm = c->reply_match;
+	if (sic->flags & SFE_CREATE_FLAG_REMARK_PRIORITY) {
+		cm->priority = sic->priority;
+		cm->flags |= SFE_IPV6_CONNECTION_MATCH_FLAG_PRIORITY_REMARK;
+	}
+	if (sic->flags & SFE_CREATE_FLAG_REMARK_DSCP) {
+		cm->dscp = sic->dscp << SFE_IPV6_DSCP_SHIFT;
+		cm->flags |= SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK;
+	}
+	cm->flags |= SFE_IPV6_CONNECTION_MATCH_FLAG_QOS_RESOLVED;
+}
+
 /*
  * sfe_ipv6_update_rule()
  *	update forwarding rule after rule is created.
@@ -2376,12 +2460,14 @@ int sfe_ipv6_create_rule(struct sfe_connection_create *sic)
 	if (c != NULL) {
 		si->connection_create_collisions++;
 
-		/*
-		 * If we already have the flow then it's likely that this
+		/* If we already have the flow then it's likely that this
 		 * request to create the connection rule contains more
-		 * up-to-date information. Check and update accordingly.
+		 * up-to-date information, such as QoS policy for the opposite
+		 * flow direction than reported in the original flow create.
+		 * Check and update accordingly.
 		 */
 		sfe_ipv6_update_protocol_state(c, sic);
+		sfe_ipv6_update_qos_state(c, sic);
 		spin_unlock_bh(&si->lock);
 
 		DEBUG_TRACE("connection already exists - mark: %08x, p: %d\n"
@@ -2443,14 +2529,6 @@ int sfe_ipv6_create_rule(struct sfe_connection_create *sic)
 	original_cm->connection = c;
 	original_cm->counter_match = reply_cm;
 	original_cm->flags = 0;
-	if (sic->flags & SFE_CREATE_FLAG_REMARK_PRIORITY) {
-		original_cm->priority = sic->priority;
-		original_cm->flags |= SFE_IPV6_CONNECTION_MATCH_FLAG_PRIORITY_REMARK;
-	}
-	if (sic->flags & SFE_CREATE_FLAG_REMARK_DSCP) {
-		original_cm->dscp = sic->dscp << SFE_IPV6_DSCP_SHIFT;
-		original_cm->flags |= SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK;
-	}
 #ifdef CONFIG_XFRM
 	original_cm->flow_accel = sic->original_accel;
 #endif
@@ -2499,14 +2577,6 @@ int sfe_ipv6_create_rule(struct sfe_connection_create *sic)
 	reply_cm->connection = c;
 	reply_cm->counter_match = original_cm;
 	reply_cm->flags = 0;
-	if (sic->flags & SFE_CREATE_FLAG_REMARK_PRIORITY) {
-		reply_cm->priority = sic->priority;
-		reply_cm->flags |= SFE_IPV6_CONNECTION_MATCH_FLAG_PRIORITY_REMARK;
-	}
-	if (sic->flags & SFE_CREATE_FLAG_REMARK_DSCP) {
-		reply_cm->dscp = sic->dscp << SFE_IPV6_DSCP_SHIFT;
-		reply_cm->flags |= SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK;
-	}
 #ifdef CONFIG_XFRM
 	reply_cm->flow_accel = sic->reply_accel;
 #endif
@@ -2558,6 +2628,11 @@ int sfe_ipv6_create_rule(struct sfe_connection_create *sic)
 	c->mark = sic->mark;
 	c->debug_read_seq = 0;
 	c->last_sync_jiffies = get_jiffies_64();
+	c->flow_accel_delay_pkts = sic->flow_accel_delay_pkts;
+	/* Apply QoS policy to the flow direction reported in the connection
+	 * create request.
+	 */
+	sfe_ipv6_update_qos_state(c, sic);
 
 	/*
 	 * Take hold of our source and dest devices for the duration of the connection.
@@ -2886,7 +2961,12 @@ static bool sfe_ipv6_debug_dev_read_connections_connection(struct sfe_ipv6 *si, 
 	u64 dest_rx_packets;
 	u64 dest_rx_bytes;
 	u64 last_sync_jiffies;
-	u32 mark, src_priority, dest_priority, src_dscp, dest_dscp;
+	u32 mark;
+	char src_priority[12];
+	char dest_priority[12];
+	char src_dscp[6];
+	char dest_dscp[6];
+	int flow_accel_delay_pkts;
 
 	spin_lock_bh(&si->lock);
 
@@ -2915,8 +2995,24 @@ static bool sfe_ipv6_debug_dev_read_connections_connection(struct sfe_ipv6 *si, 
 	src_ip_xlate = c->src_ip_xlate[0];
 	src_port = c->src_port;
 	src_port_xlate = c->src_port_xlate;
-	src_priority = original_cm->priority;
-	src_dscp = original_cm->dscp >> SFE_IPV6_DSCP_SHIFT;
+	if (!(original_cm->flags &
+	      SFE_IPV6_CONNECTION_MATCH_FLAG_QOS_RESOLVED)) {
+		snprintf(src_priority, sizeof(src_priority), "-");
+		snprintf(src_dscp, sizeof(src_dscp), "-");
+	} else {
+		if (original_cm->flags &
+		    SFE_IPV6_CONNECTION_MATCH_FLAG_PRIORITY_REMARK)
+			snprintf(src_priority, sizeof(src_priority), "%u",
+				 original_cm->priority);
+		else
+			snprintf(src_priority, sizeof(src_priority), "-");
+		if (original_cm->flags &
+		    SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK)
+			snprintf(src_dscp, sizeof(src_dscp), "0x%x",
+				 original_cm->dscp >> SFE_IPV6_DSCP_SHIFT);
+		else
+			snprintf(src_dscp, sizeof(src_dscp), "-");
+	}
 
 	sfe_ipv6_connection_match_update_summary_stats(original_cm);
 	sfe_ipv6_connection_match_update_summary_stats(reply_cm);
@@ -2928,12 +3024,28 @@ static bool sfe_ipv6_debug_dev_read_connections_connection(struct sfe_ipv6 *si, 
 	dest_ip_xlate = c->dest_ip_xlate[0];
 	dest_port = c->dest_port;
 	dest_port_xlate = c->dest_port_xlate;
-	dest_priority = reply_cm->priority;
-	dest_dscp = reply_cm->dscp >> SFE_IPV6_DSCP_SHIFT;
+	if (!(reply_cm->flags & SFE_IPV6_CONNECTION_MATCH_FLAG_QOS_RESOLVED)) {
+		snprintf(dest_priority, sizeof(dest_priority), "-");
+		snprintf(dest_dscp, sizeof(dest_dscp), "-");
+	} else {
+		if (reply_cm->flags &
+		    SFE_IPV6_CONNECTION_MATCH_FLAG_PRIORITY_REMARK)
+			snprintf(dest_priority, sizeof(dest_priority), "%u",
+				 reply_cm->priority);
+		else
+			snprintf(dest_priority, sizeof(dest_priority), "-");
+		if (reply_cm->flags &
+		    SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK)
+			snprintf(dest_dscp, sizeof(dest_dscp), "0x%x",
+				 reply_cm->dscp >> SFE_IPV6_DSCP_SHIFT);
+		else
+			snprintf(dest_dscp, sizeof(dest_dscp), "-");
+	}
 	dest_rx_packets = reply_cm->rx_packet_count64;
 	dest_rx_bytes = reply_cm->rx_byte_count64;
 	last_sync_jiffies = get_jiffies_64() - c->last_sync_jiffies;
 	mark = c->mark;
+	flow_accel_delay_pkts = c->flow_accel_delay_pkts;
 
 	spin_unlock_bh(&si->lock);
 
@@ -2942,15 +3054,16 @@ static bool sfe_ipv6_debug_dev_read_connections_connection(struct sfe_ipv6 *si, 
 				"src_dev=\"%s\" "
 				"src_ip=\"%pI6\" src_ip_xlate=\"%pI6\" "
 				"src_port=\"%u\" src_port_xlate=\"%u\" "
-				"src_priority=\"%u\" src_dscp=\"%u\" "
+				"src_priority=\"%s\" src_dscp=\"%s\" "
 				"src_rx_pkts=\"%llu\" src_rx_bytes=\"%llu\" "
 				"dest_dev=\"%s\" "
 				"dest_ip=\"%pI6\" dest_ip_xlate=\"%pI6\" "
 				"dest_port=\"%u\" dest_port_xlate=\"%u\" "
-				"dest_priority=\"%u\" dest_dscp=\"%u\" "
+				"dest_priority=\"%s\" dest_dscp=\"%s\" "
 				"dest_rx_pkts=\"%llu\" dest_rx_bytes=\"%llu\" "
 				"last_sync=\"%llu\" "
-				"mark=\"%08x\" />\n",
+				"mark=\"%08x\" "
+				"flow_accel_delay_pkts=\"%d\" />\n",
 				protocol,
 				src_dev->name,
 				&src_ip, &src_ip_xlate,
@@ -2962,7 +3075,7 @@ static bool sfe_ipv6_debug_dev_read_connections_connection(struct sfe_ipv6 *si, 
 				ntohs(dest_port), ntohs(dest_port_xlate),
 				dest_priority, dest_dscp,
 				dest_rx_packets, dest_rx_bytes,
-				last_sync_jiffies, mark);
+				last_sync_jiffies, mark, flow_accel_delay_pkts);
 
 	if (copy_to_user(buffer + *total_read, msg, CHAR_DEV_MSG_SIZE)) {
 		return false;
