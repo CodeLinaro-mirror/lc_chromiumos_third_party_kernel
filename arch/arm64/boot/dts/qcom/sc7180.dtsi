@@ -503,6 +503,15 @@
 			#power-domain-cells = <1>;
 		};
 
+		qfprom_efuse: efuse@780000 {
+			compatible = "qcom,sc7180-qfprom-efuse";
+			reg = <0 0x00780000 0 0x100>,
+			      <0 0x00780120 0 0x7a0>,
+			      <0 0x00782000 0 0x100>;
+			clocks = <&gcc GCC_SEC_CTRL_CLK_SRC>;
+			clock-names = "secclk";
+		};
+
 		qfprom@784000 {
 			compatible = "qcom,qfprom";
 			reg = <0 0x00784000 0 0x8ff>;
