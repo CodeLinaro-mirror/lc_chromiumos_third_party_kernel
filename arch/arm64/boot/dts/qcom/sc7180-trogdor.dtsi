@@ -622,6 +622,14 @@ edp_brij_i2c: &i2c2 {
 	};
 };
 
+&msm_dp {
+	pinctrl-names = "mdss_dp_hpd_ctrl";
+	pinctrl-0 = <&dp_hot_plug_det_ctrl>;
+	vdda-1p2-supply = <&vdda_usb_ss_dp_1p2>;
+	vdda-0p9-supply = <&vdda_usb_ss_dp_core>;
+};
+
+
 ap_sar_sensor_i2c: &i2c5 {
 	status = "okay";
 	clock-frequency = <400000>;
@@ -1081,6 +1089,34 @@ ap_spi_fp: &spi10 {
 		pinconf {
 			pins = "gpio66";
 			bias-disable;
+		};
+	};
+
+	dp_hot_plug_det: dp-hot-plug-det {
+		pinmux {
+			pins = "gpio117";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio117";
+			bias-disable;
+			input-enable;
+			drive-strength = <2>;
+		};
+	};
+
+	dp_hot_plug_det_ctrl: dp-hot-plug-det-ctrl {
+		pinmux {
+			pins = "gpio117";
+			function = "dp_hot";
+		};
+
+		config {
+			pins = "gpio117";
+			bias-disable;
+			input-enable;
+			drive-strength = <2>;
 		};
 	};
 
