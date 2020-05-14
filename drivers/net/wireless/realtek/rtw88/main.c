@@ -15,6 +15,7 @@
 #include "tx.h"
 #include "debug.h"
 #include "bf.h"
+#include "vndcmd.h"
 
 unsigned int rtw_fw_lps_deep_mode;
 EXPORT_SYMBOL(rtw_fw_lps_deep_mode);
@@ -1388,6 +1389,7 @@ int rtw_core_init(struct rtw_dev *rtwdev)
 
 	rtwdev->sec.total_cam_num = 32;
 	rtwdev->hal.current_channel = 1;
+	rtwdev->dm_info.fix_rate = U8_MAX;
 	set_bit(RTW_BC_MC_MACID, rtwdev->mac_id_map);
 	if (!(BIT(rtw_fw_lps_deep_mode) & chip->lps_deep_mode_supported))
 		rtwdev->lps_conf.deep_mode = LPS_DEEP_MODE_NONE;
@@ -1450,6 +1452,7 @@ EXPORT_SYMBOL(rtw_core_deinit);
 
 int rtw_register_hw(struct rtw_dev *rtwdev, struct ieee80211_hw *hw)
 {
+	struct rtw_hal *hal = &rtwdev->hal;
 	int max_tx_headroom = 0;
 	int ret;
 
@@ -1478,6 +1481,8 @@ int rtw_register_hw(struct rtw_dev *rtwdev, struct ieee80211_hw *hw)
 				     BIT(NL80211_IFTYPE_AP) |
 				     BIT(NL80211_IFTYPE_ADHOC) |
 				     BIT(NL80211_IFTYPE_MESH_POINT);
+	hw->wiphy->available_antennas_tx = hal->antenna_tx;
+	hw->wiphy->available_antennas_rx = hal->antenna_rx;
 
 	hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_TDLS |
 			    WIPHY_FLAG_TDLS_EXTERNAL_SETUP;
@@ -1494,6 +1499,7 @@ int rtw_register_hw(struct rtw_dev *rtwdev, struct ieee80211_hw *hw)
 	SET_IEEE80211_PERM_ADDR(hw, rtwdev->efuse.addr);
 
 	rtw_regd_init(rtwdev, rtw_regd_notifier);
+	rtw_register_vndcmd(hw);
 
 	ret = ieee80211_register_hw(hw);
 	if (ret) {
@@ -1501,8 +1507,11 @@ int rtw_register_hw(struct rtw_dev *rtwdev, struct ieee80211_hw *hw)
 		return ret;
 	}
 
-	if (regulatory_hint(hw->wiphy, rtwdev->regd.alpha2))
-		rtw_err(rtwdev, "regulatory_hint fail\n");
+	if (!rtwdev->efuse.country_worldwide) {
+		ret = regulatory_hint(hw->wiphy, rtwdev->efuse.country_code);
+		if (ret)
+			rtw_warn(rtwdev, "failed to hint regulatory:%d\n", ret);
+	}
 
 	rtw_debugfs_init(rtwdev);
 
