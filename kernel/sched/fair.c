@@ -22,6 +22,8 @@
  */
 #include "sched.h"
 
+#include <trace/hooks/sched.h>
+
 /*
  * Targeted preemption latency for CPU-bound tasks:
  *
@@ -5515,6 +5517,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_entity *se = &p->se;
 	int idle_h_nr_running = task_has_idle_policy(p);
 	int task_new = !(flags & ENQUEUE_WAKEUP);
+	int should_iowait_boost;
 
 	/*
 	 * The code below (indirectly) updates schedutil which looks at
@@ -5529,7 +5532,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	 * utilization updates, so do it here explicitly with the IOWAIT flag
 	 * passed.
 	 */
-	if (p->in_iowait)
+	should_iowait_boost = p->in_iowait;
+	trace_android_rvh_set_iowait(p, &should_iowait_boost);
+	if (should_iowait_boost)
 		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
 
 	for_each_sched_entity(se) {
@@ -6563,6 +6568,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 	struct cpumask *pd_mask = perf_domain_span(pd);
 	unsigned long cpu_cap = arch_scale_cpu_capacity(cpumask_first(pd_mask));
 	unsigned long max_util = 0, sum_util = 0;
+	unsigned long energy = 0;
 	int cpu;
 
 	/*
@@ -6615,7 +6621,11 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 		max_util = max(max_util, cpu_util);
 	}
 
-	return em_cpu_energy(pd->em_pd, max_util, sum_util);
+	trace_android_vh_em_cpu_energy(pd->em_pd, max_util, sum_util, &energy);
+	if (!energy)
+		energy = em_cpu_energy(pd->em_pd, max_util, sum_util);
+
+	return energy;
 }
 
 /*
@@ -6665,6 +6675,11 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
 	int cpu, best_energy_cpu = prev_cpu;
 	struct sched_domain *sd;
 	struct perf_domain *pd;
+	int new_cpu = INT_MAX;
+
+	trace_android_rvh_find_energy_efficient_cpu(p, prev_cpu, sync, &new_cpu);
+	if (new_cpu != INT_MAX)
+		return new_cpu;
 
 	rcu_read_lock();
 	pd = rcu_dereference(rd->pd);
@@ -6782,8 +6797,14 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int wake_flags)
 	int cpu = smp_processor_id();
 	int new_cpu = prev_cpu;
 	int want_affine = 0;
+	int target_cpu = -1;
 	/* SD_flags and WF_flags share the first nibble */
 	int sd_flag = wake_flags & 0xF;
+
+	trace_android_rvh_select_task_rq_fair(p, prev_cpu, sd_flag,
+			wake_flags, &target_cpu);
+	if (target_cpu >= 0)
+		return target_cpu;
 
 	if (wake_flags & WF_TTWU) {
 		record_wakee(p);
@@ -7492,6 +7513,7 @@ struct lb_env {
 	enum fbq_type		fbq_type;
 	enum migration_type	migration_type;
 	struct list_head	tasks;
+	struct rq_flags		*src_rq_rf;
 };
 
 /*
@@ -7598,8 +7620,13 @@ static
 int can_migrate_task(struct task_struct *p, struct lb_env *env)
 {
 	int tsk_cache_hot;
+	int can_migrate = 1;
 
 	lockdep_assert_held(&env->src_rq->lock);
+
+	trace_android_rvh_can_migrate_task(p, env->dst_cpu, &can_migrate);
+	if (!can_migrate)
+		return 0;
 
 	/*
 	 * We do not migrate tasks that are:
@@ -7688,7 +7715,19 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
  */
 static void detach_task(struct task_struct *p, struct lb_env *env)
 {
+	int detached = 0;
+
 	lockdep_assert_held(&env->src_rq->lock);
+
+	/*
+	 * The vendor hook may drop the lock temporarily, so
+	 * pass the rq flags to unpin lock. We expect the
+	 * rq lock to be held after return.
+	 */
+	trace_android_rvh_migrate_queued_task(env->src_rq, env->src_rq_rf, p,
+					      env->dst_cpu, &detached);
+	if (detached)
+		return;
 
 	deactivate_task(env->src_rq, p, DEQUEUE_NOCLOCK);
 	set_task_cpu(p, env->dst_cpu);
@@ -9259,8 +9298,12 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 
 	if (sched_energy_enabled()) {
 		struct root_domain *rd = env->dst_rq->rd;
+		int out_balance = 1;
 
-		if (rcu_dereference(rd->pd) && !READ_ONCE(rd->overutilized))
+		trace_android_rvh_find_busiest_group(sds.busiest, env->dst_rq,
+					&out_balance);
+		if (rcu_dereference(rd->pd) && !READ_ONCE(rd->overutilized)
+					&& out_balance)
 			goto out_balanced;
 	}
 
@@ -9379,7 +9422,12 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 	struct rq *busiest = NULL, *rq;
 	unsigned long busiest_util = 0, busiest_load = 0, busiest_capacity = 1;
 	unsigned int busiest_nr = 0;
-	int i;
+	int i, done = 0;
+
+	trace_android_rvh_find_busiest_queue(env->dst_cpu, group, env->cpus,
+					     &busiest, &done);
+	if (done)
+		return busiest;
 
 	for_each_cpu_and(i, sched_group_span(group), env->cpus) {
 		unsigned long capacity, load, util;
@@ -9670,6 +9718,7 @@ redo:
 
 more_balance:
 		rq_lock_irqsave(busiest, &rf);
+		env.src_rq_rf = &rf;
 		update_rq_clock(busiest);
 
 		/*
@@ -9964,6 +10013,7 @@ static int active_load_balance_cpu_stop(void *data)
 			.src_rq		= busiest_rq,
 			.idle		= CPU_IDLE,
 			.flags		= LBF_ACTIVE_LB,
+			.src_rq_rf	= &rf,
 		};
 
 		schedstat_inc(sd->alb_count);
@@ -10174,6 +10224,7 @@ static void nohz_balancer_kick(struct rq *rq)
 	struct sched_domain *sd;
 	int nr_busy, i, cpu = rq->cpu;
 	unsigned int flags = 0;
+	int done = 0;
 
 	if (unlikely(rq->idle_balance))
 		return;
@@ -10196,6 +10247,10 @@ static void nohz_balancer_kick(struct rq *rq)
 		flags = NOHZ_STATS_KICK;
 
 	if (time_before(now, nohz.next_balance))
+		goto out;
+
+	trace_android_rvh_sched_nohz_balancer_kick(rq, &flags, &done);
+	if (done)
 		goto out;
 
 	if (rq->nr_running >= 2) {
@@ -10590,6 +10645,11 @@ static int newidle_balance(struct rq *this_rq, struct rq_flags *rf)
 	struct sched_domain *sd;
 	int pulled_task = 0;
 	u64 curr_cost = 0;
+	int done = 0;
+
+	trace_android_rvh_sched_newidle_balance(this_rq, rf, &pulled_task, &done);
+	if (done)
+		return pulled_task;
 
 	update_misfit_status(NULL, this_rq);
 	/*
