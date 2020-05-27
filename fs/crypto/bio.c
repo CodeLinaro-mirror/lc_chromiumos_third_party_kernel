@@ -63,6 +63,7 @@ int fscrypt_zeroout_range(const struct inode *inode, pgoff_t lblk,
 {
 	const unsigned int blockbits = inode->i_blkbits;
 	const unsigned int blocksize = 1 << blockbits;
+	const bool inlinecrypt = fscrypt_inode_uses_inline_crypto(inode);
 	const unsigned int blocks_per_page_bits = PAGE_SHIFT - blockbits;
 	const unsigned int blocks_per_page = 1 << blocks_per_page_bits;
 	struct page *pages[16]; /* write up to 16 pages at a time */
@@ -87,10 +88,14 @@ int fscrypt_zeroout_range(const struct inode *inode, pgoff_t lblk,
 	 * help performance, and waiting on the mempool for them could deadlock.
 	 */
 	for (i = 0; i < nr_pages; i++) {
-		pages[i] = fscrypt_alloc_bounce_page(i == 0 ? GFP_NOFS :
-						     GFP_NOWAIT | __GFP_NOWARN);
-		if (!pages[i])
-			break;
+		if (!inlinecrypt) {
+			pages[i] = fscrypt_alloc_bounce_page(i == 0 ? GFP_NOFS :
+							     GFP_NOWAIT | __GFP_NOWARN);
+			if (!pages[i])
+				break;
+		} else {
+			pages[i] = ZERO_PAGE(0);
+		}
 	}
 	nr_pages = i;
 	if (WARN_ON(nr_pages <= 0))
@@ -100,6 +105,14 @@ int fscrypt_zeroout_range(const struct inode *inode, pgoff_t lblk,
 	bio = bio_alloc(GFP_NOFS, nr_pages);
 
 	do {
+		if (!inlinecrypt) {
+			err = fscrypt_set_bio_crypt_ctx(bio, inode, lblk, GFP_NOIO);
+			if (err) {
+				bio_put(bio);
+				goto out;
+			}
+		}
+
 		bio_set_dev(bio, inode->i_sb->s_bdev);
 		bio->bi_iter.bi_sector = pblk << (blockbits - 9);
 		bio_set_op_attrs(bio, REQ_OP_WRITE, 0);
@@ -107,11 +120,13 @@ int fscrypt_zeroout_range(const struct inode *inode, pgoff_t lblk,
 		i = 0;
 		offset = 0;
 		do {
-			err = fscrypt_crypt_block(inode, FS_ENCRYPT, lblk,
-						  ZERO_PAGE(0), pages[i],
-						  blocksize, offset, GFP_NOFS);
-			if (err)
-				goto out;
+			if (!inlinecrypt) {
+				err = fscrypt_crypt_block(inode, FS_ENCRYPT, lblk,
+							  ZERO_PAGE(0), pages[i],
+							  blocksize, offset, GFP_NOFS);
+				if (err)
+					goto out;
+			}
 			lblk++;
 			pblk++;
 			len--;
@@ -134,8 +149,10 @@ int fscrypt_zeroout_range(const struct inode *inode, pgoff_t lblk,
 	err = 0;
 out:
 	bio_put(bio);
-	for (i = 0; i < nr_pages; i++)
-		fscrypt_free_bounce_page(pages[i]);
+	if (!inlinecrypt) {
+		for (i = 0; i < nr_pages; i++)
+			fscrypt_free_bounce_page(pages[i]);
+	}
 	return err;
 }
 EXPORT_SYMBOL(fscrypt_zeroout_range);
