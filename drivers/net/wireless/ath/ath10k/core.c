@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2011 Atheros Communications Inc.
  * Copyright (c) 2011-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -618,6 +618,8 @@ static const char *const ath10k_core_fw_feature_str[] = {
 	[ATH10K_FW_FEATURE_MGMT_TX_BY_REF] = "mgmt-tx-by-reference",
 	[ATH10K_FW_FEATURE_NON_BMI] = "non-bmi",
 	[ATH10K_FW_FEATURE_SINGLE_CHAN_INFO_PER_CHANNEL] = "single-chan-info-per-channel",
+	[ATH10K_FW_FEATURE_PEER_FIXED_RATE] = "peer-fixed-rate",
+	[ATH10K_FW_FEATURE_IRAM_RECOVERY] = "iram-recovery",
 };
 
 static unsigned int ath10k_core_get_fw_feature_str(char *buf,
@@ -2347,6 +2349,75 @@ static int ath10k_core_compat_services(struct ath10k *ar)
 	return 0;
 }
 
+#define TGT_IRAM_READ_PER_ITR (8 * 1024)
+
+static int ath10k_core_copy_tgt_iram(struct ath10k *ar)
+{
+	const struct ath10k_hw_mem_layout *hw_mem;
+	const struct ath10k_mem_region *tmp, *mem_region = NULL;
+	dma_addr_t tgt_iram_paddr;
+	void *iram_bkp_vaddr = NULL;
+	u8 num_read_itr;
+	int i, ret = 0;
+	u32 len, rem_len;
+
+	hw_mem = ath10k_coredump_get_mem_layout(ar);
+	if (!hw_mem)
+		return -ENOMEM;
+
+	for (i = 0; i < hw_mem->region_table.size; i++) {
+		tmp = &hw_mem->region_table.regions[i];
+		if (tmp->type == ATH10K_MEM_REGION_TYPE_REG) {
+			mem_region = tmp;
+			break;
+		}
+	}
+
+	if (!mem_region)
+		return -ENOMEM;
+
+	for (i = 0; i < ar->wmi.num_mem_chunks; i++) {
+		if (ar->wmi.mem_chunks[i].req_id ==
+		    WMI_IRAM_RECOVERY_HOST_MEM_REQ_ID) {
+			iram_bkp_vaddr = ar->wmi.mem_chunks[i].vaddr;
+			len = ar->wmi.mem_chunks[i].len;
+			break;
+		}
+	}
+
+	if (!iram_bkp_vaddr) {
+		ath10k_warn(ar, "No allocated memory for IRAM back up");
+		return -ENOMEM;
+	}
+
+	tgt_iram_paddr = mem_region->start;
+	num_read_itr = len / TGT_IRAM_READ_PER_ITR;
+	rem_len = len % TGT_IRAM_READ_PER_ITR;
+	for (i = 0; i < num_read_itr; i++) {
+		ret = ath10k_hif_diag_read(ar, tgt_iram_paddr,
+					   iram_bkp_vaddr,
+					   TGT_IRAM_READ_PER_ITR);
+		if (ret) {
+			ath10k_warn(ar, "diag read FW IRAM content failed ret %d",
+				    ret);
+			return ret;
+		}
+
+		tgt_iram_paddr += TGT_IRAM_READ_PER_ITR;
+		iram_bkp_vaddr += TGT_IRAM_READ_PER_ITR;
+	}
+
+	if (rem_len) {
+		ret = ath10k_hif_diag_read(ar, tgt_iram_paddr,
+					   iram_bkp_vaddr, rem_len);
+		if (ret)
+			ath10k_warn(ar, "diag read FW IRAM content failed ret %d",
+				    ret);
+	}
+
+	return ret;
+}
+
 int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 		      const struct ath10k_fw_components *fw)
 {
@@ -2489,6 +2560,17 @@ int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 
 	ath10k_dbg(ar, ATH10K_DBG_BOOT, "firmware %s booted\n",
 		   ar->hw->wiphy->fw_version);
+
+	if (test_bit(ATH10K_FW_FEATURE_IRAM_RECOVERY,
+		     ar->running_fw->fw_file.fw_features)) {
+		status = ath10k_core_copy_tgt_iram(ar);
+		if (status)
+			ath10k_warn(ar, "failed to copy tgt iram content ret %d",
+				    status);
+		else
+			ath10k_dbg(ar, ATH10K_DBG_BOOT,
+				   "tgt IRAM back up completed\n");
+	}
 
 	if (test_bit(WMI_SERVICE_EXT_RES_CFG_SUPPORT, ar->wmi.svc_map) &&
 	    mode == ATH10K_FIRMWARE_MODE_NORMAL) {
