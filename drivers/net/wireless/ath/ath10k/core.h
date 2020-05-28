@@ -763,6 +763,12 @@ enum ath10k_fw_features {
 	/* Firmware sends only one chan_info event per channel */
 	ATH10K_FW_FEATURE_SINGLE_CHAN_INFO_PER_CHANNEL = 20,
 
+	/* Firmware allows setting peer fixed rate */
+	ATH10K_FW_FEATURE_PEER_FIXED_RATE = 21,
+
+	/* Firmware support IRAM recovery */
+	ATH10K_FW_FEATURE_IRAM_RECOVERY = 22,
+
 	/* keep last */
 	ATH10K_FW_FEATURE_COUNT,
 };

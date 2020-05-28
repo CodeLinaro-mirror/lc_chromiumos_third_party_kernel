@@ -3057,6 +3057,8 @@ struct wmi_ext_resource_config_10_4_cmd {
 	__le32 max_tdls_concurrent_buffer_sta;
 };
 
+#define WMI_IRAM_RECOVERY_HOST_MEM_REQ_ID 8
+
 /* strucutre describing host memory chunk. */
 struct host_memory_chunk {
 	/* id of the request that is passed up in service ready */
