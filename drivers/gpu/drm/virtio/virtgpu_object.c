@@ -295,3 +295,4 @@ int virtio_gpu_dma_buf_to_handle(struct dma_buf *dma_buf, bool no_wait,
 	*handle = qobj->hw_res_handle;
 	return 0;
 }
+EXPORT_SYMBOL_GPL(virtio_gpu_dma_buf_to_handle);
