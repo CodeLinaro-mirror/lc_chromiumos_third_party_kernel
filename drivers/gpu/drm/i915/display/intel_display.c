@@ -10302,6 +10302,9 @@ static bool hsw_get_transcoder_state(struct intel_crtc *crtc,
 		case TRANS_DDI_EDP_INPUT_C_ONOFF:
 			trans_pipe = PIPE_C;
 			break;
+		case TRANS_DDI_EDP_INPUT_D_ONOFF:
+			trans_pipe = PIPE_D;
+			break;
 		}
 
 		if (trans_pipe == crtc->pipe) {
@@ -13786,7 +13789,15 @@ static void intel_commit_modeset_disables(struct intel_atomic_state *state)
 	struct intel_crtc *crtc;
 	int i;
 
-	for_each_oldnew_intel_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i) {
+	/*
+	 * Disable CRTC/pipes in reverse order because some features(MST in
+	 * TGL+) requires master and slave relationship between pipes, so it
+	 * should always pick the lowest pipe as master as it will be enabled
+	 * first and disable in the reverse order so the master will be the
+	 * last one to be disabled.
+	 */
+	for_each_oldnew_intel_crtc_in_state_reverse(state, crtc, old_crtc_state,
+						    new_crtc_state, i) {
 		if (!needs_modeset(new_crtc_state))
 			continue;
 
@@ -13965,15 +13976,8 @@ static void intel_atomic_commit_tail(struct intel_atomic_state *state)
 	if (state->modeset)
 		wakeref = intel_display_power_get(dev_priv, POWER_DOMAIN_MODESET);
 
-	/*
-	 * Disable CRTC/pipes in reverse order because some features(MST in
-	 * TGL+) requires master and slave relationship between pipes, so it
-	 * should always pick the lowest pipe as master as it will be enabled
-	 * first and disable in the reverse order so the master will be the
-	 * last one to be disabled.
-	 */
-	for_each_oldnew_intel_crtc_in_state_reverse(state, crtc, old_crtc_state,
-						    new_crtc_state, i) {
+	for_each_oldnew_intel_crtc_in_state(state, crtc, old_crtc_state,
+					    new_crtc_state, i) {
 		if (needs_modeset(new_crtc_state) ||
 		    new_crtc_state->update_pipe) {
 
@@ -16857,8 +16861,11 @@ get_encoder_power_domains(struct drm_i915_private *dev_priv)
 
 static void intel_early_display_was(struct drm_i915_private *dev_priv)
 {
-	/* Display WA #1185 WaDisableDARBFClkGating:cnl,glk */
-	if (IS_CANNONLAKE(dev_priv) || IS_GEMINILAKE(dev_priv))
+	/*
+	 * Display WA #1185 WaDisableDARBFClkGating:cnl,glk,icl,ehl,tgl
+	 * Also known as Wa_14010480278.
+	 */
+	if (IS_GEN_RANGE(dev_priv, 10, 12) || IS_GEMINILAKE(dev_priv))
 		I915_WRITE(GEN9_CLKGATE_DIS_0, I915_READ(GEN9_CLKGATE_DIS_0) |
 			   DARBF_GATING_DIS);
 

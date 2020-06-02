@@ -13,9 +13,16 @@
 #include <linux/platform_device.h>
 
 #define DRV_NAME "cros-usbpd-notify"
+#define DRV_NAME_PLAT_ACPI "cros-usbpd-notify-acpi"
 #define ACPI_DRV_NAME "GOOG0003"
 
 static BLOCKING_NOTIFIER_HEAD(cros_usbpd_notifier_list);
+
+struct cros_usbpd_notify_data {
+	struct device *dev;
+	struct cros_ec_device *ec;
+	struct notifier_block nb;
+};
 
 /**
  * cros_usbpd_register_notify - Register a notifier callback for PD events.
@@ -47,16 +54,142 @@ void cros_usbpd_unregister_notify(struct notifier_block *nb)
 }
 EXPORT_SYMBOL_GPL(cros_usbpd_unregister_notify);
 
+/**
+ * cros_ec_pd_command - Send a command to the EC.
+ *
+ * @ec_dev: EC device
+ * @command: EC command
+ * @outdata: EC command output data
+ * @outsize: Size of outdata
+ * @indata: EC command input data
+ * @insize: Size of indata
+ *
+ * Return: >= 0 on success, negative error number on failure.
+ */
+static int cros_ec_pd_command(struct cros_ec_device *ec_dev,
+			      int command,
+			      uint8_t *outdata,
+			      int outsize,
+			      uint8_t *indata,
+			      int insize)
+{
+	struct cros_ec_command *msg;
+	int ret;
+
+	msg = kzalloc(sizeof(*msg) + max(insize, outsize), GFP_KERNEL);
+	if (!msg)
+		return -ENOMEM;
+
+	msg->command = command;
+	msg->outsize = outsize;
+	msg->insize = insize;
+
+	if (outsize)
+		memcpy(msg->data, outdata, outsize);
+
+	ret = cros_ec_cmd_xfer_status(ec_dev, msg);
+	if (ret < 0)
+		goto error;
+
+	if (insize)
+		memcpy(indata, msg->data, insize);
+error:
+	kfree(msg);
+	return ret;
+}
+
+static void cros_usbpd_get_event_and_notify(struct device  *dev,
+					    struct cros_ec_device *ec_dev)
+{
+	struct ec_response_host_event_status host_event_status;
+	u32 event = 0;
+	int ret;
+
+	/*
+	 * We still send a 0 event out to older devices which don't
+	 * have the updated device heirarchy.
+	 */
+	if (!ec_dev) {
+		dev_dbg(dev,
+			"EC device inaccessible; sending 0 event status.\n");
+		goto send_notify;
+	}
+
+	/* Check for PD host events on EC. */
+	ret = cros_ec_pd_command(ec_dev, EC_CMD_PD_HOST_EVENT_STATUS,
+				 NULL, 0,
+				 (uint8_t *)&host_event_status,
+				 sizeof(host_event_status));
+	if (ret < 0) {
+		dev_warn(dev, "Can't get host event status (err: %d)\n", ret);
+		goto send_notify;
+	}
+
+	event = host_event_status.status;
+
+send_notify:
+	blocking_notifier_call_chain(&cros_usbpd_notifier_list, event, NULL);
+}
+
 #ifdef CONFIG_ACPI
 
-static int cros_usbpd_notify_add_acpi(struct acpi_device *adev)
+static void cros_usbpd_notify_acpi(acpi_handle device, u32 event, void *data)
 {
+	struct cros_usbpd_notify_data *pdnotify = data;
+
+	cros_usbpd_get_event_and_notify(pdnotify->dev, pdnotify->ec);
+}
+
+static int cros_usbpd_notify_probe_acpi(struct platform_device *pdev)
+{
+	struct cros_usbpd_notify_data *pdnotify;
+	struct device *dev = &pdev->dev;
+	struct acpi_device *adev;
+	struct cros_ec_device *ec_dev;
+	acpi_status status;
+
+	adev = ACPI_COMPANION(dev);
+
+	pdnotify = devm_kzalloc(dev, sizeof(*pdnotify), GFP_KERNEL);
+	if (!pdnotify)
+		return -ENOMEM;
+
+	/* Get the EC device pointer needed to talk to the EC. */
+	ec_dev = dev_get_drvdata(dev->parent);
+	if (!ec_dev) {
+		/*
+		 * We continue even for older devices which don't have the
+		 * correct device heirarchy, namely, GOOG0003 is a child
+		 * of GOOG0004.
+		 */
+		dev_warn(dev, "Couldn't get Chrome EC device pointer.\n");
+	}
+
+	pdnotify->dev = dev;
+	pdnotify->ec = ec_dev;
+
+	status = acpi_install_notify_handler(adev->handle,
+					     ACPI_ALL_NOTIFY,
+					     cros_usbpd_notify_acpi,
+					     pdnotify);
+	if (ACPI_FAILURE(status)) {
+		dev_warn(dev, "Failed to register notify handler %08x\n",
+			 status);
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
-static void cros_usbpd_notify_acpi(struct acpi_device *adev, u32 event)
+static int cros_usbpd_notify_remove_acpi(struct platform_device *pdev)
 {
-	blocking_notifier_call_chain(&cros_usbpd_notifier_list, event, NULL);
+	struct device *dev = &pdev->dev;
+	struct acpi_device *adev = ACPI_COMPANION(dev);
+
+	acpi_remove_notify_handler(adev->handle, ACPI_ALL_NOTIFY,
+				   cros_usbpd_notify_acpi);
+
+	return 0;
 }
 
 static const struct acpi_device_id cros_usbpd_notify_acpi_device_ids[] = {
@@ -65,14 +198,13 @@ static const struct acpi_device_id cros_usbpd_notify_acpi_device_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, cros_usbpd_notify_acpi_device_ids);
 
-static struct acpi_driver cros_usbpd_notify_acpi_driver = {
-	.name = DRV_NAME,
-	.class = DRV_NAME,
-	.ids = cros_usbpd_notify_acpi_device_ids,
-	.ops = {
-		.add = cros_usbpd_notify_add_acpi,
-		.notify = cros_usbpd_notify_acpi,
+static struct platform_driver cros_usbpd_notify_acpi_driver = {
+	.driver = {
+		.name = DRV_NAME_PLAT_ACPI,
+		.acpi_match_table = cros_usbpd_notify_acpi_device_ids,
 	},
+	.probe = cros_usbpd_notify_probe_acpi,
+	.remove = cros_usbpd_notify_remove_acpi,
 };
 
 #endif /* CONFIG_ACPI */
@@ -81,6 +213,8 @@ static int cros_usbpd_notify_plat(struct notifier_block *nb,
 				  unsigned long queued_during_suspend,
 				  void *data)
 {
+	struct cros_usbpd_notify_data *pdnotify = container_of(nb,
+			struct cros_usbpd_notify_data, nb);
 	struct cros_ec_device *ec_dev = (struct cros_ec_device *)data;
 	u32 host_event = cros_ec_get_host_event(ec_dev);
 
@@ -88,8 +222,7 @@ static int cros_usbpd_notify_plat(struct notifier_block *nb,
 		return NOTIFY_DONE;
 
 	if (host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)) {
-		blocking_notifier_call_chain(&cros_usbpd_notifier_list,
-					     host_event, NULL);
+		cros_usbpd_get_event_and_notify(pdnotify->dev, ec_dev);
 		return NOTIFY_OK;
 	}
 	return NOTIFY_DONE;
@@ -99,18 +232,21 @@ static int cros_usbpd_notify_probe_plat(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct cros_ec_dev *ecdev = dev_get_drvdata(dev->parent);
-	struct notifier_block *nb;
+	struct cros_usbpd_notify_data *pdnotify;
 	int ret;
 
-	nb = devm_kzalloc(dev, sizeof(*nb), GFP_KERNEL);
-	if (!nb)
+	pdnotify = devm_kzalloc(dev, sizeof(*pdnotify), GFP_KERNEL);
+	if (!pdnotify)
 		return -ENOMEM;
 
-	nb->notifier_call = cros_usbpd_notify_plat;
-	dev_set_drvdata(dev, nb);
+	pdnotify->dev = dev;
+	pdnotify->ec = ecdev->ec_dev;
+	pdnotify->nb.notifier_call = cros_usbpd_notify_plat;
+
+	dev_set_drvdata(dev, pdnotify);
 
 	ret = blocking_notifier_chain_register(&ecdev->ec_dev->event_notifier,
-					       nb);
+					       &pdnotify->nb);
 	if (ret < 0) {
 		dev_err(dev, "Failed to register notifier\n");
 		return ret;
@@ -123,10 +259,11 @@ static int cros_usbpd_notify_remove_plat(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct cros_ec_dev *ecdev = dev_get_drvdata(dev->parent);
-	struct notifier_block *nb =
-		(struct notifier_block *)dev_get_drvdata(dev);
+	struct cros_usbpd_notify_data *pdnotify =
+		(struct cros_usbpd_notify_data *)dev_get_drvdata(dev);
 
-	blocking_notifier_chain_unregister(&ecdev->ec_dev->event_notifier, nb);
+	blocking_notifier_chain_unregister(&ecdev->ec_dev->event_notifier,
+					   &pdnotify->nb);
 
 	return 0;
 }
@@ -148,7 +285,7 @@ static int __init cros_usbpd_notify_init(void)
 		return ret;
 
 #ifdef CONFIG_ACPI
-	acpi_bus_register_driver(&cros_usbpd_notify_acpi_driver);
+	platform_driver_register(&cros_usbpd_notify_acpi_driver);
 #endif
 	return 0;
 }
@@ -156,7 +293,7 @@ static int __init cros_usbpd_notify_init(void)
 static void __exit cros_usbpd_notify_exit(void)
 {
 #ifdef CONFIG_ACPI
-	acpi_bus_unregister_driver(&cros_usbpd_notify_acpi_driver);
+	platform_driver_unregister(&cros_usbpd_notify_acpi_driver);
 #endif
 	platform_driver_unregister(&cros_usbpd_notify_plat_driver);
 }

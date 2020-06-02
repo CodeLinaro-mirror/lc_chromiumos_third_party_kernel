@@ -1026,6 +1026,8 @@ static void gfx_v9_0_check_fw_write_wait(struct amdgpu_device *adev)
 			adev->gfx.mec_fw_write_wait = true;
 		break;
 	default:
+		adev->gfx.me_fw_write_wait = true;
+		adev->gfx.mec_fw_write_wait = true;
 		break;
 	}
 }
@@ -1335,7 +1337,8 @@ static int gfx_v9_0_init_cp_compute_microcode(struct amdgpu_device *adev,
 
 			/* TODO: Determine if MEC2 JT FW loading can be removed
 				 for all GFX V9 asic and above */
-			if (adev->asic_type != CHIP_ARCTURUS) {
+			if (adev->asic_type != CHIP_ARCTURUS &&
+			    adev->asic_type != CHIP_RENOIR) {
 				info = &adev->firmware.ucode[AMDGPU_UCODE_ID_CP_MEC2_JT];
 				info->ucode_id = AMDGPU_UCODE_ID_CP_MEC2_JT;
 				info->fw = adev->gfx.mec2_fw;
@@ -3756,6 +3759,7 @@ static int gfx_v9_0_kcq_init_queue(struct amdgpu_ring *ring)
 
 		/* reset ring buffer */
 		ring->wptr = 0;
+		atomic64_set((atomic64_t *)&adev->wb.wb[ring->wptr_offs], 0);
 		amdgpu_ring_clear_ring(ring);
 	} else {
 		amdgpu_ring_clear_ring(ring);

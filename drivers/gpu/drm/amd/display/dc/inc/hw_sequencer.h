@@ -114,6 +114,9 @@ struct hw_sequencer_funcs {
 			int opp_id);
 
 #if defined(CONFIG_DRM_AMD_DC_DCN2_0)
+	void (*program_front_end_for_ctx)(
+			struct dc *dc,
+			struct dc_state *context);
 	void (*program_triplebuffer)(
 		const struct dc *dc,
 		struct pipe_ctx *pipe_ctx,
@@ -227,6 +230,13 @@ struct hw_sequencer_funcs {
 			struct dc_state *context);
 	void (*optimize_bandwidth)(
 			struct dc *dc,
+			struct dc_state *context);
+
+	void (*exit_optimized_pwr_state)(
+			const struct dc *dc,
+			struct dc_state *context);
+	void (*optimize_pwr_state)(
+			const struct dc *dc,
 			struct dc_state *context);
 
 #if defined(CONFIG_DRM_AMD_DC_DCN2_0)

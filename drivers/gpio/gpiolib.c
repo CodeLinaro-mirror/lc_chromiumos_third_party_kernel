@@ -398,6 +398,14 @@ static void gpiochip_free_valid_mask(struct gpio_chip *gpiochip)
 	gpiochip->valid_mask = NULL;
 }
 
+static int gpiochip_add_pin_ranges(struct gpio_chip *gc)
+{
+	if (gc->add_pin_ranges)
+		return gc->add_pin_ranges(gc);
+
+	return 0;
+}
+
 bool gpiochip_line_is_valid(const struct gpio_chip *gpiochip,
 				unsigned int offset)
 {
@@ -1411,6 +1419,10 @@ int gpiochip_add_data_with_key(struct gpio_chip *chip, void *data,
 		}
 	}
 
+	ret = gpiochip_add_pin_ranges(chip);
+	if (ret)
+		goto err_remove_of_chip;
+
 	acpi_gpiochip_add(chip);
 
 	machine_gpiochip_add(chip);
@@ -2194,9 +2206,16 @@ static void gpiochip_irq_disable(struct irq_data *d)
 {
 	struct gpio_chip *chip = irq_data_get_irq_chip_data(d);
 
+	/*
+	 * Since we override .irq_disable() we need to mimic the
+	 * behaviour of __irq_disable() in irq/chip.c.
+	 * First call .irq_disable() if it exists, else mimic the
+	 * behaviour of mask_irq() which calls .irq_mask() if
+	 * it exists.
+	 */
 	if (chip->irq.irq_disable)
 		chip->irq.irq_disable(d);
-	else
+	else if (chip->irq.chip->irq_mask)
 		chip->irq.chip->irq_mask(d);
 	gpiochip_disable_irq(chip, d->hwirq);
 }

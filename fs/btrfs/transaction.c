@@ -590,10 +590,19 @@ again:
 	}
 
 got_it:
-	btrfs_record_root_in_trans(h, root);
-
 	if (!current->journal_info)
 		current->journal_info = h;
+
+	/*
+	 * btrfs_record_root_in_trans() needs to alloc new extents, and may
+	 * call btrfs_join_transaction() while we're also starting a
+	 * transaction.
+	 *
+	 * Thus it need to be called after current->journal_info initialized,
+	 * or we can deadlock.
+	 */
+	btrfs_record_root_in_trans(h, root);
+
 	return h;
 
 join_fail:
@@ -1415,7 +1424,6 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	u64 index = 0;
 	u64 objectid;
 	u64 root_flags;
-	uuid_le new_uuid;
 
 	ASSERT(pending->path);
 	path = pending->path;
@@ -1508,8 +1516,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 
 	btrfs_set_root_generation_v2(new_root_item,
 			trans->transid);
-	uuid_le_gen(&new_uuid);
-	memcpy(new_root_item->uuid, new_uuid.b, BTRFS_UUID_SIZE);
+	generate_random_guid(new_root_item->uuid);
 	memcpy(new_root_item->parent_uuid, root->root_item.uuid,
 			BTRFS_UUID_SIZE);
 	if (!(root_flags & BTRFS_ROOT_SUBVOL_RDONLY)) {
@@ -1620,7 +1627,8 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 		btrfs_abort_transaction(trans, ret);
 		goto fail;
 	}
-	ret = btrfs_uuid_tree_add(trans, new_uuid.b, BTRFS_UUID_KEY_SUBVOL,
+	ret = btrfs_uuid_tree_add(trans, new_root_item->uuid,
+				  BTRFS_UUID_KEY_SUBVOL,
 				  objectid);
 	if (ret) {
 		btrfs_abort_transaction(trans, ret);

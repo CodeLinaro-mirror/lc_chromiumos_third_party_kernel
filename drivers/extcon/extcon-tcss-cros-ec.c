@@ -11,9 +11,10 @@
  * Intel TCSS (Type-C Sub System)
  */
 
+#include <linux/io.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/platform_data/cros_ec_proto.h>
+#include <linux/platform_data/cros_usbpd_notify.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/usb/typec_dp.h>
@@ -110,6 +111,11 @@ static int cros_ec_pd_get_num_ports(struct cros_ec_tcss_info *info)
 	if (ret < 0)
 		return ret;
 
+	if (resp.num_ports > IOM_MAX_PORTS || !resp.num_ports) {
+		dev_err(info->dev, "Invalid no of ports %u\n", resp.num_ports);
+		return -EINVAL;
+	}
+
 	info->num_ports = resp.num_ports;
 
 	return ret;
@@ -186,6 +192,21 @@ static const char *cros_ec_conn_mode_to_string(const struct cros_ec_tcss_data
 	}
 }
 
+static void cros_ec_set_conn_mode(struct cros_ec_tcss_data *port_data,
+				  bool safe_mode)
+{
+	struct tcss_mux *mux_info = &port_data->mux_info;
+
+	if (safe_mode)
+		port_data->conn_mode = PMC_IPC_SAFE_MODE;
+	else if (mux_info->dp || mux_info->tbt || mux_info->usb4)
+		port_data->conn_mode = PMC_IPC_ALT_MODE;
+	else if (mux_info->usb)
+		port_data->conn_mode = PMC_IPC_USB_MODE;
+	else
+		port_data->conn_mode = PMC_IPC_DISCONNECT_MODE;
+}
+
 static int cros_ec_tcss_get_current_state(struct cros_ec_tcss_info *info,
 					  struct cros_ec_tcss_data *port_data,
 					  u8 port)
@@ -193,6 +214,7 @@ static int cros_ec_tcss_get_current_state(struct cros_ec_tcss_info *info,
 	struct ec_response_usb_pd_control_v2 pd_resp;
 	struct ec_response_usb_pd_mux_info mux_resp;
 	struct tcss_mux *mux_info;
+	bool safe_mode;
 	int ret;
 
 	if (!info || !port_data)
@@ -218,7 +240,7 @@ static int cros_ec_tcss_get_current_state(struct cros_ec_tcss_info *info,
 	mux_info->tbt_usb4_cable_speed = pd_resp.cable_speed;
 	mux_info->tbt_usb4_cable_gen = pd_resp.cable_gen;
 
-	mux_info->ufp = (pd_resp.cc_state == PD_CC_DFP_ATTACHED);
+	mux_info->ufp = !(pd_resp.role & PD_CTRL_RESP_ROLE_DATA);
 	mux_info->dbg_acc = (pd_resp.cc_state == PD_CC_UFP_DEBUG_ACC ||
 			     pd_resp.cc_state == PD_CC_DFP_DEBUG_ACC);
 
@@ -248,14 +270,8 @@ static int cros_ec_tcss_get_current_state(struct cros_ec_tcss_info *info,
 
 	mux_info->usb4 = !!(mux_resp.flags & USB_PD_MUX_USB4_ENABLED);
 
-	if (mux_resp.flags & USB_PD_MUX_SAFE_MODE)
-		port_data->conn_mode = PMC_IPC_SAFE_MODE;
-	else if (mux_info->dp || mux_info->tbt || mux_info->usb4)
-		port_data->conn_mode = PMC_IPC_ALT_MODE;
-	else if (mux_info->usb)
-		port_data->conn_mode = PMC_IPC_USB_MODE;
-	else
-		port_data->conn_mode = PMC_IPC_DISCONNECT_MODE;
+	safe_mode = !!(mux_resp.flags & USB_PD_MUX_SAFE_MODE);
+	cros_ec_set_conn_mode(port_data, safe_mode);
 
 	dev_dbg(info->dev, " Port=%d, Connection mode = %s\n", port,
 		cros_ec_conn_mode_to_string(port_data));
@@ -277,8 +293,14 @@ u8 cros_ec_tcss_get_next_state_req(struct cros_ec_tcss_data *port_data,
 	u8 ret =
 	    tcss_mode_states[prev_port_data->conn_mode][port_data->conn_mode];
 
+	/* Handle HPD in Disconnect Mode */
+	if (port_data->conn_mode == PMC_IPC_DISCONNECT_MODE) {
+		if (prev_port_data->conn_mode == PMC_IPC_ALT_MODE &&
+			port_data->mux_info.hpd_lvl !=
+			prev_port_data->mux_info.hpd_lvl)
+			ret |= TO_REQ(PMC_IPC_HPD_REQ_RES);
 	/* Handle HPD in Alternate Mode */
-	if (ret & TO_REQ(PMC_IPC_ALTMODE_REQ_RES)) {
+	} else if (ret & TO_REQ(PMC_IPC_ALTMODE_REQ_RES)) {
 		if (prev_port_data->conn_mode == PMC_IPC_ALT_MODE) {
 			/* Alternate mode HPD/IRQ changed */
 			if (port_data->mux_info.hpd_irq ||
@@ -336,15 +358,60 @@ static void cros_ec_tcss_altmode_req(struct tcss_mux *mux_data, u8 *tcss_req)
 			PMC_IPC_ALTMODE_REQ_MODE_CABLE_GEN_SHIFT);
 }
 
+static void cros_ec_tcss_init_port_status(struct cros_ec_tcss_info *info,
+					  u8 port)
+{
+	struct cros_ec_tcss_data *tcss_info = &info->tcss[port];
+	struct tcss_mux *mux_info = &tcss_info->mux_info;
+	u8 activity_type, hpd_status;
+	void __iomem *reg;
+	bool safe_mode;
+	u32 status;
+
+	reg = info->iom_port_status +
+	      (IOM_REG_LEN * (tcss_info->usb3_port - 1));
+
+	status = ioread32(reg);
+	if (!(status & IOM_PORT_STATUS_CONNECTED))
+		return;
+
+	activity_type = (status & IOM_PORT_STATUS_ACTIVITY_TYPE_MASK) >>
+			IOM_PORT_STATUS_ACTIVITY_TYPE_SHIFT;
+
+	mux_info->dp = activity_type == IOM_PORT_STATUS_ACTIVITY_TYPE_DP ||
+		       activity_type == IOM_PORT_STATUS_ACTIVITY_TYPE_DP_MFD;
+	mux_info->usb = activity_type == IOM_PORT_STATUS_ACTIVITY_TYPE_USB;
+	mux_info->tbt = activity_type == IOM_PORT_STATUS_ACTIVITY_TYPE_TBT ||
+			activity_type ==
+			IOM_PORT_STATUS_ACTIVITY_TYPE_ALT_MODE_TBT_USB;
+	mux_info->usb4 = activity_type ==
+			 IOM_PORT_STATUS_ACTIVITY_TYPE_ALT_MODE_USB ||
+			 activity_type ==
+			 IOM_PORT_STATUS_ACTIVITY_TYPE_ALT_MODE_TBT_USB;
+	mux_info->ufp = !!(status & IOM_PORT_STATUS_UFP);
+
+	hpd_status = (status & IOM_PORT_STATUS_DHPD_HPD_STATUS_MASK) >>
+	       IOM_PORT_STATUS_DHPD_HPD_STATUS_SHIFT;
+
+	mux_info->hpd_lvl = !(status & IOM_PORT_STATUS_DHPD_HPD_SOURCE_TBT) &&
+			    hpd_status ==
+			    IOM_PORT_STATUS_DHPD_HPD_STATUS_ASSERT;
+
+	safe_mode = activity_type == IOM_PORT_STATUS_ACTIVITY_TYPE_SAFE_MODE;
+	cros_ec_set_conn_mode(tcss_info, safe_mode);
+
+	dev_dbg(info->dev, "init Port=%d, Connection mode = %s\n", port,
+		cros_ec_conn_mode_to_string(tcss_info));
+}
+
 static int cros_ec_tcss_req(struct cros_ec_tcss_info *info, int req_type,
 			    u8 port, struct tcss_mux *mux_data)
 {
 	struct cros_ec_tcss_data *tcss_info = &info->tcss[port];
+	bool retry_pmc_cmd = true, pmc_cmd_sts_0, pmc_cmd_sts_1;
 	struct device *dev = info->dev;
 	u32 write_size, tcss_res = 0;
-	bool retry_pmc_cmd = true;
 	u8 tcss_req[8] = { 0 };
-	u8 pmc_cmd_sts;
 	int ret;
 
 	tcss_req[0] = req_type | tcss_info->usb3_port << EC_USB3_PORT_SHIFT;
@@ -406,25 +473,26 @@ retry_pmc_ipc_cmd:
 		if ((tcss_res & PMC_IPC_CONN_RES_USB2_PORT_MASK) !=
 		    (tcss_info->usb2_port << PMC_IPC_CONN_RES_USB2_PORT_SHIFT))
 			goto err;
-		pmc_cmd_sts = (tcss_res & PMC_IPC_CONN_DIS_RES_STATUS_MASK) >>
-				PMC_IPC_CONN_DIS_RES_STATUS_SHIFT;
+		pmc_cmd_sts_0 = !!(tcss_res & PMC_IPC_CONN_DIS_RES_STATUS_0);
+		pmc_cmd_sts_1 = !!(tcss_res & PMC_IPC_CONN_DIS_RES_STATUS_1);
 		break;
 	case PMC_IPC_SFMODE_REQ_RES:
 	case PMC_IPC_ALTMODE_REQ_RES:
 	case PMC_IPC_HPD_REQ_RES:
-		pmc_cmd_sts = (tcss_res &
-			PMC_IPC_SAFE_ALT_HPD_RES_STATUS_MASK) >>
-				PMC_IPC_SAFE_ALT_HPD_RES_STATUS_SHIFT;
+		pmc_cmd_sts_0 =
+			!!(tcss_res & PMC_IPC_SAFE_ALT_HPD_RES_STATUS_0);
+		pmc_cmd_sts_1 =
+			!!(tcss_res & PMC_IPC_SAFE_ALT_HPD_RES_STATUS_1);
 		break;
 	default:
 		dev_err(dev, "Invalid req type to PMC = %d", req_type);
 		goto err;
 	}
 
-	if (pmc_cmd_sts == TCSS_STATUS_SUCCESS)
+	if (!pmc_cmd_sts_0)
 		return 0;
 
-	if (pmc_cmd_sts == TCSS_STATUS_UNSUCCESS_RETRY && retry_pmc_cmd) {
+	if (!pmc_cmd_sts_1 && retry_pmc_cmd) {
 		retry_pmc_cmd = false;
 		dev_warn(dev, "PMC IPC CMD retry: port=%d, req=%d\n",
 				port, req_type);
@@ -437,13 +505,12 @@ err:
 	return -EIO;
 }
 
-static int cros_ec_tcss_detect_cable(struct cros_ec_tcss_info *info,
-				     bool force, u8 port)
+static int cros_ec_tcss_detect_cable(struct cros_ec_tcss_info *info, u8 port)
 {
 	struct cros_ec_tcss_data *tcss_info;
 	struct cros_ec_tcss_data port_data;
+	int ret, i, index;
 	u8 next_seq;
-	int ret, i;
 
 	if (!info)
 		return -EIO;
@@ -476,9 +543,18 @@ static int cros_ec_tcss_detect_cable(struct cros_ec_tcss_info *info,
 		 port_data.mux_info.tbt_usb4_cable_gen);
 
 	for (i = 0; i < ARRAY_SIZE(tcss_requests); i++) {
-		if (next_seq & tcss_requests[i]) {
+		/*
+		 * Check if low priority mux request needs to be sent first
+		 * in the below scenarios
+		 * 1. Display PLLs needs to be cleared when the HPD is set
+		 * 2. USB fallback state transition happens
+		 */
+		index = port_data.conn_mode < tcss_info->conn_mode ?
+				(ARRAY_SIZE(tcss_requests) - 1 - i) : i;
+
+		if (next_seq & tcss_requests[index]) {
 			ret = cros_ec_tcss_req(info,
-					       (ffs(tcss_requests[i]) - 1),
+					       (ffs(tcss_requests[index]) - 1),
 					       port, &port_data.mux_info);
 			if (ret)
 				break;
@@ -504,7 +580,7 @@ static void cros_ec_tcss_bh_work(struct work_struct *work)
 
 	mutex_lock(&info->lock);
 	for (i = 0; i < info->num_ports; i++) {
-		if (cros_ec_tcss_detect_cable(info, false, i) >= 0)
+		if (cros_ec_tcss_detect_cable(info, i) >= 0)
 			continue;
 		dev_err(info->dev, "Port %d, Error detecting cable\n", i);
 		break;
@@ -529,12 +605,41 @@ static int cros_ec_tcss_remove(struct platform_device *pdev)
 {
 	struct cros_ec_tcss_info *info = platform_get_drvdata(pdev);
 
-	blocking_notifier_chain_unregister(&info->ec->event_notifier,
-					   &info->notifier);
+	cros_usbpd_unregister_notify(&info->notifier);
 	cancel_work_sync(&info->bh_work);
 	mutex_destroy(&info->lock);
+	iounmap(info->iom_port_status);
 
 	return 0;
+}
+
+static int cros_ec_tcss_initial_detect(struct cros_ec_tcss_info *info)
+{
+	struct device *dev = info->dev;
+	int ret = 0;
+	u8 i;
+
+	mutex_lock(&info->lock);
+	/* Perform initial detection */
+	for (i = 0; i < info->num_ports; i++) {
+		ret = cros_ec_pd_get_port_info(info, i);
+		if (ret < 0) {
+			dev_err(dev, "port %u: err %d getting port info\n", i,
+				ret);
+			goto err;
+		}
+
+		cros_ec_tcss_init_port_status(info, i);
+
+		ret = cros_ec_tcss_detect_cable(info, i);
+		if (ret < 0) {
+			dev_err(dev, "port %u init cable detect failed\n", i);
+			goto err;
+		}
+	}
+err:
+	mutex_unlock(&info->lock);
+	return ret;
 }
 
 static int cros_ec_tcss_probe(struct platform_device *pdev)
@@ -543,7 +648,6 @@ static int cros_ec_tcss_probe(struct platform_device *pdev)
 	struct cros_ec_device *ec;
 	struct device *dev;
 	int ret;
-	u8 i;
 
 	if (!pdev || !pdev->dev.parent)
 		return -ENODEV;
@@ -581,40 +685,33 @@ static int cros_ec_tcss_probe(struct platform_device *pdev)
 	mutex_init(&info->lock);
 	INIT_WORK(&info->bh_work, cros_ec_tcss_bh_work);
 
-	/* Get Port detection events from the EC */
-	info->notifier.notifier_call = cros_ec_tcss_event;
-	ret = blocking_notifier_chain_register(&info->ec->event_notifier,
-					       &info->notifier);
-	if (ret < 0) {
-		dev_err(dev, "failed to register notifier\n");
+	info->iom_port_status = ioremap(IOM_PORT_STATUS_ADDR,
+					IOM_PORT_STATUS_LEN);
+
+	if (!info->iom_port_status) {
+		dev_err(dev, "failed to map iom port status register\n");
 		goto destroy_mutex;
 	}
 
-	mutex_lock(&info->lock);
-	/* Perform initial detection */
-	for (i = 0; i < info->num_ports; i++) {
-		ret = cros_ec_pd_get_port_info(info, i);
-		if (ret < 0) {
-			dev_err(dev, "failed getting USB port info! ret = %d\n",
-				ret);
-			goto remove_tcss;
-		}
-
-		ret = cros_ec_tcss_detect_cable(info, true, i);
-		if (ret < 0) {
-			dev_err(dev, "failed to detect initial cable state\n");
-			goto remove_tcss;
-		}
+	/* Get Port detection events from the EC */
+	info->notifier.notifier_call = cros_ec_tcss_event;
+	ret = cros_usbpd_register_notify(&info->notifier);
+	if (ret < 0) {
+		dev_err(dev, "failed to register notifier\n");
+		goto iom_iounmap;
 	}
-	mutex_unlock(&info->lock);
 
-return 0;
+	ret = cros_ec_tcss_initial_detect(info);
+	if (ret < 0)
+		goto remove_tcss;
+
+	return 0;
 
 remove_tcss:
-	mutex_unlock(&info->lock);
-	blocking_notifier_chain_unregister(&info->ec->event_notifier,
-					   &info->notifier);
+	cros_usbpd_unregister_notify(&info->notifier);
 	cancel_work_sync(&info->bh_work);
+iom_iounmap:
+	iounmap(info->iom_port_status);
 destroy_mutex:
 	mutex_destroy(&info->lock);
 
@@ -622,28 +719,61 @@ destroy_mutex:
 }
 
 #ifdef CONFIG_PM_SLEEP
+/**
+ * cros_ec_pd_control() - Issue a pd_control command to EC for a given port
+ * @info: pointer to struct cros_ec_tcss_info
+ * @subcmd: sub-command to be issued
+ * @port: USB-C port number
+ *
+ * Return: status of cros_ec_pd_command()
+ */
+static int cros_ec_pd_control(struct cros_ec_tcss_info *info,
+			      u8 subcmd, u8 port)
+{
+	struct ec_params_pd_control pd_control;
+	int ret;
+
+	pd_control.subcmd = subcmd;
+	pd_control.chip = port;
+
+	ret = cros_ec_pd_command(info, EC_CMD_PD_CONTROL, 0, &pd_control,
+				 sizeof(pd_control), NULL, 0);
+	if (ret < 0)
+		dev_err(info->dev, "err %d for port %u subcmd %u\n", ret, port,
+			subcmd);
+
+	return ret;
+}
+
+static int cros_ec_tcss_suspend(struct device *dev)
+{
+	struct cros_ec_tcss_info *info = dev_get_drvdata(dev);
+	u8 i;
+
+	for (i = 0; i < info->num_ports; i++)
+		cros_ec_pd_control(info, PD_SUSPEND, i);
+
+	return 0;
+}
+
 static int cros_ec_tcss_resume(struct device *dev)
 {
 	struct cros_ec_tcss_info *info = dev_get_drvdata(dev);
 	int ret;
 	u8 i;
 
-	mutex_lock(&info->lock);
-	for (i = 0; i < info->num_ports; i++) {
-		ret = cros_ec_tcss_detect_cable(info, false, i);
-		if (ret < 0) {
-			dev_err(dev, "cable detection failed on resume\n");
-			mutex_unlock(&info->lock);
-			return ret;
-		}
-	}
-	mutex_unlock(&info->lock);
+	for (i = 0; i < info->num_ports; i++)
+		cros_ec_pd_control(info, PD_RESUME, i);
+
+	ret = cros_ec_tcss_initial_detect(info);
+	if (ret < 0)
+		return ret;
 
 	return 0;
 }
 
 static const struct dev_pm_ops tcss_cros_ec_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(NULL, cros_ec_tcss_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(cros_ec_tcss_suspend, cros_ec_tcss_resume)
 };
 
 #define DEV_PM_OPS     (&tcss_cros_ec_dev_pm_ops)
@@ -651,16 +781,9 @@ static const struct dev_pm_ops tcss_cros_ec_dev_pm_ops = {
 #define DEV_PM_OPS     NULL
 #endif /* CONFIG_PM_SLEEP */
 
-static const struct of_device_id cros_ec_tcss_of_match[] = {
-	{.compatible = "google,extcon-tcss-cros-ec"},
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(of, cros_ec_tcss_of_match);
-
 static struct platform_driver tcss_cros_ec_driver = {
 	.driver = {
 		   .name = "extcon-tcss-cros-ec",
-		   .of_match_table = cros_ec_tcss_of_match,
 		   .pm = DEV_PM_OPS,
 	},
 	.remove = cros_ec_tcss_remove,

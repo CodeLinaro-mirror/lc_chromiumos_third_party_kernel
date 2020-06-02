@@ -16,20 +16,27 @@ ap_h1_spi: &spi6 {};
 
 / {
 	model = "Google Trogdor (rev0)";
-	compatible = "google,trogdor-rev0", "qcom,sc7180";
-};
+	compatible = "google,trogdor-rev0-sku0",
+		     "google,trogdor-rev0-sku1",
+		     "qcom,sc7180";
 
-&ap_pen {
-	/* Not hooked up */
-	status = "disabled";
+	panel: panel {
+		compatible = "auo,b116xa01";
+		power-supply = <&pp3300_dx_edp>;
+		backlight = <&backlight>;
+		no-hpd;
+
+		ports {
+			port {
+				panel_in_edp: endpoint {
+					remote-endpoint = <&sn65dsi86_out>;
+				};
+			};
+		};
+	};
 };
 
 &ap_sar_sensor_i2c {
-	/* Not hooked up */
-	status = "disabled";
-};
-
-&ap_spi_fp {
 	/* Not hooked up */
 	status = "disabled";
 };
@@ -39,18 +46,39 @@ ap_h1_spi: &spi6 {};
 	clock-frequency = <100000>;
 };
 
-/delete-node/ &brij_pp1200_en;
-
 &cr50 {
 	interrupts = <21 IRQ_TYPE_EDGE_RISING>;
 };
 
-/delete-node/ &pp1200_brij;
-pp1200_brij: &pp1200_l3c {};
+ap_ts_pen_1v8: &i2c4 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	ap_ts: touchscreen@10 {
+		compatible = "elan,ekth3500";
+		reg = <0x10>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&ts_int_l>, <&ts_reset_l>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <9 IRQ_TYPE_LEVEL_LOW>;
+
+		vcc33-supply = <&pp3300_ts>;
+
+		reset-gpios = <&tlmm 8 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&pp3300_ts {
+	gpio = <&tlmm 106 GPIO_ACTIVE_HIGH>;
+};
+
+&sdhc_2 {
+	status = "okay";
+};
 
 &sn65dsi86_bridge {
-	vcca-supply = <&pp1200_brij>;
-	vcc-supply = <&pp1200_brij>;
+	enable-gpios = <&tlmm 14 GPIO_ACTIVE_HIGH>;
 };
 
 /* PINCTRL - modifications to sc7180-trogdor.dtsi */
@@ -65,6 +93,16 @@ pp1200_brij: &pp1200_l3c {};
 	};
 };
 
+&bios_flash_wp_l {
+	pinmux  {
+		pins = "gpio42";
+	};
+
+	pinconf {
+		pins = "gpio42";
+	};
+};
+
 &edp_brij_en {
 	pinmux {
 		pins = "gpio14";
@@ -72,6 +110,16 @@ pp1200_brij: &pp1200_l3c {};
 
 	pinconf {
 		pins = "gpio14";
+	};
+};
+
+&en_pp3300_dx_edp {
+	pinmux {
+		pins = "gpio106";
+	};
+
+	pinconf {
+		pins = "gpio106";
 	};
 };
 
@@ -155,7 +203,11 @@ pp1200_brij: &pp1200_l3c {};
 			  "BT_UART_RTS",
 			  "BT_UART_TXD",
 			  "BT_UART_RXD",
-			  "BIOS_FLASH_WP_L",
+			  /*
+			   * AP_FLASH_WP_L is crossystem ABI. Schematics
+			   * call it BIOS_FLASH_WP_L.
+			   */
+			  "AP_FLASH_WP_L",
 			  "P_SENSOR_INT_L",
 			  "UART_AP_TX_DBG_RX",
 			  "UART_DBG_TX_AP_RX",
@@ -231,7 +283,5 @@ pp1200_brij: &pp1200_l3c {};
 			  "AP_TS_PEN_I2C_SDA",
 			  "AP_TS_PEN_I2C_SCL",
 			  "DP_HOT_PLUG_DET",
-			  "EC_IN_RW_ODL",
-			  "",
-			  "";
+			  "EC_IN_RW_ODL";
 };

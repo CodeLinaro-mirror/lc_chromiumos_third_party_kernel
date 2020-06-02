@@ -13,8 +13,61 @@
 #include "pm6150.dtsi"
 #include "pm6150l.dtsi"
 
+/*
+ * Reserved memory changes
+ *
+ * Delete all unused memory nodes and define the peripheral memory regions
+ * required by the board dts.
+ *
+ */
+
+/delete-node/ &hyp_mem;
+/delete-node/ &xbl_mem;
+/delete-node/ &aop_mem;
+/delete-node/ &sec_apps_mem;
+/delete-node/ &tz_mem;
+
+/* Increase the size from 2MB to 8MB */
+&rmtfs_mem {
+	reg = <0x0 0x84400000 0x0 0x800000>;
+};
+
 / {
+
+	reserved-memory {
+		atf_mem: memory@80b00000 {
+			reg = <0x0 0x80b00000 0x0 0x100000>;
+			no-map;
+		};
+
+		mpss_mem: memory@86000000 {
+			reg = <0x0 0x86000000 0x0 0x8c00000>;
+			no-map;
+		};
+
+		camera_mem: memory@8ec00000 {
+			reg = <0x0 0x8ec00000 0x0 0x500000>;
+			no-map;
+		};
+
+		venus_mem: memory@8f600000 {
+			reg = <0 0x8f600000 0 0x500000>;
+			no-map;
+		};
+
+		wlan_mem: memory@94100000 {
+			reg = <0x0 0x94100000 0x0 0x200000>;
+			no-map;
+		};
+
+		mba_mem: memory@94400000 {
+			reg = <0x0 0x94400000 0x0 0x200000>;
+			no-map;
+		};
+	};
+
 	aliases {
+		bluetooth0 = &bluetooth;
 		hsuart0 = &uart3;
 		serial0 = &uart8;
 	};
@@ -43,19 +96,6 @@
 		regulator-boot-on;
 
 		vin-supply = <&ppvar_sys>;
-	};
-
-	pp1200_brij: pp1200-brij-regulator {
-		compatible = "regulator-fixed";
-		regulator-name = "pp1200_brij";
-
-		regulator-min-microvolt = <1200000>;
-		regulator-max-microvolt = <1200000>;
-
-		gpio = <&tlmm 30 GPIO_ACTIVE_HIGH>;
-		enable-active-high;
-		pinctrl-names = "default";
-		pinctrl-0 = <&brij_pp1200_en>;
 	};
 
 	pp5000_a: pp5000-a-regulator {
@@ -93,7 +133,7 @@
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 
-		gpio = <&tlmm 106 GPIO_ACTIVE_HIGH>;
+		gpio = <&tlmm 30 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 		pinctrl-names = "default";
 		pinctrl-0 = <&en_pp3300_dx_edp>;
@@ -122,18 +162,13 @@
 		pinctrl-0 = <&ap_edp_bklten>;
 	};
 
-	panel: panel {
-		compatible = "auo,b116xa01";
-		power-supply = <&pp3300_dx_edp>;
-		backlight = <&backlight>;
-		no-hpd; /*TODO: Evaluate hpd */
-
-		ports {
-			port {
-				panel_in_edp: endpoint {
-					remote-endpoint = <&sn65dsi86_out>;
-				};
-			};
+	pwmleds {
+		compatible = "pwm-leds";
+		keyboard_backlight: keyboard-backlight {
+			status = "disabled";
+			label = "cros_ec::kbd_backlight";
+			pwms = <&cros_ec_pwm 0>;
+			max-brightness = <1023>;
 		};
 	};
 };
@@ -357,6 +392,7 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
+		pp1200_brij:
 		vdd_ufs1_1p2:
 		vdda_csi0_1p25:
 		vdda_csi1_1p25:
@@ -468,6 +504,30 @@
 		pdupdate {
 			compatible = "google,cros-ec-pd-update";
 		};
+
+		typec {
+			compatible = "google,cros-ec-typec";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			connector@0 {
+				compatible = "usb-c-connector";
+				reg = <0>;
+				label = "left";
+				power-role = "dual";
+				data-role = "host";
+				try-power-role = "source";
+			};
+
+			connector@1 {
+				compatible = "usb-c-connector";
+				reg = <1>;
+				label = "right";
+				power-role = "dual";
+				data-role = "host";
+				try-power-role = "source";
+			};
+		};
 	};
 };
 
@@ -512,11 +572,13 @@ edp_brij_i2c: &i2c2 {
 		reg = <0x2d>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&edp_brij_en>, <&edp_brij_irq>;
+		gpio-controller;
+		#gpio-cells = <2>;
 
 		interrupt-parent = <&tlmm>;
 		interrupts = <11 IRQ_TYPE_LEVEL_HIGH>;
 
-		enable-gpios = <&tlmm 14 GPIO_ACTIVE_HIGH>;
+		enable-gpios = <&tlmm 104 GPIO_ACTIVE_HIGH>;
 
 		vpll-supply = <&pp1800_edp_vpll>;
 		vccio-supply = <&pp1800_brij_vccio>;
@@ -540,44 +602,11 @@ edp_brij_i2c: &i2c2 {
 			port@1 {
 				reg = <1>;
 				sn65dsi86_out: endpoint {
+					data-lanes = <0 1>;
 					remote-endpoint = <&panel_in_edp>;
 				};
 			};
 		};
-	};
-};
-
-ap_ts_pen_1v8: &i2c4 {
-	status = "okay";
-	clock-frequency = <400000>;
-
-	ap_pen: digitizer@9 {
-		compatible = "wacom,w9013", "hid-over-i2c";
-		reg = <0x9>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pen_irq_l>, <&pen_pdct_l>, <&pen_rst_odl>;
-
-		vddl-supply = <&pp1800_pen>;
-		post-power-on-delay-ms = <100>;
-
-		interrupt-parent = <&tlmm>;
-		interrupts = <21 IRQ_TYPE_LEVEL_LOW>;
-
-		hid-descr-addr = <0x1>; /* TODO: Confirm */
-	};
-
-	ap_ts: touchscreen@10 {
-		compatible = "elan,ekth3500";
-		reg = <0x10>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&ts_int_l>, <&ts_reset_l>;
-
-		interrupt-parent = <&tlmm>;
-		interrupts = <9 IRQ_TYPE_LEVEL_LOW>;
-
-		vcc33-supply = <&pp3300_ts>;
-
-		reset-gpios = <&tlmm 8 GPIO_ACTIVE_LOW>;
 	};
 };
 
@@ -628,6 +657,17 @@ hp_i2c: &i2c9 {
 	};
 };
 
+&ipa {
+	status = "okay";
+
+	/*
+	 * Trogdor doesn't have QHEE (Qualcomm's EL2 blob), so the
+	 * modem needs to cover certain init steps (GSI init), and
+	 * the AP needs to wait for it.
+	 */
+	modem-init;
+};
+
 &mdp {
 	status = "okay";
 };
@@ -648,6 +688,17 @@ hp_i2c: &i2c9 {
 	status = "okay";
 };
 
+&remoteproc_mpss {
+	status = "okay";
+	compatible = "qcom,sc7180-mss-pil";
+	iommus = <&apps_smmu 0x460 0x1>, <&apps_smmu 0x444 0x3>;
+	memory-region = <&mba_mem &mpss_mem>;
+
+	/* This gets overridden for SKUs with LTE support. */
+	firmware-name = "sc7180-mss/google-trogdor-nolte/mba.mbn",
+			"sc7180-mss/google-trogdor-nolte/modem.mdt";
+};
+
 &sdhc_1 {
 	status = "okay";
 
@@ -659,9 +710,7 @@ hp_i2c: &i2c9 {
 };
 
 &sdhc_2 {
-	status = "okay";
-
-	pinctrl-names = "default","sleep";
+	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&sdc2_on>;
 	pinctrl-1 = <&sdc2_off>;
 	vmmc-supply = <&pp2950_l9c>;
@@ -671,8 +720,6 @@ hp_i2c: &i2c9 {
 };
 
 ap_spi_fp: &spi10 {
-	status = "okay";
-
 	cros_ec_fp: ec@0 {
 		compatible = "google,cros-ec-spi";
 		reg = <0>;
@@ -719,15 +766,30 @@ ap_spi_fp: &spi10 {
 	vdda-pll-supply = <&vdda_qusb_hs0_1p8>;
 	vdda-phy-dpdm-supply = <&vdda_qusb_hs0_3p1>;
 	qcom,imp-res-offset-value = <8>;
-	qcom,hstx-trim-value = <QUSB2_V2_HSTX_TRIM_21_6_MA>;
-	qcom,preemphasis-level = <QUSB2_V2_PREEMPHASIS_5_PERCENT>;
+	qcom,preemphasis-level = <QUSB2_V2_PREEMPHASIS_15_PERCENT>;
 	qcom,preemphasis-width = <QUSB2_V2_PREEMPHASIS_WIDTH_HALF_BIT>;
+	qcom,bias-ctrl-value = <0x22>;
+	qcom,charge-ctrl-value = <3>;
+	qcom,hsdisc-trim-value = <0>;
 };
 
 &usb_1_qmpphy {
 	status = "okay";
 	vdda-phy-supply = <&vdda_usb_ss_dp_1p2>;
 	vdda-pll-supply = <&vdda_usb_ss_dp_core>;
+};
+
+&wifi {
+	status = "okay";
+
+	vdd-0.8-cx-mx-supply = <&vdd_cx_wlan>;
+	vdd-1.8-xo-supply = <&pp1800_l1c>;
+	vdd-1.3-rfa-supply = <&pp1300_l2c>;
+	vdd-3.3-ch0-supply = <&pp3300_l11c>;
+	/* TODO: Binding and driver doesn't turn on ch1 supply? */
+	wifi-firmware {
+		iommus = <&apps_smmu 0xc2 0x1>;
+	};
 };
 
 /* PINCTRL - additions to nodes defined in sdm845.dtsi */
@@ -941,29 +1003,15 @@ ap_spi_fp: &spi10 {
 
 	bios_flash_wp_l: bios-flash-wp-l {
 		pinmux {
-			pins = "gpio42";
+			pins = "gpio66";
 			function = "gpio";
 			input-enable;
 		};
 
 		pinconf {
-			pins = "gpio42";
+			pins = "gpio66";
 			bias-disable;
 		};
-	};
-
-	brij_pp1200_en: brij-pp1200-en {
-		pinmux {
-			pins = "gpio30";
-			function = "gpio";
-		};
-
-		pinconf {
-			pins = "gpio30";
-			drive-strength = <2>;
-			bias-disable;
-		};
-
 	};
 
 	edp_brij_en: edp-brij-en {
@@ -1007,12 +1055,12 @@ ap_spi_fp: &spi10 {
 
 	en_pp3300_dx_edp: en-pp3300-dx-edp {
 		pinmux {
-			pins = "gpio106";
+			pins = "gpio30";
 			function = "gpio";
 		};
 
 		pinconf {
-			pins = "gpio106";
+			pins = "gpio30";
 			drive-strength = <2>;
 			bias-disable;
 		};
@@ -1193,5 +1241,11 @@ ap_spi_fp: &spi10 {
 			bias-disable;
 			drive-strength = <2>;
 		};
+	};
+};
+
+&venus {
+	video-firmware {
+		iommus = <&apps_smmu 0x0c42 0x0>;
 	};
 };

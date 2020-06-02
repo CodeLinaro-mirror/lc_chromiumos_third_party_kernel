@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause)
 //
 // This file is provided under a dual BSD/GPLv2 license.  When using or
 // redistributing this file, you may do so under either license.
@@ -118,6 +118,7 @@ static const struct sof_dev_desc tng_desc = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_CANNONLAKE)
 static const struct sof_dev_desc cnl_desc = {
 	.machines		= snd_soc_acpi_intel_cnl_machines,
+	.alt_machines		= snd_soc_acpi_intel_cnl_sdw_machines,
 	.resindex_lpe_base	= 0,
 	.resindex_pcicfg_base	= -1,
 	.resindex_imr_base	= -1,
@@ -135,6 +136,7 @@ static const struct sof_dev_desc cnl_desc = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_COFFEELAKE)
 static const struct sof_dev_desc cfl_desc = {
 	.machines		= snd_soc_acpi_intel_cfl_machines,
+	.alt_machines		= snd_soc_acpi_intel_cfl_sdw_machines,
 	.resindex_lpe_base	= 0,
 	.resindex_pcicfg_base	= -1,
 	.resindex_imr_base	= -1,
@@ -154,6 +156,7 @@ static const struct sof_dev_desc cfl_desc = {
 
 static const struct sof_dev_desc cml_desc = {
 	.machines		= snd_soc_acpi_intel_cml_machines,
+	.alt_machines		= snd_soc_acpi_intel_cml_sdw_machines,
 	.resindex_lpe_base	= 0,
 	.resindex_pcicfg_base	= -1,
 	.resindex_imr_base	= -1,
@@ -171,6 +174,7 @@ static const struct sof_dev_desc cml_desc = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_ICELAKE)
 static const struct sof_dev_desc icl_desc = {
 	.machines               = snd_soc_acpi_intel_icl_machines,
+	.alt_machines		= snd_soc_acpi_intel_icl_sdw_machines,
 	.resindex_lpe_base      = 0,
 	.resindex_pcicfg_base   = -1,
 	.resindex_imr_base      = -1,
@@ -188,6 +192,7 @@ static const struct sof_dev_desc icl_desc = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_TIGERLAKE)
 static const struct sof_dev_desc tgl_desc = {
 	.machines               = snd_soc_acpi_intel_tgl_machines,
+	.alt_machines		= snd_soc_acpi_intel_tgl_sdw_machines,
 	.resindex_lpe_base      = 0,
 	.resindex_pcicfg_base   = -1,
 	.resindex_imr_base      = -1,
@@ -429,6 +434,8 @@ static const struct pci_device_id sof_pci_ids[] = {
 #endif
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_ELKHARTLAKE)
 	{ PCI_DEVICE(0x8086, 0x4b55),
+		.driver_data = (unsigned long)&ehl_desc},
+	{ PCI_DEVICE(0x8086, 0x4b58),
 		.driver_data = (unsigned long)&ehl_desc},
 #endif
 	{ 0, }

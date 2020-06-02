@@ -101,8 +101,12 @@ struct mgmt_rp_read_index_list {
 #define MGMT_SETTING_PRIVACY		0x00002000
 #define MGMT_SETTING_CONFIGURATION	0x00004000
 #define MGMT_SETTING_STATIC_ADDRESS	0x00008000
-#define MGMT_SETTING_PHY_CONFIGURATION  0x00010000
-#define MGMT_SETTING_ADVERTISING_INTERVALS	0x00020000
+#define MGMT_SETTING_PHY_CONFIGURATION	0x00010000
+#define MGMT_SETTING_WIDEBAND_SPEECH	0x00020000
+
+/* Begin Chromium only settings */
+#define MGMT_SETTING_ADVERTISING_INTERVALS	0x10000000
+/* End Chromium only settings */
 
 #define MGMT_OP_READ_INFO		0x0004
 #define MGMT_READ_INFO_SIZE		0
@@ -655,11 +659,30 @@ struct mgmt_cp_set_phy_confguration {
 } __packed;
 #define MGMT_SET_PHY_CONFIGURATION_SIZE	4
 
-#define MGMT_OP_SET_WAKE_CAPABLE			0x0047
-#define MGMT_SET_WAKE_CAPABLE_SIZE			8
-struct mgmt_cp_set_wake_capable {
-	struct mgmt_addr_info addr;
-	u8 wake_capable;
+#define MGMT_OP_SET_BLOCKED_KEYS	0x0046
+
+#define HCI_BLOCKED_KEY_TYPE_LINKKEY	0x00
+#define HCI_BLOCKED_KEY_TYPE_LTK	0x01
+#define HCI_BLOCKED_KEY_TYPE_IRK	0x02
+
+struct mgmt_blocked_key_info {
+	__u8 type;
+	__u8 val[16];
+} __packed;
+
+struct mgmt_cp_set_blocked_keys {
+	__le16 key_count;
+	struct mgmt_blocked_key_info keys[0];
+} __packed;
+#define MGMT_OP_SET_BLOCKED_KEYS_SIZE 2
+
+#define MGMT_OP_SET_WIDEBAND_SPEECH	0x0047
+
+#define MGMT_OP_READ_SECURITY_INFO	0x0048
+#define MGMT_READ_SECURITY_INFO_SIZE	0
+struct mgmt_rp_read_security_info {
+	__le16   sec_len;
+	__u8     sec[0];
 } __packed;
 
 /*
@@ -748,22 +771,17 @@ enum mgmt_set_event_mask_byte_7 {
 	MGMT_EVENT_MASK_LE_META				=  (1 << 6),
 };
 
-#define MGMT_OP_SET_BLOCKED_LTKS			0x0062
-struct mgmt_cp_set_blocked_ltks {
-	uint8_t	ltks[MAX_BLOCKED_LTKS][LTK_LENGTH];
-} __packed;
-#define MGMT_SET_BLOCKED_LTKS_CP_SIZE  (MAX_BLOCKED_LTKS * LTK_LENGTH)
-
-#define MGMT_OP_READ_SUPPORTED_CAPABILITIES		0x0063
-#define MGMT_READ_SUPPORTED_CAPABILITIES_SIZE		0
-struct mgmt_rp_read_supported_capabilities {
-	__u8 wide_band_speech;
-} __packed;
-
 #define MGMT_OP_SET_KERNEL_DEBUG			0x0064
 #define MGMT_SET_KERNEL_DEBUG_SIZE			1
 struct mgmt_cp_set_kernel_debug {
 	__u8	enabled;
+} __packed;
+
+#define MGMT_OP_SET_WAKE_CAPABLE			0x0065
+#define MGMT_SET_WAKE_CAPABLE_SIZE			8
+struct mgmt_cp_set_wake_capable {
+	struct mgmt_addr_info addr;
+	u8 wake_capable;
 } __packed;
 
 /*

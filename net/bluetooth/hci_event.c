@@ -35,23 +35,33 @@
 #include "a2mp.h"
 #include "amp.h"
 #include "smp.h"
+#include "msft.h"
 
 #define ZERO_KEY "\x00\x00\x00\x00\x00\x00\x00\x00" \
 		 "\x00\x00\x00\x00\x00\x00\x00\x00"
 
-/* Minimum encryption key length, value adopted from BLE (7 bytes) */
-#define MIN_ENC_KEY_LEN 7
-
-/* Intel manufacturer ID  and specific events */
-#define MAUFACTURER_ID_INTEL      0x0002
-
 /* Handle HCI Event packets */
 
-static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb,
+				  u8 *new_status)
 {
 	__u8 status = *((__u8 *) skb->data);
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	/* It is possible that we receive Inquiry Complete event right
+	 * before we receive Inquiry Cancel Command Complete event, in
+	 * which case the latter event should have status of Command
+	 * Disallowed (0x0c). This should not be treated as error, since
+	 * we actually achieve what Inquiry Cancel wants to achieve,
+	 * which is to end the last Inquiry session.
+	 */
+	if (status == 0x0c && !test_bit(HCI_INQUIRY, &hdev->flags)) {
+		bt_dev_warn(hdev, "Ignoring error of Inquiry Cancel command");
+		status = 0x00;
+	}
+
+	*new_status = status;
 
 	if (status)
 		return;
@@ -752,6 +762,23 @@ static void hci_cc_read_bd_addr(struct hci_dev *hdev, struct sk_buff *skb)
 		bacpy(&hdev->setup_addr, &rp->bdaddr);
 }
 
+static void hci_cc_read_local_pairing_opts(struct hci_dev *hdev,
+					   struct sk_buff *skb)
+{
+	struct hci_rp_read_local_pairing_opts *rp = (void *) skb->data;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, rp->status);
+
+	if (rp->status)
+		return;
+
+	if (hci_dev_test_flag(hdev, HCI_SETUP) ||
+	    hci_dev_test_flag(hdev, HCI_CONFIG)) {
+		hdev->pairing_opts = rp->pairing_opts;
+		hdev->max_enc_key_size = rp->max_key_size;
+	}
+}
+
 static void hci_cc_read_page_scan_activity(struct hci_dev *hdev,
 					   struct sk_buff *skb)
 {
@@ -905,6 +932,37 @@ static void hci_cc_read_inq_rsp_tx_power(struct hci_dev *hdev,
 		return;
 
 	hdev->inq_tx_power = rp->tx_power;
+}
+
+static void hci_cc_read_def_err_data_reporting(struct hci_dev *hdev,
+					       struct sk_buff *skb)
+{
+	struct hci_rp_read_def_err_data_reporting *rp = (void *)skb->data;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, rp->status);
+
+	if (rp->status)
+		return;
+
+	hdev->err_data_reporting = rp->err_data_reporting;
+}
+
+static void hci_cc_write_def_err_data_reporting(struct hci_dev *hdev,
+						struct sk_buff *skb)
+{
+	__u8 status = *((__u8 *)skb->data);
+	struct hci_cp_write_def_err_data_reporting *cp;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	if (status)
+		return;
+
+	cp = hci_sent_cmd_data(hdev, HCI_OP_WRITE_DEF_ERR_DATA_REPORTING);
+	if (!cp)
+		return;
+
+	hdev->err_data_reporting = cp->err_data_reporting;
 }
 
 static void hci_cc_pin_code_reply(struct hci_dev *hdev, struct sk_buff *skb)
@@ -1175,8 +1233,7 @@ static void hci_cc_le_set_adv_enable(struct hci_dev *hdev, struct sk_buff *skb)
 	} else {
 		hci_dev_clear_flag(hdev, HCI_LE_ADV);
 	}
-	hci_dev_clear_flag(hdev, HCI_LE_ADV_CHANGE_IN_PROGRESS);
-	hdev->count_adv_change_in_progress--;
+
 	hci_dev_unlock(hdev);
 }
 
@@ -1293,8 +1350,6 @@ static void le_set_scan_enable_complete(struct hci_dev *hdev, u8 enable)
 {
 	hci_dev_lock(hdev);
 
-	hci_dev_clear_flag(hdev, HCI_LE_SCAN_CHANGE_IN_PROGRESS);
-	hdev->count_scan_change_in_progress--;
 	switch (enable) {
 	case LE_SCAN_ENABLE:
 		hci_dev_set_flag(hdev, HCI_LE_SCAN);
@@ -2537,10 +2592,11 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (!conn) {
 		/* Connection may not exist if auto-connected. Check the inquiry
 		 * cache to see if we've already discovered this bdaddr before.
-		 * Create a new connection if it was previously discovered.
+		 * If found and link is an ACL type, create a connection class
+		 * automatically.
 		 */
 		ie = hci_inquiry_cache_lookup(hdev, &ev->bdaddr);
-		if (ie) {
+		if (ie && ev->link_type == ACL_LINK) {
 			conn = hci_conn_add(hdev, ev->link_type, &ev->bdaddr,
 					    HCI_ROLE_SLAVE);
 			if (!conn) {
@@ -2615,8 +2671,16 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (ev->status) {
 		hci_connect_cfm(conn, ev->status);
 		hci_conn_del(conn);
-	} else if (ev->link_type != ACL_LINK)
+	} else if (ev->link_type == SCO_LINK) {
+		switch (conn->setting & SCO_AIRMODE_MASK) {
+		case SCO_AIRMODE_CVSD:
+			if (hdev->notify)
+				hdev->notify(hdev, HCI_NOTIFY_ENABLE_SCO_CVSD);
+			break;
+		}
+
 		hci_connect_cfm(conn, ev->status);
+	}
 
 unlock:
 	hci_dev_unlock(hdev);
@@ -2811,6 +2875,14 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	hci_disconn_cfm(conn, ev->reason);
 	hci_conn_del(conn);
 
+	/* The suspend notifier is waiting for all devices to disconnect so
+	 * clear the bit from pending tasks and inform the wait queue.
+	 */
+	if (list_empty(&hdev->conn_hash.list) &&
+	    test_and_clear_bit(SUSPEND_DISCONNECTING, hdev->suspend_tasks)) {
+		wake_up(&hdev->suspend_wait_q);
+	}
+
 	/* Re-enable advertising if necessary, since it might
 	 * have been disabled by the connection. From the
 	 * HCI_LE_Set_Advertise_Enable command description in
@@ -2963,29 +3035,16 @@ static void read_enc_key_size_complete(struct hci_dev *hdev, u8 status,
 	if (!conn)
 		goto unlock;
 
-	/* If we fail to read the encryption key size, abort the connection
-	 * since the encryption key entropy is not guaranteed to be large
-	 * enough.
+	/* While unexpected, the read_enc_key_size command may fail. The most
+	 * secure approach is to then assume the key size is 0 to force a
+	 * disconnection.
 	 */
 	if (rp->status) {
 		bt_dev_err(hdev, "failed to read key size for handle %u",
 			   handle);
-		conn->enc_key_size = HCI_LINK_KEY_SIZE;
-#ifdef CONFIG_BT_ENFORCE_CLASSIC_SECURITY
-		WARN(1, "Read Encryption Key Size command failed, chip may not support this");
-		hci_disconnect(conn, HCI_ERROR_REMOTE_USER_TERM);
-		hci_conn_drop(conn);
-		goto unlock;
-#endif
+		conn->enc_key_size = 0;
 	} else {
 		conn->enc_key_size = rp->key_size;
-	}
-
-	if (conn->enc_key_size < MIN_ENC_KEY_LEN) {
-		WARN(1, "Dropping connection with weak encryption key length");
-		hci_disconnect(conn, HCI_ERROR_REMOTE_USER_TERM);
-		hci_conn_drop(conn);
-		goto unlock;
 	}
 
 	if (conn->state == BT_CONFIG) {
@@ -3095,14 +3154,7 @@ static void hci_encrypt_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		if (hci_req_run_skb(&req, read_enc_key_size_complete)) {
 			bt_dev_err(hdev, "sending read key size failed");
 			conn->enc_key_size = HCI_LINK_KEY_SIZE;
-#ifdef CONFIG_BT_ENFORCE_CLASSIC_SECURITY
-			WARN(1, "Failed sending HCI Read Encryption Key Size, chip may not support this");
-			hci_disconnect(conn, HCI_ERROR_REMOTE_USER_TERM);
-			hci_conn_drop(conn);
-			goto unlock;
-#else
 			goto notify;
-#endif
 		}
 
 		goto unlock;
@@ -3227,7 +3279,7 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb,
 
 	switch (*opcode) {
 	case HCI_OP_INQUIRY_CANCEL:
-		hci_cc_inquiry_cancel(hdev, skb);
+		hci_cc_inquiry_cancel(hdev, skb, status);
 		break;
 
 	case HCI_OP_PERIODIC_INQ:
@@ -3354,6 +3406,10 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb,
 		hci_cc_read_bd_addr(hdev, skb);
 		break;
 
+	case HCI_OP_READ_LOCAL_PAIRING_OPTS:
+		hci_cc_read_local_pairing_opts(hdev, skb);
+		break;
+
 	case HCI_OP_READ_PAGE_SCAN_ACTIVITY:
 		hci_cc_read_page_scan_activity(hdev, skb);
 		break;
@@ -3388,6 +3444,14 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb,
 
 	case HCI_OP_READ_INQ_RSP_TX_POWER:
 		hci_cc_read_inq_rsp_tx_power(hdev, skb);
+		break;
+
+	case HCI_OP_READ_DEF_ERR_DATA_REPORTING:
+		hci_cc_read_def_err_data_reporting(hdev, skb);
+		break;
+
+	case HCI_OP_WRITE_DEF_ERR_DATA_REPORTING:
+		hci_cc_write_def_err_data_reporting(hdev, skb);
 		break;
 
 	case HCI_OP_PIN_CODE_REPLY:
@@ -3861,49 +3925,6 @@ static void hci_num_comp_blocks_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	queue_work(hdev->workqueue, &hdev->tx_work);
 }
 
-static void hci_vendor_evt(struct hci_dev *hdev, struct sk_buff *skb)
-{
-	u8 evt_id;
-	u16 i;
-	u8 *b;
-	char line[HCI_MAX_EVENT_SIZE * 3 + 1] = {0x00,};
-
-	if (hdev->manufacturer == MAUFACTURER_ID_INTEL) {
-		if (skb->len < 1)
-			return;
-
-		BT_INFO("Manufacturer ID 0x%04X:", hdev->manufacturer);
-
-		evt_id = *((u8 *)skb->data);
-		skb_pull(skb, sizeof(evt_id));
-
-		switch (evt_id) {
-		case HCI_EV_INTEL_BOOT_UP:
-		case HCI_EV_INTEL_FATAL_EXCEPTION:
-		case HCI_EV_INTEL_DEBUG_EXCEPTION:
-			if (skb->len < 1) {
-				BT_WARN("Evt ID:%02X", evt_id);
-				return;
-			}
-			b = (u8 *)skb->data;
-			for (i = 0; i < skb->len && i < HCI_MAX_EVENT_SIZE; ++i)
-				sprintf(line + strlen(line), " %02X", b[i]);
-			BT_WARN("Evt ID: %02X data:%s", evt_id, line);
-			break;
-		default:
-			if (skb->len < 1) {
-				BT_ERR("Unknown Evt ID:%02x", evt_id);
-				return;
-			}
-			b = (u8 *)skb->data;
-			for (i = 0; i < skb->len && i < HCI_MAX_EVENT_SIZE; ++i)
-				sprintf(line + strlen(line), " %02X", b[i]);
-			BT_ERR("Unknown Evt ID: %02X data:%s", evt_id, line);
-			break;
-		}
-	}
-}
-
 static void hci_mode_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_mode_change *ev = (void *) skb->data;
@@ -4351,6 +4372,7 @@ static void hci_sync_conn_complete_evt(struct hci_dev *hdev,
 	case 0x11:	/* Unsupported Feature or Parameter Value */
 	case 0x1c:	/* SCO interval rejected */
 	case 0x1a:	/* Unsupported Remote Feature */
+	case 0x1e:	/* Invalid LMP Parameters */
 	case 0x1f:	/* Unspecified error */
 	case 0x20:	/* Unsupported LMP Parameter value */
 		if (conn->out) {
@@ -4366,9 +4388,17 @@ static void hci_sync_conn_complete_evt(struct hci_dev *hdev,
 		break;
 	}
 
-	if (ev->air_mode == SCO_AIRMODE_TRANSP) {
+	bt_dev_dbg(hdev, "SCO connected with air mode: %02x", ev->air_mode);
+
+	switch (conn->setting & SCO_AIRMODE_MASK) {
+	case SCO_AIRMODE_CVSD:
 		if (hdev->notify)
-			hdev->notify(hdev, HCI_NOTIFY_AIR_MODE_TRANSP);
+			hdev->notify(hdev, HCI_NOTIFY_ENABLE_SCO_CVSD);
+		break;
+	case SCO_AIRMODE_TRANSP:
+		if (hdev->notify)
+			hdev->notify(hdev, HCI_NOTIFY_ENABLE_SCO_TRANSP);
+		break;
 	}
 
 	hci_connect_cfm(conn, ev->status);
@@ -5309,7 +5339,9 @@ static struct hci_conn *check_pending_le_conn(struct hci_dev *hdev,
 	/* Most controller will fail if we try to create new connections
 	 * while we have an existing one in slave role.
 	 */
-	if (hdev->conn_hash.le_num_slave > 0)
+	if (hdev->conn_hash.le_num_slave > 0 &&
+	    (!test_bit(HCI_QUIRK_VALID_LE_STATES, &hdev->quirks) ||
+	     !(hdev->le_states[3] & 0x10)))
 		return NULL;
 
 	/* If we're not connectable only connect devices that we have in
@@ -5733,9 +5765,6 @@ static void hci_le_ltk_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	ltk = hci_find_ltk(hdev, &conn->dst, conn->dst_type, conn->role);
 	if (!ltk)
-		goto not_found;
-
-	if (is_ltk_blocked(ltk, hdev))
 		goto not_found;
 
 	if (smp_ltk_is_sc(ltk)) {
@@ -6183,7 +6212,7 @@ void hci_event_packet(struct hci_dev *hdev, struct sk_buff *skb)
 		break;
 
 	case HCI_EV_VENDOR:
-		hci_vendor_evt(hdev, skb);
+		msft_vendor_evt(hdev, skb);
 		break;
 
 	default:

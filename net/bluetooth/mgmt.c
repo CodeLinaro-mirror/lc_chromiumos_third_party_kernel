@@ -108,13 +108,14 @@ static const u16 mgmt_commands[] = {
 	MGMT_OP_SET_APPEARANCE,
 	MGMT_OP_GET_PHY_CONFIGURATION,
 	MGMT_OP_SET_PHY_CONFIGURATION,
-	MGMT_OP_SET_WAKE_CAPABLE,
+	MGMT_OP_SET_BLOCKED_KEYS,
+	MGMT_OP_SET_WIDEBAND_SPEECH,
+	MGMT_OP_READ_SECURITY_INFO,
 	/* Begin Chromium only op codes*/
 	MGMT_OP_SET_ADVERTISING_INTERVALS,
 	MGMT_OP_SET_EVENT_MASK,
-	MGMT_OP_SET_BLOCKED_LTKS,
-	MGMT_OP_READ_SUPPORTED_CAPABILITIES,
 	MGMT_OP_SET_KERNEL_DEBUG,
+	MGMT_OP_SET_WAKE_CAPABLE,
 	/* End Chromium only op codes */
 };
 
@@ -163,6 +164,7 @@ static const u16 mgmt_untrusted_commands[] = {
 	MGMT_OP_READ_CONFIG_INFO,
 	MGMT_OP_READ_EXT_INDEX_LIST,
 	MGMT_OP_READ_EXT_INFO,
+	MGMT_OP_READ_SECURITY_INFO,
 };
 
 static const u16 mgmt_untrusted_events[] = {
@@ -771,6 +773,10 @@ static u32 get_supported_settings(struct hci_dev *hdev)
 
 		if (lmp_sc_capable(hdev))
 			settings |= MGMT_SETTING_SECURE_CONN;
+
+		if (test_bit(HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED,
+			     &hdev->quirks))
+			settings |= MGMT_SETTING_WIDEBAND_SPEECH;
 	}
 
 	if (lmp_le_capable(hdev)) {
@@ -855,6 +861,9 @@ static u32 get_current_settings(struct hci_dev *hdev)
 		if (bacmp(&hdev->static_addr, BDADDR_ANY))
 			settings |= MGMT_SETTING_STATIC_ADDRESS;
 	}
+
+	if (hci_dev_test_flag(hdev, HCI_WIDEBAND_SPEECH_ENABLED))
+		settings |= MGMT_SETTING_WIDEBAND_SPEECH;
 
 	if (hci_dev_test_flag(hdev, HCI_ADVERTISING_INTERVALS))
 		settings |= MGMT_SETTING_ADVERTISING_INTERVALS;
@@ -1149,7 +1158,8 @@ static int clean_up_hci_state(struct hci_dev *hdev)
 
 	hci_req_clear_adv_instance(hdev, NULL, NULL, 0x00, false);
 
-	__hci_req_disable_advertising(&req);
+	if (hci_dev_test_flag(hdev, HCI_LE_ADV))
+		__hci_req_disable_advertising(&req);
 
 	discov_stopped = hci_req_stop_discovery(&req);
 
@@ -1157,22 +1167,6 @@ static int clean_up_hci_state(struct hci_dev *hdev)
 		/* 0x15 == Terminated due to Power Off */
 		__hci_abort_conn(&req, conn, 0x15);
 	}
-
-	/* When there are no bluetooth activities, i.e., no advertising,
-	 * no scanning, and no connections, the only command built into
-	 * the request would be a conditional HCI command to disable
-	 * advertising. Since the advertising is already off, the command
-	 * is skipped at run time. This leads to an issue that there is
-	 * no command complete event and thus the clean_up_hci_complete()
-	 * callback below is not invoked. This ends up with a 5-second delay
-	 * in setting power off.
-	 * It is important to add this dummy HCI command at the end of the
-	 * request to ensure that the last command in the request would
-	 * definitely be executed. As a result, the clean_up_hci_complete()
-	 * callback would be executed which in turn starts the power off
-	 * procedure immediately.
-	 */
-	hci_req_add(&req, HCI_OP_READ_LOCAL_NAME, 0, NULL);
 
 	err = hci_req_run(&req, clean_up_hci_complete);
 	if (!err && discov_stopped)
@@ -1989,7 +1983,9 @@ static int set_le(struct sock *sk, struct hci_dev *hdev, void *data, u16 len)
 		hci_cp.le = val;
 		hci_cp.simul = 0x00;
 	} else {
-		__hci_req_disable_advertising(&req);
+		if (hci_dev_test_flag(hdev, HCI_LE_ADV))
+			__hci_req_disable_advertising(&req);
+
 		if (ext_adv_capable(hdev))
 			__hci_req_clear_ext_adv_sets(&req);
 	}
@@ -2373,6 +2369,14 @@ static int load_link_keys(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	for (i = 0; i < key_count; i++) {
 		struct mgmt_link_key_info *key = &cp->keys[i];
+
+		if (hci_is_blocked_key(hdev,
+				       HCI_BLOCKED_KEY_TYPE_LINKKEY,
+				       key->val)) {
+			bt_dev_warn(hdev, "Skipping blocked link key for %pMR",
+				    &key->addr.bdaddr);
+			continue;
+		}
 
 		/* Always ignore debug keys and require a new pairing if
 		 * the user wants to use them.
@@ -3564,6 +3568,160 @@ unlock:
 	return err;
 }
 
+static int set_blocked_keys(struct sock *sk, struct hci_dev *hdev, void *data,
+			    u16 len)
+{
+	int err = MGMT_STATUS_SUCCESS;
+	struct mgmt_cp_set_blocked_keys *keys = data;
+	const u16 max_key_count = ((U16_MAX - sizeof(*keys)) /
+				   sizeof(struct mgmt_blocked_key_info));
+	u16 key_count, expected_len;
+	int i;
+
+	BT_DBG("request for %s", hdev->name);
+
+	key_count = __le16_to_cpu(keys->key_count);
+	if (key_count > max_key_count) {
+		bt_dev_err(hdev, "too big key_count value %u", key_count);
+		return mgmt_cmd_status(sk, hdev->id, MGMT_OP_SET_BLOCKED_KEYS,
+				       MGMT_STATUS_INVALID_PARAMS);
+	}
+
+	expected_len = struct_size(keys, keys, key_count);
+	if (expected_len != len) {
+		bt_dev_err(hdev, "expected %u bytes, got %u bytes",
+			   expected_len, len);
+		return mgmt_cmd_status(sk, hdev->id, MGMT_OP_SET_BLOCKED_KEYS,
+				       MGMT_STATUS_INVALID_PARAMS);
+	}
+
+	hci_dev_lock(hdev);
+
+	hci_blocked_keys_clear(hdev);
+
+	for (i = 0; i < keys->key_count; ++i) {
+		struct blocked_key *b = kzalloc(sizeof(*b), GFP_KERNEL);
+
+		if (!b) {
+			err = MGMT_STATUS_NO_RESOURCES;
+			break;
+		}
+
+		b->type = keys->keys[i].type;
+		memcpy(b->val, keys->keys[i].val, sizeof(b->val));
+		list_add_rcu(&b->list, &hdev->blocked_keys);
+	}
+	hci_dev_unlock(hdev);
+
+	return mgmt_cmd_complete(sk, hdev->id, MGMT_OP_SET_BLOCKED_KEYS,
+				err, NULL, 0);
+}
+
+static int set_wideband_speech(struct sock *sk, struct hci_dev *hdev,
+			       void *data, u16 len)
+{
+	struct mgmt_mode *cp = data;
+	int err;
+	bool changed = false;
+
+	BT_DBG("request for %s", hdev->name);
+
+	if (!test_bit(HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED, &hdev->quirks))
+		return mgmt_cmd_status(sk, hdev->id,
+				       MGMT_OP_SET_WIDEBAND_SPEECH,
+				       MGMT_STATUS_NOT_SUPPORTED);
+
+	if (cp->val != 0x00 && cp->val != 0x01)
+		return mgmt_cmd_status(sk, hdev->id,
+				       MGMT_OP_SET_WIDEBAND_SPEECH,
+				       MGMT_STATUS_INVALID_PARAMS);
+
+	hci_dev_lock(hdev);
+
+	if (pending_find(MGMT_OP_SET_WIDEBAND_SPEECH, hdev)) {
+		err = mgmt_cmd_status(sk, hdev->id,
+				      MGMT_OP_SET_WIDEBAND_SPEECH,
+				      MGMT_STATUS_BUSY);
+		goto unlock;
+	}
+
+	if (hdev_is_powered(hdev) &&
+	    !!cp->val != hci_dev_test_flag(hdev,
+					   HCI_WIDEBAND_SPEECH_ENABLED)) {
+		err = mgmt_cmd_status(sk, hdev->id,
+				      MGMT_OP_SET_WIDEBAND_SPEECH,
+				      MGMT_STATUS_REJECTED);
+		goto unlock;
+	}
+
+	if (cp->val)
+		changed = !hci_dev_test_and_set_flag(hdev,
+						   HCI_WIDEBAND_SPEECH_ENABLED);
+	else
+		changed = hci_dev_test_and_clear_flag(hdev,
+						   HCI_WIDEBAND_SPEECH_ENABLED);
+
+	err = send_settings_rsp(sk, MGMT_OP_SET_WIDEBAND_SPEECH, hdev);
+	if (err < 0)
+		goto unlock;
+
+	if (changed)
+		err = new_settings(hdev, sk);
+
+unlock:
+	hci_dev_unlock(hdev);
+	return err;
+}
+
+static int read_security_info(struct sock *sk, struct hci_dev *hdev,
+			      void *data, u16 data_len)
+{
+	char buf[16];
+	struct mgmt_rp_read_security_info *rp = (void *)buf;
+	u16 sec_len = 0;
+	u8 flags = 0;
+
+	bt_dev_dbg(hdev, "sock %p", sk);
+
+	memset(&buf, 0, sizeof(buf));
+
+	hci_dev_lock(hdev);
+
+	/* When the Read Simple Pairing Options command is supported, then
+	 * the remote public key validation is supported.
+	 */
+	if (hdev->commands[41] & 0x08)
+		flags |= 0x01;	/* Remote public key validation (BR/EDR) */
+
+	flags |= 0x02;		/* Remote public key validation (LE) */
+
+	/* When the Read Encryption Key Size command is supported, then the
+	 * encryption key size is enforced.
+	 */
+	if (hdev->commands[20] & 0x10)
+		flags |= 0x04;	/* Encryption key size enforcement (BR/EDR) */
+
+	flags |= 0x08;		/* Encryption key size enforcement (LE) */
+
+	sec_len = eir_append_data(rp->sec, sec_len, 0x01, &flags, 1);
+
+	/* When the Read Simple Pairing Options command is supported, then
+	 * also max encryption key size information is provided.
+	 */
+	if (hdev->commands[41] & 0x08)
+		sec_len = eir_append_le16(rp->sec, sec_len, 0x02,
+					  hdev->max_enc_key_size);
+
+	sec_len = eir_append_le16(rp->sec, sec_len, 0x03, SMP_MAX_ENC_KEY_SIZE);
+
+	rp->sec_len = cpu_to_le16(sec_len);
+
+	hci_dev_unlock(hdev);
+
+	return mgmt_cmd_complete(sk, hdev->id, MGMT_OP_READ_SECURITY_INFO, 0,
+				 rp, sizeof(*rp) + sec_len);
+}
+
 static void read_local_oob_data_complete(struct hci_dev *hdev, u8 status,
 				         u16 opcode, struct sk_buff *skb)
 {
@@ -3844,7 +4002,7 @@ void mgmt_start_discovery_complete(struct hci_dev *hdev, u8 status)
 	/* Handle suspend notifier */
 	if (test_and_clear_bit(SUSPEND_UNPAUSE_DISCOVERY,
 			       hdev->suspend_tasks)) {
-		BT_DBG("Unpaused discovery");
+		bt_dev_dbg(hdev, "Unpaused discovery");
 		wake_up(&hdev->suspend_wait_q);
 	}
 }
@@ -4085,7 +4243,7 @@ void mgmt_stop_discovery_complete(struct hci_dev *hdev, u8 status)
 
 	/* Handle suspend notifier */
 	if (test_and_clear_bit(SUSPEND_PAUSE_DISCOVERY, hdev->suspend_tasks)) {
-		BT_DBG("Paused discovery");
+		bt_dev_dbg(hdev, "Paused discovery");
 		wake_up(&hdev->suspend_wait_q);
 	}
 }
@@ -4322,11 +4480,11 @@ static void set_advertising_complete(struct hci_dev *hdev, u8 status,
 	/* Handle suspend notifier */
 	if (test_and_clear_bit(SUSPEND_PAUSE_ADVERTISING,
 			       hdev->suspend_tasks)) {
-		BT_DBG("Paused advertising");
+		bt_dev_dbg(hdev, "Paused advertising");
 		wake_up(&hdev->suspend_wait_q);
 	} else if (test_and_clear_bit(SUSPEND_UNPAUSE_ADVERTISING,
 				      hdev->suspend_tasks)) {
-		BT_DBG("Unpaused advertising");
+		bt_dev_dbg(hdev, "Unpaused advertising");
 		wake_up(&hdev->suspend_wait_q);
 	}
 
@@ -4554,14 +4712,11 @@ static int set_scan_params(struct sock *sk, struct hci_dev *hdev,
 	err = mgmt_cmd_complete(sk, hdev->id, MGMT_OP_SET_SCAN_PARAMS, 0,
 				NULL, 0);
 
-	/* If background scan is running (and not in progress of stopping
-	 * already), restart it so new parameters are
+	/* If background scan is running, restart it so new parameters are
 	 * loaded.
 	 */
 	if (hci_dev_test_flag(hdev, HCI_LE_SCAN) &&
-	    !hci_dev_test_flag(hdev, HCI_LE_SCAN_CHANGE_IN_PROGRESS) &&
 	    hdev->discovery.state == DISCOVERY_STOPPED) {
-
 		struct hci_request req;
 
 		hci_req_init(&req, hdev);
@@ -4818,45 +4973,43 @@ failed:
 static int set_wake_capable(struct sock *sk, struct hci_dev *hdev, void *data,
 			    u16 len)
 {
-	int err;
-	u8 status;
 	struct mgmt_cp_set_wake_capable *cp = data;
+	struct hci_conn_params *params;
+	int err;
+	u8 status = MGMT_STATUS_FAILED;
 	u8 addr_type = cp->addr.type == BDADDR_BREDR ?
 			       cp->addr.type :
 			       le_addr_type(cp->addr.type);
 
-	BT_DBG("Set wake capable %pMR (type 0x%x) = 0x%x\n", &cp->addr.bdaddr,
-	       addr_type, cp->wake_capable);
+	bt_dev_dbg(hdev, "Set wake capable %pMR (type 0x%x) = 0x%x\n",
+		   &cp->addr.bdaddr, addr_type, cp->wake_capable);
 
-	if (cp->wake_capable)
-		err = hci_bdaddr_list_add(&hdev->wakeable, &cp->addr.bdaddr,
-					  addr_type);
-	else
-		err = hci_bdaddr_list_del(&hdev->wakeable, &cp->addr.bdaddr,
-					  addr_type);
+	if (cp->addr.type == BDADDR_BREDR) {
+		if (cp->wake_capable)
+			err = hci_bdaddr_list_add(&hdev->wakeable,
+						  &cp->addr.bdaddr, addr_type);
+		else
+			err = hci_bdaddr_list_del(&hdev->wakeable,
+						  &cp->addr.bdaddr, addr_type);
 
-	if (!err || err == -EEXIST || err == -ENOENT)
+		if (!err || err == -EEXIST || err == -ENOENT)
+			status = MGMT_STATUS_SUCCESS;
+
+		goto done;
+	}
+
+	/* Add wakeable param to le connection parameters */
+	params = hci_conn_params_lookup(hdev, &cp->addr.bdaddr, addr_type);
+	if (params) {
+		params->wakeable = cp->wake_capable;
 		status = MGMT_STATUS_SUCCESS;
-	else
-		status = MGMT_STATUS_FAILED;
+	}
 
+done:
 	err = mgmt_cmd_complete(sk, hdev->id, MGMT_OP_SET_WAKE_CAPABLE, status,
 				cp, sizeof(*cp));
 
 	return err;
-}
-
-static int set_blocked_ltks(struct sock *sk, struct hci_dev *hdev,
-			    void *data, u16 len)
-{
-	struct mgmt_cp_set_blocked_ltks *cp = data;
-
-	hci_dev_lock(hdev);
-	memcpy(hdev->blocked_ltks, cp->ltks, sizeof(hdev->blocked_ltks));
-	hci_dev_unlock(hdev);
-
-	return mgmt_cmd_complete(sk, hdev->id, MGMT_OP_SET_BLOCKED_LTKS, 0,
-				 NULL, 0);
 }
 
 static void set_bredr_complete(struct hci_dev *hdev, u8 status, u16 opcode)
@@ -5305,6 +5458,14 @@ static int load_irks(struct sock *sk, struct hci_dev *hdev, void *cp_data,
 	for (i = 0; i < irk_count; i++) {
 		struct mgmt_irk_info *irk = &cp->irks[i];
 
+		if (hci_is_blocked_key(hdev,
+				       HCI_BLOCKED_KEY_TYPE_IRK,
+				       irk->val)) {
+			bt_dev_warn(hdev, "Skipping blocked IRK for %pMR",
+				    &irk->addr.bdaddr);
+			continue;
+		}
+
 		hci_add_irk(hdev, &irk->addr.bdaddr,
 			    le_addr_type(irk->addr.type), irk->val,
 			    BDADDR_ANY);
@@ -5387,6 +5548,14 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 	for (i = 0; i < key_count; i++) {
 		struct mgmt_ltk_info *key = &cp->keys[i];
 		u8 type, authenticated;
+
+		if (hci_is_blocked_key(hdev,
+				       HCI_BLOCKED_KEY_TYPE_LTK,
+				       key->val)) {
+			bt_dev_warn(hdev, "Skipping blocked LTK for %pMR",
+				    &key->addr.bdaddr);
+			continue;
+		}
 
 		switch (key->type) {
 		case MGMT_LTK_UNAUTHENTICATED:
@@ -7088,21 +7257,6 @@ static int get_adv_size_info(struct sock *sk, struct hci_dev *hdev,
 	return err;
 }
 
-static int read_supported_capabilities(struct sock *sk, struct hci_dev *hdev,
-				       void *data, u16 data_len)
-{
-	struct mgmt_rp_read_supported_capabilities rp;
-	int err;
-
-	rp.wide_band_speech = hdev->wide_band_speech;
-
-	err = mgmt_cmd_complete(sk, hdev->id,
-				MGMT_OP_READ_SUPPORTED_CAPABILITIES,
-				MGMT_STATUS_SUCCESS, &rp, sizeof(rp));
-
-	return err;
-}
-
 static int set_kernel_debug(struct sock *sk, struct hci_dev *hdev,
 			    void *data, u16 data_len)
 {
@@ -7208,9 +7362,11 @@ static const struct hci_mgmt_handler mgmt_handlers[] = {
 	{ set_appearance,	   MGMT_SET_APPEARANCE_SIZE },
 	{ get_phy_configuration,   MGMT_GET_PHY_CONFIGURATION_SIZE },
 	{ set_phy_configuration,   MGMT_SET_PHY_CONFIGURATION_SIZE },
-	{ NULL }, // 0x0046
-	{ set_wake_capable,	   MGMT_SET_WAKE_CAPABLE_SIZE },
-	{ NULL }, // 0x0048
+	{ set_blocked_keys,	   MGMT_OP_SET_BLOCKED_KEYS_SIZE,
+						HCI_MGMT_VAR_LEN },
+	{ set_wideband_speech,	   MGMT_SETTING_SIZE },
+	{ read_security_info,      MGMT_READ_SECURITY_INFO_SIZE,
+						HCI_MGMT_UNTRUSTED },
 	{ NULL }, // 0x0049
 	{ NULL }, // 0x004A
 	{ NULL }, // 0x0048
@@ -7237,11 +7393,12 @@ static const struct hci_mgmt_handler mgmt_handlers[] = {
 	/* Begin Chromium only op_codes */
 	{ set_advertising_intervals, MGMT_SET_ADVERTISING_INTERVALS_SIZE },
 	{ set_event_mask,	   MGMT_SET_EVENT_MASK_CP_SIZE },
-	{ set_blocked_ltks,	   MGMT_SET_BLOCKED_LTKS_CP_SIZE },
-	{ read_supported_capabilities, MGMT_READ_SUPPORTED_CAPABILITIES_SIZE },
+	{ NULL }, // 0x0062
+	{ NULL }, // 0x0063
 	{ set_kernel_debug,	   MGMT_SET_KERNEL_DEBUG_SIZE,
 						HCI_MGMT_NO_HDEV |
 						HCI_MGMT_UNTRUSTED },
+	{ set_wake_capable,		MGMT_SET_WAKE_CAPABLE_SIZE },
 	/* End Chromium only op_codes */
 };
 
@@ -7663,14 +7820,6 @@ void mgmt_device_disconnected(struct hci_dev *hdev, bdaddr_t *bdaddr,
 	ev.reason = reason;
 
 	mgmt_event(MGMT_EV_DEVICE_DISCONNECTED, hdev, &ev, sizeof(ev), sk);
-
-	if (hdev->disconnect_counter > 0) {
-		hdev->disconnect_counter--;
-		if (hdev->disconnect_counter <= 0) {
-			clear_bit(SUSPEND_DISCONNECTING, hdev->suspend_tasks);
-			wake_up(&hdev->suspend_wait_q);
-		}
-	}
 
 	if (sk)
 		sock_put(sk);
@@ -8144,7 +8293,6 @@ static bool is_filter_match(struct hci_dev *hdev, s8 rssi, u8 *eir,
 	 * scanning to ensure updated result with updated RSSI values.
 	 */
 	if (test_bit(HCI_QUIRK_STRICT_DUPLICATE_FILTER, &hdev->quirks)) {
-		BT_DBG("BT_DBG_DG: queue le_scan_restart: mgmt:restart_le_scan:is_filter_match\n");
 		restart_le_scan(hdev);
 
 		/* Validate RSSI value against the RSSI threshold once more. */

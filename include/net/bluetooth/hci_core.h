@@ -97,7 +97,8 @@ enum suspend_tasks {
 	SUSPEND_PAUSE_ADVERTISING,
 	SUSPEND_UNPAUSE_ADVERTISING,
 
-	SUSPEND_LE_SET_SCAN_ENABLE,
+	SUSPEND_SCAN_DISABLE,
+	SUSPEND_SCAN_ENABLE,
 	SUSPEND_DISCONNECTING,
 
 	SUSPEND_POWERING_DOWN,
@@ -108,7 +109,8 @@ enum suspend_tasks {
 
 enum suspended_state {
 	BT_RUNNING = 0,
-	BT_SUSPENDED,
+	BT_SUSPEND_DISCONNECT,
+	BT_SUSPEND_CONFIGURE_WAKE,
 };
 
 struct hci_conn_hash {
@@ -139,6 +141,13 @@ struct bt_uuid {
 	u8 uuid[16];
 	u8 size;
 	u8 svc_hint;
+};
+
+struct blocked_key {
+	struct list_head list;
+	struct rcu_head rcu;
+	u8 type;
+	u8 val[16];
 };
 
 struct smp_csrk {
@@ -218,8 +227,8 @@ struct adv_info {
  * - the default min/max intervals, and
  * - the valid range of min/max intervals.
  */
-#define HCI_DEFAULT_LE_ADV_MIN_INTERVAL	0x0800
-#define HCI_DEFAULT_LE_ADV_MAX_INTERVAL	0x0800
+#define HCI_DEFAULT_LE_ADV_MIN_INTERVAL	0x0122
+#define HCI_DEFAULT_LE_ADV_MAX_INTERVAL	0x0122
 #define HCI_VALID_LE_ADV_MIN_INTERVAL	0x0020
 #define HCI_VALID_LE_ADV_MAX_INTERVAL	0x4000
 #define ADV_DURATION_MIN_GRACE_PERIOD	5
@@ -248,9 +257,6 @@ struct adv_info {
 /* Default authenticated payload timeout 30s */
 #define DEFAULT_AUTH_PAYLOAD_TIMEOUT   0x0bb8
 
-#define MAX_BLOCKED_LTKS		8
-#define LTK_LENGTH			16
-
 struct amp_assoc {
 	__u16	len;
 	__u16	offset;
@@ -260,15 +266,6 @@ struct amp_assoc {
 };
 
 #define HCI_MAX_PAGES	3
-
-#define CONTROLLER_ID(vendor, product) \
-	.idVendor = (vendor), \
-	.idProduct = (product)
-
-struct controller_id_t {
-	__u16	idVendor;
-	__u16	idProduct;
-};
 
 struct hci_dev {
 	struct list_head list;
@@ -312,6 +309,7 @@ struct hci_dev {
 	__u8		stored_num_keys;
 	__u8		io_capability;
 	__s8		inq_tx_power;
+	__u8		err_data_reporting;
 	__u16		page_scan_interval;
 	__u16		page_scan_window;
 	__u8		page_scan_type;
@@ -340,11 +338,11 @@ struct hci_dev {
 	__u16		conn_info_max_age;
 	__u16		auth_payload_timeout;
 	__u8		min_enc_key_size;
+	__u8		max_enc_key_size;
+	__u8		pairing_opts;
 	__u8		ssp_debug_mode;
 	__u8		hw_error_code;
 	__u32		clock;
-	struct controller_id_t controller_id;
-	__u8		wide_band_speech;
 
 	__u16		devid_source;
 	__u16		devid_vendor;
@@ -383,9 +381,6 @@ struct hci_dev {
 	unsigned int	acl_cnt;
 	unsigned int	sco_cnt;
 	unsigned int	le_cnt;
-
-	unsigned int	count_adv_change_in_progress;
-	unsigned int	count_scan_change_in_progress;
 
 	unsigned int	acl_mtu;
 	unsigned int	sco_mtu;
@@ -459,9 +454,8 @@ struct hci_dev {
 	struct work_struct	suspend_prepare;
 	enum suspended_state	suspend_state_next;
 	enum suspended_state	suspend_state;
-	int			disconnect_counter;
-	bool			freeze_filters;
-	bool			enable_suspend_notifier;
+	bool			scanning_paused;
+	bool			suspended;
 
 	wait_queue_head_t	suspend_wait_q;
 	DECLARE_BITMAP(suspend_tasks, __SUSPEND_NUM_TASKS);
@@ -482,6 +476,7 @@ struct hci_dev {
 	struct list_head	le_conn_params;
 	struct list_head	pend_le_conns;
 	struct list_head	pend_le_reports;
+	struct list_head	blocked_keys;
 
 	struct hci_dev_stats	stat;
 
@@ -502,8 +497,6 @@ struct hci_dev {
 	__u8			adv_data_len;
 	__u8			scan_rsp_data[HCI_MAX_AD_LENGTH];
 	__u8			scan_rsp_data_len;
-	/* These long term keys shouldn't be used */
-	__u8			blocked_ltks[MAX_BLOCKED_LTKS][LTK_LENGTH];
 
 	struct list_head	adv_instances;
 	unsigned int		adv_instance_cnt;
@@ -520,6 +513,11 @@ struct hci_dev {
 	struct led_trigger	*power_led;
 #endif
 
+#if IS_ENABLED(CONFIG_BT_MSFTEXT)
+	__u16			msft_opcode;
+	void			*msft_data;
+#endif
+
 	int (*open)(struct hci_dev *hdev);
 	int (*close)(struct hci_dev *hdev);
 	int (*flush)(struct hci_dev *hdev);
@@ -532,6 +530,7 @@ struct hci_dev {
 	int (*set_diag)(struct hci_dev *hdev, bool enable);
 	int (*set_bdaddr)(struct hci_dev *hdev, const bdaddr_t *bdaddr);
 	void (*cmd_timeout)(struct hci_dev *hdev);
+	bool (*prevent_wake)(struct hci_dev *hdev);
 };
 
 #define HCI_PHY_HANDLE(handle)	(handle & 0xff)
@@ -652,6 +651,7 @@ struct hci_conn_params {
 
 	struct hci_conn *conn;
 	bool explicit_connect;
+	bool wakeable;
 };
 
 extern struct list_head hci_dev_list;
@@ -1149,6 +1149,14 @@ int hci_recv_frame(struct hci_dev *hdev, struct sk_buff *skb);
 int hci_recv_diag(struct hci_dev *hdev, struct sk_buff *skb);
 __printf(2, 3) void hci_set_hw_info(struct hci_dev *hdev, const char *fmt, ...);
 __printf(2, 3) void hci_set_fw_info(struct hci_dev *hdev, const char *fmt, ...);
+
+static inline void hci_set_msft_opcode(struct hci_dev *hdev, __u16 opcode)
+{
+#if IS_ENABLED(CONFIG_BT_MSFTEXT)
+	hdev->msft_opcode = opcode;
+#endif
+}
+
 int hci_dev_open(__u16 dev);
 int hci_dev_close(__u16 dev);
 int hci_dev_do_close(struct hci_dev *hdev);
@@ -1208,6 +1216,8 @@ struct smp_irk *hci_find_irk_by_addr(struct hci_dev *hdev, bdaddr_t *bdaddr,
 struct smp_irk *hci_add_irk(struct hci_dev *hdev, bdaddr_t *bdaddr,
 			    u8 addr_type, u8 val[16], bdaddr_t *rpa);
 void hci_remove_irk(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 addr_type);
+bool hci_is_blocked_key(struct hci_dev *hdev, u8 type, u8 val[16]);
+void hci_blocked_keys_clear(struct hci_dev *hdev);
 void hci_smp_irks_clear(struct hci_dev *hdev);
 
 bool hci_bdaddr_is_paired(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type);
@@ -1696,8 +1706,6 @@ void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __le64 rand,
 
 void hci_copy_identity_address(struct hci_dev *hdev, bdaddr_t *bdaddr,
 			       u8 *bdaddr_type);
-
-bool is_ltk_blocked(struct smp_ltk *key, struct hci_dev *hdev);
 
 #define SCO_AIRMODE_MASK       0x0003
 #define SCO_AIRMODE_CVSD       0x0000

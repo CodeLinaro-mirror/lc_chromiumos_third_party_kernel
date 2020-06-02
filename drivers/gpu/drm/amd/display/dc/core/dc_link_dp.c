@@ -863,7 +863,7 @@ static enum link_training_result perform_clock_recovery_sequence(
 				lt_settings);
 
 		/* 2. update DPCD of the receiver*/
-		if (!retries_cr)
+		if (!retry_count)
 			/* EPR #361076 - write as a 5-byte burst,
 			 * but only for the 1-st iteration.*/
 			dpcd_set_lt_pattern_and_lane_settings(
@@ -2060,11 +2060,11 @@ static bool allow_hpd_rx_irq(const struct dc_link *link)
 	return false;
 }
 
-static bool handle_hpd_irq_psr_sink(const struct dc_link *link)
+static bool handle_hpd_irq_psr_sink(struct dc_link *link)
 {
 	union dpcd_psr_configuration psr_configuration;
 
-	if (!link->psr_enabled)
+	if (!link->psr_feature_enabled)
 		return false;
 
 	dm_helpers_dp_read_dpcd(
@@ -2103,8 +2103,8 @@ static bool handle_hpd_irq_psr_sink(const struct dc_link *link)
 				sizeof(psr_error_status.raw));
 
 			/* PSR error, disable and re-enable PSR */
-			dc_link_set_psr_enable(link, false, true);
-			dc_link_set_psr_enable(link, true, true);
+			dc_link_set_psr_allow_active(link, false, true);
+			dc_link_set_psr_allow_active(link, true, true);
 
 			return true;
 		} else if (psr_sink_psr_status.bits.SINK_SELF_REFRESH_STATUS ==
@@ -2898,6 +2898,17 @@ static bool retrieve_link_cap(struct dc_link *link)
 		link->dpcd_caps.sink_dev_id_str,
 		sink_id.ieee_device_id,
 		sizeof(sink_id.ieee_device_id));
+
+	/* Quirk Apple MBP 2017 15" Retina panel: Wrong DP_MAX_LINK_RATE */
+	{
+		uint8_t str_mbp_2017[] = { 101, 68, 21, 101, 98, 97 };
+
+		if ((link->dpcd_caps.sink_dev_id == 0x0010fa) &&
+		    !memcmp(link->dpcd_caps.sink_dev_id_str, str_mbp_2017,
+			    sizeof(str_mbp_2017))) {
+			link->reported_link_cap.link_rate = 0x0c;
+		}
+	}
 
 	core_link_read_dpcd(
 		link,
