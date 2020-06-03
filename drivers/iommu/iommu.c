@@ -329,6 +329,18 @@ static int __init iommu_dma_setup(char *str)
 }
 early_param("iommu.strict", iommu_dma_setup);
 
+#define DOMAIN_NAME_LEN	32
+static char domain_name[DOMAIN_NAME_LEN];
+static bool filter;
+
+static int __init iommu_trace_filter_byname(char *str)
+{
+	strlcpy(domain_name, str, DOMAIN_NAME_LEN);
+	filter = true;
+	return 1;
+}
+__setup("iommu.domain_name=", iommu_trace_filter_byname);
+
 static ssize_t iommu_group_attr_show(struct kobject *kobj,
 				     struct attribute *__attr, char *buf)
 {
@@ -1906,6 +1918,8 @@ static struct iommu_domain *__iommu_domain_alloc(struct bus_type *bus,
 	/* Assume all sizes by default; the driver may override this later */
 	domain->pgsize_bitmap  = bus->iommu_ops->pgsize_bitmap;
 
+	memset(domain->name, 0, IOMMU_DOMAIN_NAME_LEN);
+
 	return domain;
 }
 
@@ -1930,8 +1944,14 @@ static int __iommu_attach_device(struct iommu_domain *domain,
 		return -ENODEV;
 
 	ret = domain->ops->attach_dev(domain, dev);
-	if (!ret)
+	if (!ret) {
 		trace_attach_device_to_domain(dev);
+
+		if (!strnlen(domain->name, IOMMU_DOMAIN_NAME_LEN)) {
+			strlcpy(domain->name, dev_name(dev),
+				IOMMU_DOMAIN_NAME_LEN);
+		}
+	}
 	return ret;
 }
 
@@ -2415,8 +2435,12 @@ static int __iommu_map(struct iommu_domain *domain, unsigned long iova,
 	/* unroll mapping in case something went wrong */
 	if (ret)
 		iommu_unmap(domain, orig_iova, orig_size - size);
-	else
-		trace_map(orig_iova, orig_paddr, orig_size);
+	else {
+		if (filter && !strcmp(domain_name, domain->name))
+			trace_map(domain, orig_iova, orig_paddr, orig_size);
+		else if (!filter)
+			trace_map(domain, orig_iova, orig_paddr, orig_size);
+	}
 
 	return ret;
 }
@@ -2486,7 +2510,11 @@ static size_t __iommu_unmap(struct iommu_domain *domain,
 		unmapped += unmapped_page;
 	}
 
-	trace_unmap(orig_iova, size, unmapped);
+	if (filter && !strcmp(domain_name, domain->name))
+		trace_unmap(domain, orig_iova, size, unmapped);
+	else if (!filter)
+		trace_unmap(domain, orig_iova, size, unmapped);
+
 	return unmapped;
 }
 
