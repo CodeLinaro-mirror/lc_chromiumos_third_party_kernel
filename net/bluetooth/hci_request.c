@@ -35,7 +35,7 @@
 #define HCI_REQ_CANCELED  2
 
 #define LE_SUSPEND_SCAN_WINDOW		0x0012
-#define LE_SUSPEND_SCAN_INTERVAL	0x0060
+#define LE_SUSPEND_SCAN_INTERVAL	0x0400
 
 void hci_req_init(struct hci_request *req, struct hci_dev *hdev)
 {
@@ -890,7 +890,7 @@ void hci_req_add_le_passive_scan(struct hci_request *req)
 	struct hci_dev *hdev = req->hdev;
 	u8 own_addr_type;
 	u8 filter_policy;
-	u8 window, interval;
+	u16 window, interval;
 
 	if (hdev->scanning_paused) {
 		bt_dev_dbg(hdev, "Scanning is paused for suspend");
@@ -1044,7 +1044,7 @@ void hci_req_prepare_suspend(struct hci_dev *hdev, enum suspended_state next)
 		if (old_state != DISCOVERY_STOPPED) {
 			set_bit(SUSPEND_PAUSE_DISCOVERY, hdev->suspend_tasks);
 			hci_discovery_set_state(hdev, DISCOVERY_STOPPING);
-			queue_work(hdev->req_workqueue, &hdev->discov_update);
+			queue_work(hdev->req_workqueue, &hdev->stop_discov_update);
 		}
 
 		hdev->discovery_paused = true;
@@ -1090,7 +1090,7 @@ void hci_req_prepare_suspend(struct hci_dev *hdev, enum suspended_state next)
 				   disconnect_counter);
 			set_bit(SUSPEND_DISCONNECTING, hdev->suspend_tasks);
 		}
-	} else if (next == BT_SUSPEND_COMPLETE) {
+	} else if (next == BT_SUSPEND_CONFIGURE_WAKE) {
 		/* Unpause to take care of updating scanning params */
 		hdev->scanning_paused = false;
 		/* Enable event filter for paired devices */
@@ -1125,7 +1125,7 @@ void hci_req_prepare_suspend(struct hci_dev *hdev, enum suspended_state next)
 		    hdev->discovery_old_state != DISCOVERY_STOPPING) {
 			set_bit(SUSPEND_UNPAUSE_DISCOVERY, hdev->suspend_tasks);
 			hci_discovery_set_state(hdev, DISCOVERY_STARTING);
-			queue_work(hdev->req_workqueue, &hdev->discov_update);
+			queue_work(hdev->req_workqueue, &hdev->start_discov_update);
 		}
 
 		hci_req_run(&req, suspend_req_complete);
@@ -1993,17 +1993,25 @@ int __hci_req_schedule_adv_instance(struct hci_request *req, u8 instance,
 	if (!ext_adv_capable(hdev)) {
 		hdev->adv_instance_timeout = timeout;
 		queue_delayed_work(hdev->req_workqueue,
-			   &hdev->adv_instance_expire,
-			   msecs_to_jiffies(timeout * 1000));
+				   &hdev->adv_instance_expire,
+				   msecs_to_jiffies(timeout));
 	}
 
-	/* If we're just re-scheduling the same instance again then do not
-	 * execute any HCI commands. This happens when a single instance is
-	 * being advertised.
+	/* In case of one single advertising instance, if the same instance
+	 * is rescheduled, the update on the advertising data and scan response
+	 * data depends on the value of flag le_adv_param_changed.
 	 */
 	if (!force && hdev->cur_adv_instance == instance &&
-	    hci_dev_test_flag(hdev, HCI_LE_ADV))
+	    hci_dev_test_flag(hdev, HCI_LE_ADV)) {
+		/* If advertising parameters have been changed, we need to
+		 * update the parameters and re-enable advertising.
+		 */
+		if (hdev->le_adv_param_changed) {
+			__hci_req_enable_advertising(req);
+			hdev->le_adv_param_changed = false;
+		}
 		return 0;
+	}
 
 	hdev->cur_adv_instance = instance;
 	if (ext_adv_capable(hdev)) {
@@ -2013,6 +2021,7 @@ int __hci_req_schedule_adv_instance(struct hci_request *req, u8 instance,
 		__hci_req_update_scan_rsp_data(req, instance);
 		__hci_req_enable_advertising(req);
 	}
+	hdev->le_adv_param_changed = false;
 
 	return 0;
 }
@@ -2802,7 +2811,10 @@ static void start_discovery(struct hci_dev *hdev, u8 *status)
 		break;
 	case DISCOV_TYPE_LE:
 		timeout = msecs_to_jiffies(DISCOV_LE_TIMEOUT);
-		hci_req_sync(hdev, active_scan, DISCOV_LE_SCAN_INT,
+		/* Reduce the LE active scan duty cycle to 50% by increasing
+		 * the scan interval from 11.25ms to 22.5ms
+		 */
+		hci_req_sync(hdev, active_scan, DISCOV_LE_SCAN_INT * 2,
 			     HCI_CMD_TIMEOUT, status);
 		break;
 	default:
@@ -2886,31 +2898,46 @@ static int stop_discovery(struct hci_request *req, unsigned long opt)
 	return 0;
 }
 
-static void discov_update(struct work_struct *work)
+static void start_discov_update(struct work_struct *work)
 {
 	struct hci_dev *hdev = container_of(work, struct hci_dev,
-					    discov_update);
+					    start_discov_update);
 	u8 status = 0;
 
-	switch (hdev->discovery.state) {
-	case DISCOVERY_STARTING:
+	BT_DBG("%s old state %u", hdev->name, hdev->discovery.state);
+
+	if (hci_discovery_active(hdev))
+		BT_DBG("discovery was already started");
+	else
 		start_discovery(hdev, &status);
-		mgmt_start_discovery_complete(hdev, status);
-		if (status)
-			hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
-		else
-			hci_discovery_set_state(hdev, DISCOVERY_FINDING);
-		break;
-	case DISCOVERY_STOPPING:
-		hci_req_sync(hdev, stop_discovery, 0, HCI_CMD_TIMEOUT, &status);
-		mgmt_stop_discovery_complete(hdev, status);
-		if (!status)
-			hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
-		break;
-	case DISCOVERY_STOPPED:
-	default:
-		return;
+
+	mgmt_start_discovery_complete(hdev, status);
+	if (status) {
+		hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
+		BT_ERR("Failed to start discovery: status 0x%02x", status);
+	} else {
+		hci_discovery_set_state(hdev, DISCOVERY_FINDING);
 	}
+}
+
+static void stop_discov_update(struct work_struct *work)
+{
+	struct hci_dev *hdev = container_of(work, struct hci_dev,
+					    stop_discov_update);
+	u8 status = 0;
+
+	BT_DBG("%s old state %u", hdev->name, hdev->discovery.state);
+
+	if (hdev->discovery.state == DISCOVERY_STOPPED)
+		BT_DBG("discovery was already stopped");
+	else
+		hci_req_sync(hdev, stop_discovery, 0, HCI_CMD_TIMEOUT, &status);
+
+	mgmt_stop_discovery_complete(hdev, status);
+	if (status)
+		BT_ERR("Failed to stop discovery: status 0x%02x", status);
+	else
+		hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
 }
 
 static void discov_off(struct work_struct *work)
@@ -3048,7 +3075,8 @@ int __hci_req_hci_power_on(struct hci_dev *hdev)
 
 void hci_request_setup(struct hci_dev *hdev)
 {
-	INIT_WORK(&hdev->discov_update, discov_update);
+	INIT_WORK(&hdev->start_discov_update, start_discov_update);
+	INIT_WORK(&hdev->stop_discov_update, stop_discov_update);
 	INIT_WORK(&hdev->bg_scan_update, bg_scan_update);
 	INIT_WORK(&hdev->scan_update, scan_update_work);
 	INIT_WORK(&hdev->connectable_update, connectable_update_work);
@@ -3063,7 +3091,8 @@ void hci_request_cancel_all(struct hci_dev *hdev)
 {
 	hci_req_sync_cancel(hdev, ENODEV);
 
-	cancel_work_sync(&hdev->discov_update);
+	cancel_work_sync(&hdev->start_discov_update);
+	cancel_work_sync(&hdev->stop_discov_update);
 	cancel_work_sync(&hdev->bg_scan_update);
 	cancel_work_sync(&hdev->scan_update);
 	cancel_work_sync(&hdev->connectable_update);

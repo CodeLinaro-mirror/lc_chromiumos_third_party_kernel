@@ -35,17 +35,33 @@
 #include "a2mp.h"
 #include "amp.h"
 #include "smp.h"
+#include "msft.h"
 
 #define ZERO_KEY "\x00\x00\x00\x00\x00\x00\x00\x00" \
 		 "\x00\x00\x00\x00\x00\x00\x00\x00"
 
 /* Handle HCI Event packets */
 
-static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb,
+				  u8 *new_status)
 {
 	__u8 status = *((__u8 *) skb->data);
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	/* It is possible that we receive Inquiry Complete event right
+	 * before we receive Inquiry Cancel Command Complete event, in
+	 * which case the latter event should have status of Command
+	 * Disallowed (0x0c). This should not be treated as error, since
+	 * we actually achieve what Inquiry Cancel wants to achieve,
+	 * which is to end the last Inquiry session.
+	 */
+	if (status == 0x0c && !test_bit(HCI_INQUIRY, &hdev->flags)) {
+		bt_dev_warn(hdev, "Ignoring error of Inquiry Cancel command");
+		status = 0x00;
+	}
+
+	*new_status = status;
 
 	if (status)
 		return;
@@ -744,6 +760,23 @@ static void hci_cc_read_bd_addr(struct hci_dev *hdev, struct sk_buff *skb)
 
 	if (hci_dev_test_flag(hdev, HCI_SETUP))
 		bacpy(&hdev->setup_addr, &rp->bdaddr);
+}
+
+static void hci_cc_read_local_pairing_opts(struct hci_dev *hdev,
+					   struct sk_buff *skb)
+{
+	struct hci_rp_read_local_pairing_opts *rp = (void *) skb->data;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, rp->status);
+
+	if (rp->status)
+		return;
+
+	if (hci_dev_test_flag(hdev, HCI_SETUP) ||
+	    hci_dev_test_flag(hdev, HCI_CONFIG)) {
+		hdev->pairing_opts = rp->pairing_opts;
+		hdev->max_enc_key_size = rp->max_key_size;
+	}
 }
 
 static void hci_cc_read_page_scan_activity(struct hci_dev *hdev,
@@ -1772,6 +1805,37 @@ unlock:
 	hci_dev_unlock(hdev);
 }
 
+static void hci_cc_set_event_mask(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	u8 status = *((u8 *)skb->data);
+	u8 *events;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	if (status) {
+		BT_ERR("Set Event mask failed! status %d", status);
+		return;
+	}
+
+	hci_dev_lock(hdev);
+	events = hci_sent_cmd_data(hdev, HCI_OP_SET_EVENT_MASK);
+	if (events)
+		memcpy(hdev->event_mask, events, sizeof(hdev->event_mask));
+	else
+		BT_ERR("Set Event mask failed! events is NULL");
+
+	BT_DBG("Event mask byte 0: 0x%02x  byte 1: 0x%02x",
+	       hdev->event_mask[0], hdev->event_mask[1]);
+	BT_DBG("Event mask byte 2: 0x%02x  byte 3: 0x%02x",
+	       hdev->event_mask[2], hdev->event_mask[3]);
+	BT_DBG("Event mask byte 4: 0x%02x  byte 5: 0x%02x",
+	       hdev->event_mask[4], hdev->event_mask[5]);
+	BT_DBG("Event mask byte 6: 0x%02x  byte 7: 0x%02x",
+	       hdev->event_mask[6], hdev->event_mask[7]);
+
+	hci_dev_unlock(hdev);
+}
+
 static void hci_cc_write_ssp_debug_mode(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	u8 status = *((u8 *) skb->data);
@@ -2607,8 +2671,16 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (ev->status) {
 		hci_connect_cfm(conn, ev->status);
 		hci_conn_del(conn);
-	} else if (ev->link_type != ACL_LINK)
+	} else if (ev->link_type == SCO_LINK) {
+		switch (conn->setting & SCO_AIRMODE_MASK) {
+		case SCO_AIRMODE_CVSD:
+			if (hdev->notify)
+				hdev->notify(hdev, HCI_NOTIFY_ENABLE_SCO_CVSD);
+			break;
+		}
+
 		hci_connect_cfm(conn, ev->status);
+	}
 
 unlock:
 	hci_dev_unlock(hdev);
@@ -3207,7 +3279,7 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb,
 
 	switch (*opcode) {
 	case HCI_OP_INQUIRY_CANCEL:
-		hci_cc_inquiry_cancel(hdev, skb);
+		hci_cc_inquiry_cancel(hdev, skb, status);
 		break;
 
 	case HCI_OP_PERIODIC_INQ:
@@ -3332,6 +3404,10 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb,
 
 	case HCI_OP_READ_BD_ADDR:
 		hci_cc_read_bd_addr(hdev, skb);
+		break;
+
+	case HCI_OP_READ_LOCAL_PAIRING_OPTS:
+		hci_cc_read_local_pairing_opts(hdev, skb);
 		break;
 
 	case HCI_OP_READ_PAGE_SCAN_ACTIVITY:
@@ -3536,6 +3612,10 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb,
 
 	case HCI_OP_LE_SET_ADV_SET_RAND_ADDR:
 		hci_cc_le_set_adv_set_random_addr(hdev, skb);
+		break;
+
+	case HCI_OP_SET_EVENT_MASK:
+		hci_cc_set_event_mask(hdev, skb);
 		break;
 
 	default:
@@ -4292,6 +4372,7 @@ static void hci_sync_conn_complete_evt(struct hci_dev *hdev,
 	case 0x11:	/* Unsupported Feature or Parameter Value */
 	case 0x1c:	/* SCO interval rejected */
 	case 0x1a:	/* Unsupported Remote Feature */
+	case 0x1e:	/* Invalid LMP Parameters */
 	case 0x1f:	/* Unspecified error */
 	case 0x20:	/* Unsupported LMP Parameter value */
 		if (conn->out) {
@@ -4304,6 +4385,19 @@ static void hci_sync_conn_complete_evt(struct hci_dev *hdev,
 
 	default:
 		conn->state = BT_CLOSED;
+		break;
+	}
+
+	bt_dev_dbg(hdev, "SCO connected with air mode: %02x", ev->air_mode);
+
+	switch (conn->setting & SCO_AIRMODE_MASK) {
+	case SCO_AIRMODE_CVSD:
+		if (hdev->notify)
+			hdev->notify(hdev, HCI_NOTIFY_ENABLE_SCO_CVSD);
+		break;
+	case SCO_AIRMODE_TRANSP:
+		if (hdev->notify)
+			hdev->notify(hdev, HCI_NOTIFY_ENABLE_SCO_TRANSP);
 		break;
 	}
 
@@ -5245,7 +5339,9 @@ static struct hci_conn *check_pending_le_conn(struct hci_dev *hdev,
 	/* Most controller will fail if we try to create new connections
 	 * while we have an existing one in slave role.
 	 */
-	if (hdev->conn_hash.le_num_slave > 0)
+	if (hdev->conn_hash.le_num_slave > 0 &&
+	    (!test_bit(HCI_QUIRK_VALID_LE_STATES, &hdev->quirks) ||
+	     !(hdev->le_states[3] & 0x10)))
 		return NULL;
 
 	/* If we're not connectable only connect devices that we have in
@@ -6143,6 +6239,10 @@ void hci_event_packet(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_EV_NUM_COMP_BLOCKS:
 		hci_num_comp_blocks_evt(hdev, skb);
+		break;
+
+	case HCI_EV_VENDOR:
+		msft_vendor_evt(hdev, skb);
 		break;
 
 	default:
