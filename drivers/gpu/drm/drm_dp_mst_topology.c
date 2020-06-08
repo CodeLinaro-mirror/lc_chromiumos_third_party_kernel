@@ -3111,7 +3111,7 @@ static void drm_dp_destroy_connector_work(struct work_struct *work)
 		 * else is using this port. Try wrapping the racing code with
 		 * destroy_connector_lock like we did in drm_dp_mst_detect_port
 		 */
-		WARN_ON(kref_read(&port->kref) != 1);
+		WARN_ON(atomic_read(&port->kref.refcount) != 1);
 		INIT_LIST_HEAD(&port->next);
 
 		mgr->cbs->destroy_connector(mgr, port->connector);
