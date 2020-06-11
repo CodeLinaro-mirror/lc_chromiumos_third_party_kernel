@@ -1,0 +1,209 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "sc7180-camera-pinctl.dtsi"
+
+&soc {
+	cam_cci0: qcom,cci@ac4a000 {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		cell-index = <0>;
+		cpas_intf = <&cpas>;
+		compatible = "qcom,cci";
+		reg = <0 0xac4a000 0 0x1000>;
+		reg-names = "cci";
+		reg-cam-base = <0 0x4a000>;
+		interrupt-names = "cam-cci0";
+		interrupts = <GIC_SPI 468 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&camcc TITAN_TOP_GDSC>;
+		clocks = <&camcc CAM_CC_CAMNOC_AXI_CLK>,
+			<&camcc CAM_CC_SOC_AHB_CLK>,
+			<&camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+			<&camcc CAM_CC_CPAS_AHB_CLK>,
+			<&camcc CAM_CC_CCI_0_CLK>,
+			<&camcc CAM_CC_CCI_0_CLK_SRC>;
+		clock-names = "camnoc_axi_clk",
+			"soc_ahb_clk",
+			"slow_ahb_src_clk",
+			"cpas_ahb_clk",
+			"cci_clk",
+			"cci_clk_src";
+		src-clock-name = "cci_clk_src";
+		clock-cntl-level = "lowsvs";
+		clock-rates = <0 0 0 0 0 37500000>;
+		pinctrl-names = "cam_default", "cam_suspend";
+		pinctrl-0 = <&cci0_active &cci1_active>;
+		pinctrl-1 = <&cci0_suspend &cci1_suspend>;
+		gpios = <&tlmm 17 0>,
+			<&tlmm 18 0>,
+			<&tlmm 19 0>,
+			<&tlmm 20 0>;
+		gpio-req-tbl-num = <0 1 2 3>;
+		gpio-req-tbl-flags = <1 1 1 1>;
+		gpio-req-tbl-label = "CCI_I2C_DATA0",
+			"CCI_I2C_CLK0",
+			"CCI_I2C_DATA1",
+			"CCI_I2C_CLK1";
+
+		i2c_freq_100Khz: qcom,i2c_standard_mode {
+			hw-thigh = <201>;
+			hw-tlow = <174>;
+			hw-tsu-sto = <204>;
+			hw-tsu-sta = <231>;
+			hw-thd-dat = <22>;
+			hw-thd-sta = <162>;
+			hw-tbuf = <227>;
+			hw-scl-stretch-en = <0>;
+			hw-trdhld = <6>;
+			hw-tsp = <3>;
+			cci-clk-src = <37500000>;
+		};
+
+		i2c_freq_400Khz: qcom,i2c_fast_mode {
+			hw-thigh = <38>;
+			hw-tlow = <56>;
+			hw-tsu-sto = <40>;
+			hw-tsu-sta = <40>;
+			hw-thd-dat = <22>;
+			hw-thd-sta = <35>;
+			hw-tbuf = <62>;
+			hw-scl-stretch-en = <0>;
+			hw-trdhld = <6>;
+			hw-tsp = <3>;
+			cci-clk-src = <37500000>;
+		};
+
+		i2c_freq_custom: qcom,i2c_custom_mode {
+			hw-thigh = <38>;
+			hw-tlow = <56>;
+			hw-tsu-sto = <40>;
+			hw-tsu-sta = <40>;
+			hw-thd-dat = <22>;
+			hw-thd-sta = <35>;
+			hw-tbuf = <62>;
+			hw-scl-stretch-en = <1>;
+			hw-trdhld = <6>;
+			hw-tsp = <3>;
+			cci-clk-src = <37500000>;
+		};
+
+		i2c_freq_1Mhz: qcom,i2c_fast_plus_mode {
+			hw-thigh = <16>;
+			hw-tlow = <22>;
+			hw-tsu-sto = <17>;
+			hw-tsu-sta = <18>;
+			hw-thd-dat = <16>;
+			hw-thd-sta = <15>;
+			hw-tbuf = <24>;
+			hw-scl-stretch-en = <0>;
+			hw-trdhld = <3>;
+			hw-tsp = <3>;
+			cci-clk-src = <37500000>;
+		};
+	};
+
+	cam_cci1: qcom,cci@ac4b000 {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		cell-index = <1>;
+		cpas_intf = <&cpas>;
+		compatible = "qcom,cci";
+		reg = <0 0xac4b000 0 0x1000>;
+		reg-names = "cci";
+		reg-cam-base = <0 0x4b000>;
+		interrupt-names = "cam-cci1";
+		interrupts = <GIC_SPI 462 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&camcc TITAN_TOP_GDSC>;
+		clocks = <&camcc CAM_CC_CAMNOC_AXI_CLK>,
+			<&camcc CAM_CC_SOC_AHB_CLK>,
+			<&camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+			<&camcc CAM_CC_CPAS_AHB_CLK>,
+			<&camcc CAM_CC_CCI_1_CLK>,
+			<&camcc CAM_CC_CCI_1_CLK_SRC>;
+		clock-names = "camnoc_axi_clk",
+			"soc_ahb_clk",
+			"slow_ahb_src_clk",
+			"cpas_ahb_clk",
+			"cci_clk",
+			"cci_clk_src";
+		src-clock-name = "cci_clk_src";
+		clock-cntl-level = "lowsvs";
+		clock-rates = <0 0 0 0 0 37500000>;
+		pinctrl-names = "cam_default", "cam_suspend";
+		gpios = <&tlmm 27 0>,
+			<&tlmm 28 0>;
+		gpio-req-tbl-num = <0 1>;
+		gpio-req-tbl-flags = <1 1>;
+		gpio-req-tbl-label = "CCI_I2C_DATA2",
+					"CCI_I2C_CLK2";
+
+		i2c_freq_100Khz_cci1: qcom,i2c_standard_mode {
+			hw-thigh = <201>;
+			hw-tlow = <174>;
+			hw-tsu-sto = <204>;
+			hw-tsu-sta = <231>;
+			hw-thd-dat = <22>;
+			hw-thd-sta = <162>;
+			hw-tbuf = <227>;
+			hw-scl-stretch-en = <0>;
+			hw-trdhld = <6>;
+			hw-tsp = <3>;
+			cci-clk-src = <37500000>;
+		};
+
+		i2c_freq_400Khz_cci1: qcom,i2c_fast_mode {
+			hw-thigh = <38>;
+			hw-tlow = <56>;
+			hw-tsu-sto = <40>;
+			hw-tsu-sta = <40>;
+			hw-thd-dat = <22>;
+			hw-thd-sta = <35>;
+			hw-tbuf = <62>;
+			hw-scl-stretch-en = <0>;
+			hw-trdhld = <6>;
+			hw-tsp = <3>;
+			cci-clk-src = <37500000>;
+		};
+
+		i2c_freq_custom_cci1: qcom,i2c_custom_mode {
+			hw-thigh = <38>;
+			hw-tlow = <56>;
+			hw-tsu-sto = <40>;
+			hw-tsu-sta = <40>;
+			hw-thd-dat = <22>;
+			hw-thd-sta = <35>;
+			hw-tbuf = <62>;
+			hw-scl-stretch-en = <1>;
+			hw-trdhld = <6>;
+			hw-tsp = <3>;
+			cci-clk-src = <37500000>;
+		};
+
+		i2c_freq_1Mhz_cci1: qcom,i2c_fast_plus_mode {
+			hw-thigh = <16>;
+			hw-tlow = <22>;
+			hw-tsu-sto = <17>;
+			hw-tsu-sta = <18>;
+			hw-thd-dat = <16>;
+			hw-thd-sta = <15>;
+			hw-tbuf = <24>;
+			hw-scl-stretch-en = <0>;
+			hw-trdhld = <3>;
+			hw-tsp = <3>;
+			cci-clk-src = <37500000>;
+		};
+	};
+};
