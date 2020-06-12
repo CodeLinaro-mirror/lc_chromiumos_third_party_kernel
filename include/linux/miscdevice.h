@@ -38,6 +38,7 @@
 #define IRNET_MINOR		187
 #define D7S_MINOR		193
 #define VFIO_MINOR		196
+#define PLAT_IRQ_FORWARD_MINOR	197
 #define TUN_MINOR		200
 #define CUSE_MINOR		203
 #define MWAVE_MINOR		219	/* ACP/Mwave Modem */
