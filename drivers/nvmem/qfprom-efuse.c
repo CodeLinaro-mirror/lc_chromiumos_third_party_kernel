@@ -443,7 +443,7 @@ err:
 
 static const struct qfprom_efuse_platform_data sc7180_qfp_efuse_data = {
 	.name = "sc7180-qfprom-efuse",
-	.fuse_blow_time_in_us = 10,
+	.fuse_blow_time_in_us = 100,
 	.accel_value = 0xD10,
 	.accel_reset_value = 0x800,
 	.qfprom_blow_timer_value = 25,
