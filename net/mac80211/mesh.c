@@ -166,6 +166,7 @@ int mesh_rmc_init(struct ieee80211_sub_if_data *sdata)
 	sdata->u.mesh.rmc = kmalloc(sizeof(struct mesh_rmc), GFP_KERNEL);
 	if (!sdata->u.mesh.rmc)
 		return -ENOMEM;
+	sdata->local->memory_stats.malloc_size += sizeof(struct mesh_rmc);
 	sdata->u.mesh.rmc->idx_mask = RMC_BUCKETS - 1;
 	for (i = 0; i < RMC_BUCKETS; i++)
 		INIT_HLIST_HEAD(&sdata->u.mesh.rmc->bucket[i]);
@@ -189,6 +190,7 @@ void mesh_rmc_free(struct ieee80211_sub_if_data *sdata)
 		}
 	}
 
+	sdata->local->memory_stats.malloc_size -= sizeof(struct mesh_rmc);
 	kfree(rmc);
 	sdata->u.mesh.rmc = NULL;
 }

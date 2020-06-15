@@ -1122,6 +1122,10 @@ enum mac80211_scan_state {
 	SCAN_ABORT,
 };
 
+struct mac80211_memory_stats {
+	u32 malloc_size;
+};
+
 struct ieee80211_local {
 	/* embed the driver visible part.
 	 * don't cast (use the static inlines below), but we keep
@@ -1405,6 +1409,8 @@ struct ieee80211_local {
 	/* TDLS channel switch */
 	struct work_struct tdls_chsw_work;
 	struct sk_buff_head skb_queue_tdls_chsw;
+
+	struct mac80211_memory_stats memory_stats;
 };
 
 static inline struct ieee80211_sub_if_data *

@@ -240,6 +240,8 @@ struct sta_info *sta_info_get_by_idx(struct ieee80211_sub_if_data *sdata,
  */
 void sta_info_free(struct ieee80211_local *local, struct sta_info *sta)
 {
+	struct ieee80211_hw *hw = &local->hw;
+
 	if (sta->rate_ctrl)
 		rate_control_free_sta(sta);
 
@@ -249,8 +251,11 @@ void sta_info_free(struct ieee80211_local *local, struct sta_info *sta)
 		kfree(to_txq_info(sta->sta.txq[0]));
 	kfree(rcu_dereference_raw(sta->sta.rates));
 #ifdef CONFIG_MAC80211_MESH
+	if (sta->mesh)
+		local->memory_stats.malloc_size -= sizeof(*sta->mesh);
 	kfree(sta->mesh);
 #endif
+	local->memory_stats.malloc_size -= sizeof(*sta) + hw->sta_data_size;
 	free_percpu(sta->pcpu_rx_stats);
 	kfree(sta);
 }
@@ -328,6 +333,8 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 	if (!sta)
 		return NULL;
 
+	local->memory_stats.malloc_size += sizeof(*sta) + hw->sta_data_size;
+
 	if (ieee80211_hw_check(hw, USES_RSS)) {
 		sta->pcpu_rx_stats =
 			alloc_percpu_gfp(struct ieee80211_sta_rx_stats, gfp);
@@ -345,6 +352,7 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 		sta->mesh = kzalloc(sizeof(*sta->mesh), gfp);
 		if (!sta->mesh)
 			goto free;
+		local->memory_stats.malloc_size += sizeof(*sta->mesh);
 		spin_lock_init(&sta->mesh->plink_lock);
 		if (ieee80211_vif_is_mesh(&sdata->vif) &&
 		    !sdata->u.mesh.user_mpm)
@@ -478,8 +486,10 @@ free_txq:
 free:
 	free_percpu(sta->pcpu_rx_stats);
 #ifdef CONFIG_MAC80211_MESH
+	local->memory_stats.malloc_size -= sizeof(*sta->mesh);
 	kfree(sta->mesh);
 #endif
+	local->memory_stats.malloc_size -= sizeof(*sta) + hw->sta_data_size;
 	kfree(sta);
 	return NULL;
 }

@@ -455,6 +455,9 @@ ieee80211_alloc_chanctx(struct ieee80211_local *local,
 	if (!ctx)
 		return NULL;
 
+	local->memory_stats.malloc_size += sizeof(*ctx) +
+					   local->hw.chanctx_data_size;
+
 	INIT_LIST_HEAD(&ctx->assigned_vifs);
 	INIT_LIST_HEAD(&ctx->reserved_vifs);
 	ctx->conf.def = *chandef;
@@ -515,6 +518,8 @@ ieee80211_new_chanctx(struct ieee80211_local *local,
 
 	err = ieee80211_add_chanctx(local, ctx);
 	if (err) {
+		local->memory_stats.malloc_size -= sizeof(*ctx) +
+						   local->hw.chanctx_data_size;
 		kfree(ctx);
 		return ERR_PTR(err);
 	}
@@ -1190,6 +1195,8 @@ static int ieee80211_chsw_switch_vifs(struct ieee80211_local *local,
 	if (!vif_chsw)
 		return -ENOMEM;
 
+	local->memory_stats.malloc_size += sizeof(vif_chsw[0]) * n_vifs;
+
 	i = 0;
 	list_for_each_entry(ctx, &local->chanctx_list, list) {
 		if (ctx->replace_state != IEEE80211_CHANCTX_REPLACES_OTHER)
@@ -1219,6 +1226,7 @@ static int ieee80211_chsw_switch_vifs(struct ieee80211_local *local,
 				     CHANCTX_SWMODE_SWAP_CONTEXTS);
 
 out:
+	local->memory_stats.malloc_size -= sizeof(vif_chsw[0]) * n_vifs;
 	kfree(vif_chsw);
 	return err;
 }

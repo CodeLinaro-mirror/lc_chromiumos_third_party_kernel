@@ -445,6 +445,8 @@ int ieee80211_add_virtual_monitor(struct ieee80211_local *local)
 		return ret;
 	}
 
+	local->memory_stats.malloc_size += sizeof(*sdata) +
+					   local->hw.vif_data_size;
 	skb_queue_head_init(&sdata->skb_queue);
 	INIT_WORK(&sdata->work, ieee80211_iface_work);
 
@@ -480,6 +482,8 @@ void ieee80211_del_virtual_monitor(struct ieee80211_local *local)
 
 	drv_remove_interface(local, sdata);
 
+	local->memory_stats.malloc_size -= sizeof(*sdata) +
+					   local->hw.vif_data_size;
 	kfree(sdata);
 }
 

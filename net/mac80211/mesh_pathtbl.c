@@ -939,11 +939,15 @@ int mesh_pathtbl_init(struct ieee80211_sub_if_data *sdata)
 	if (!tbl_path)
 		return -ENOMEM;
 
+	sdata->local->memory_stats.malloc_size += sizeof(struct mesh_table);
+
 	tbl_mpp = mesh_table_alloc();
 	if (!tbl_mpp) {
 		ret = -ENOMEM;
 		goto free_path;
 	}
+
+	sdata->local->memory_stats.malloc_size += sizeof(struct mesh_table);
 
 	rhashtable_init(&tbl_path->rhead, &mesh_rht_params);
 	rhashtable_init(&tbl_mpp->rhead, &mesh_rht_params);
@@ -954,6 +958,7 @@ int mesh_pathtbl_init(struct ieee80211_sub_if_data *sdata)
 	return 0;
 
 free_path:
+	sdata->local->memory_stats.malloc_size -= sizeof(struct mesh_table);
 	mesh_table_free(tbl_path);
 	return ret;
 }
@@ -1012,6 +1017,8 @@ void mesh_path_expire(struct ieee80211_sub_if_data *sdata)
 
 void mesh_pathtbl_unregister(struct ieee80211_sub_if_data *sdata)
 {
+	sdata->local->memory_stats.malloc_size -= sizeof(struct mesh_table);
+	sdata->local->memory_stats.malloc_size -= sizeof(struct mesh_table);
 	mesh_table_free(sdata->u.mesh.mesh_paths);
 	mesh_table_free(sdata->u.mesh.mpp_paths);
 }

@@ -1029,6 +1029,9 @@ static void mesh_queue_preq(struct mesh_path *mpath, u8 flags)
 		return;
 	}
 
+	sdata->local->memory_stats.malloc_size +=
+					sizeof(struct mesh_preq_queue);
+
 	memcpy(preq_node->dst, mpath->dst, ETH_ALEN);
 	preq_node->flags = flags;
 
@@ -1139,6 +1142,8 @@ void mesh_path_start_discovery(struct ieee80211_sub_if_data *sdata)
 
 enddiscovery:
 	rcu_read_unlock();
+	sdata->local->memory_stats.malloc_size -=
+					sizeof(struct mesh_preq_queue);
 	kfree(preq_node);
 }
 

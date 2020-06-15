@@ -190,6 +190,7 @@ void ieee80211_offchannel_return(struct ieee80211_local *local)
 
 static void ieee80211_roc_notify_destroy(struct ieee80211_roc_work *roc)
 {
+	struct ieee80211_sub_if_data *sdata = roc->sdata;
 	/* was never transmitted */
 	if (roc->frame) {
 		cfg80211_mgmt_tx_status(&roc->sdata->wdev, roc->mgmt_tx_cookie,
@@ -204,6 +205,7 @@ static void ieee80211_roc_notify_destroy(struct ieee80211_roc_work *roc)
 						   GFP_KERNEL);
 
 	list_del(&roc->list);
+	sdata->local->memory_stats.malloc_size -= sizeof(*roc);
 	kfree(roc);
 }
 
@@ -562,6 +564,8 @@ static int ieee80211_start_roc_work(struct ieee80211_local *local,
 	if (!roc)
 		return -ENOMEM;
 
+	local->memory_stats.malloc_size += sizeof(*roc);
+
 	/*
 	 * If the duration is zero, then the driver
 	 * wouldn't actually do anything. Set it to
@@ -607,6 +611,7 @@ static int ieee80211_start_roc_work(struct ieee80211_local *local,
 			ret = drv_remain_on_channel(local, sdata, channel,
 						    duration, type);
 			if (ret) {
+				local->memory_stats.malloc_size -= sizeof(*roc);
 				kfree(roc);
 				return ret;
 			}
