@@ -832,6 +832,53 @@ static ssize_t sta_vht_capa_read(struct file *file, char __user *userbuf,
 }
 STA_OPS(vht_capa);
 
+static ssize_t sta_per_sta_per_txq_stats_read(struct file *file,
+					      char __user *userbuf,
+					      size_t count, loff_t *ppos)
+{
+	struct sta_info *sta = file->private_data;
+	struct ieee80211_local *local = sta->local;
+	size_t bufsz = AQM_TXQ_ENTRY_LEN * (IEEE80211_NUM_TIDS + 2);
+	char *buf = kzalloc(bufsz, GFP_KERNEL), *p = buf;
+	struct txq_info *txqi;
+	ssize_t rv;
+	int i;
+
+	if (!buf)
+		return -ENOMEM;
+
+	spin_lock_bh(&local->fq.lock);
+	rcu_read_lock();
+
+	p += scnprintf(p,
+		       bufsz + buf - p,
+		       "netdev_packets: tid tx-packets backlog-pkts drops\n");
+	for (i = 0; i < ARRAY_SIZE(sta->sta.txq); i++) {
+		if (!sta->sta.txq[i])
+			continue;
+		txqi = to_txq_info(sta->sta.txq[i]);
+		p += scnprintf(p, bufsz + buf - p,
+			       "%d %u %u %u\n",
+			       txqi->txq.tid,
+			       txqi->tin.tx_packets,
+			       txqi->tin.backlog_packets,
+			       txqi->cstats.drop_count);
+	}
+
+	p += scnprintf(p, bufsz + buf - p,
+		       "Tx- broadcast packets: %llu multicast packets: %llu\n",
+		       sta->tx_bc_packets, sta->tx_mc_packets);
+
+	rcu_read_unlock();
+	spin_unlock_bh(&local->fq.lock);
+
+	rv = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	kfree(buf);
+	return rv;
+}
+
+STA_OPS(per_sta_per_txq_stats);
+
 
 #define DEBUGFS_ADD(name) \
 	debugfs_create_file(#name, 0400, \
@@ -994,8 +1041,10 @@ void ieee80211_sta_debugfs_add(struct sta_info *sta)
 	DEBUGFS_ADD_COUNTER(rx_fragments, rx_stats.fragments);
 	DEBUGFS_ADD_COUNTER(tx_filtered, status_stats.filtered);
 
-	if (local->ops->wake_tx_queue)
+	if (local->ops->wake_tx_queue) {
 		DEBUGFS_ADD(aqm);
+		DEBUGFS_ADD(per_sta_per_txq_stats);
+	}
 
 	if (wiphy_ext_feature_isset(local->hw.wiphy,
 				    NL80211_EXT_FEATURE_AIRTIME_FAIRNESS))

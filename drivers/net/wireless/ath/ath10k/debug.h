@@ -89,6 +89,8 @@ struct ath10k_pktlog_hdr {
 #define ATH10K_TX_POWER_MAX_VAL 70
 #define ATH10K_TX_POWER_MIN_VAL 0
 
+#define ATH10K_TXQ_STATS_SIZE	(8 * 4096)
+
 extern unsigned int ath10k_debug_mask;
 
 __printf(2, 3) void ath10k_info(struct ath10k *ar, const char *fmt, ...);

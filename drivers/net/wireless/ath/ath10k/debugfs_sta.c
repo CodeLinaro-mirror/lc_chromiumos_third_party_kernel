@@ -853,6 +853,66 @@ static const struct file_operations fops_set_ampdu_subframe_count = {
 	.llseek = default_llseek,
 };
 
+static ssize_t
+ath10k_dbg_sta_dump_fops_per_sta_txq_driver_stats(struct file *file,
+						  char __user *user_buf,
+						  size_t count,
+						  loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ath10k *ar = arsta->arvif->ar;
+
+	int len = 0, i, ret;
+	const int buf_len = ATH10K_TXQ_STATS_SIZE;
+	char *buf;
+
+	buf = kzalloc(buf_len, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	mutex_lock(&ar->conf_mutex);
+
+	spin_lock_bh(&ar->data_lock);
+
+	len += scnprintf(buf + len, buf_len - len, "%s\n",
+			 "driver_packets: tid tx-packets tx-compl-packets tx-noack-pkts tx-discard-pkts tx-htt-drop-pkts\n");
+
+	for (i = 0; i < IEEE80211_NUM_TIDS; i++)
+		len += scnprintf(buf + len, buf_len - len,
+				 " %d %lu %lu %lu %lu %lu\n",
+				 i, arsta->drv_tx_pkts[i],
+				 arsta->drv_tx_compl_pkts[i],
+				 arsta->drv_tx_noack_pkts[i],
+				 arsta->drv_tx_discard_pkts[i],
+				 arsta->drv_tx_htt_drop_pkts[i]);
+
+	len += scnprintf(buf + len, buf_len - len,
+			 "driver_packets: mgmt_tx_compl: %lu mgmt_tx_noack: %lu mgmt_tx_discard: %lu\n",
+			 arsta->drv_mgmt_tx_compl_pkts,
+			 arsta->drv_mgmt_tx_noack_pkts,
+			 arsta->drv_mgmt_tx_discard_pkts);
+
+	spin_unlock_bh(&ar->data_lock);
+
+	mutex_unlock(&ar->conf_mutex);
+
+	if (len > buf_len)
+		len = buf_len;
+
+	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	kfree(buf);
+
+	return ret;
+}
+
+static const struct file_operations fops_per_sta_txq_driver_stats = {
+	.read = ath10k_dbg_sta_dump_fops_per_sta_txq_driver_stats,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			    struct ieee80211_sta *sta, struct dentry *dir)
 {
@@ -889,4 +949,7 @@ void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	if (test_bit(WMI_SERVICE_CFR_CAPTURE_SUPPORT, ar->wmi.svc_map))
 		debugfs_create_file("cfr_capture", 0644 , dir,
 				    sta, &fops_cfr_capture);
+
+	debugfs_create_file("per_sta_per_txq_driver_stats", 0400, dir, sta,
+			    &fops_per_sta_txq_driver_stats);
 }

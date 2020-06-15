@@ -106,9 +106,14 @@ int ath10k_txrx_tx_unref(struct ath10k_htt *htt,
 	struct device *dev = ar->dev;
 	struct ieee80211_tx_info *info;
 	struct ieee80211_txq *txq;
+	struct ieee80211_sta *sta = NULL;
 	struct ath10k_skb_cb *skb_cb;
 	struct ath10k_txq *artxq;
+	struct ath10k_sta *arsta;
 	struct sk_buff *msdu;
+	struct ieee80211_hdr *hdr;
+	__le16 fc;
+	const u8 *peer_addr;
 
 	ath10k_dbg(ar, ATH10K_DBG_HTT,
 		   "htt tx completion msdu_id %u status %d\n",
@@ -132,9 +137,38 @@ int ath10k_txrx_tx_unref(struct ath10k_htt *htt,
 	skb_cb = ATH10K_SKB_CB(msdu);
 	txq = skb_cb->txq;
 
+	hdr = (void *)msdu->data;
+	fc = hdr->frame_control;
+
+	if (ieee80211_is_mgmt(fc)) {
+		peer_addr = ieee80211_get_DA(hdr);
+		sta = ieee80211_find_sta_by_ifaddr(ar->hw, peer_addr,
+						   NULL);
+		if (sta) {
+			arsta = (struct ath10k_sta *)sta->drv_priv;
+			if (tx_done->status == HTT_TX_COMPL_STATE_ACK)
+				arsta->drv_mgmt_tx_compl_pkts++;
+			else if (tx_done->status == HTT_TX_COMPL_STATE_NOACK)
+				arsta->drv_mgmt_tx_noack_pkts++;
+			else if (tx_done->status == HTT_TX_COMPL_STATE_DISCARD)
+				arsta->drv_mgmt_tx_discard_pkts++;
+		}
+	}
+
 	if (txq) {
 		artxq = (void *)txq->drv_priv;
 		artxq->num_fw_queued--;
+		sta = txq->sta;
+
+		if (sta) {
+			arsta = (struct ath10k_sta *)sta->drv_priv;
+			if (tx_done->status == HTT_TX_COMPL_STATE_ACK)
+				arsta->drv_tx_compl_pkts[txq->tid]++;
+			else if (tx_done->status == HTT_TX_COMPL_STATE_NOACK)
+				arsta->drv_tx_noack_pkts[txq->tid]++;
+			else if (tx_done->status == HTT_TX_COMPL_STATE_DISCARD)
+				arsta->drv_tx_discard_pkts[txq->tid]++;
+		}
 	}
 
 	ath10k_htt_tx_free_msdu_id(htt, tx_done->msdu_id);

@@ -479,7 +479,16 @@ struct ath10k_sta {
 	struct ath10k_cfr_capture cfr_capture;
 	struct work_struct tid_config_wk;
 	u8 sta_kickout;
+
 	unsigned long sta_kickout_timeout;
+	unsigned long drv_tx_pkts[IEEE80211_NUM_TIDS];
+	unsigned long drv_tx_compl_pkts[IEEE80211_NUM_TIDS];
+	unsigned long drv_tx_noack_pkts[IEEE80211_NUM_TIDS];
+	unsigned long drv_tx_discard_pkts[IEEE80211_NUM_TIDS];
+	unsigned long drv_tx_htt_drop_pkts[IEEE80211_NUM_TIDS];
+	unsigned long drv_mgmt_tx_compl_pkts;
+	unsigned long drv_mgmt_tx_noack_pkts;
+	unsigned long drv_mgmt_tx_discard_pkts;
 };
 
 #define ATH10K_VDEV_SETUP_TIMEOUT_HZ	(5 * HZ)

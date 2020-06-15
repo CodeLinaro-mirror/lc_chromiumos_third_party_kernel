@@ -2672,6 +2672,13 @@ static struct sk_buff *ieee80211_build_hdr(struct ieee80211_sub_if_data *sdata,
 
 	multicast = is_multicast_ether_addr(hdr.addr1);
 
+	if (multicast && sta) {
+		if (is_broadcast_ether_addr(hdr.addr1))
+			sta->tx_bc_packets++;
+		else
+			sta->tx_mc_packets++;
+	}
+
 	/* sta is always NULL for mesh */
 	if (sta) {
 		authorized = test_sta_flag(sta, WLAN_STA_AUTHORIZED);

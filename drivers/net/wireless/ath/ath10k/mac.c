@@ -4139,6 +4139,7 @@ int ath10k_mac_tx_push_txq(struct ieee80211_hw *hw,
 	struct ath10k_txq *artxq = (void *)txq->drv_priv;
 	struct ieee80211_vif *vif = txq->vif;
 	struct ieee80211_sta *sta = txq->sta;
+	struct ath10k_sta *arsta;
 	enum ath10k_hw_txrx_mode txmode;
 	enum ath10k_mac_tx_path txpath;
 	struct sk_buff *skb;
@@ -4195,6 +4196,13 @@ int ath10k_mac_tx_push_txq(struct ieee80211_hw *hw,
 		ath10k_htt_tx_dec_pending(htt);
 		if (is_mgmt)
 			ath10k_htt_tx_mgmt_dec_pending(htt);
+
+		if (txpath == ATH10K_MAC_TX_HTT) {
+			if (txq->sta) {
+				arsta = (struct ath10k_sta *)sta->drv_priv;
+				arsta->drv_tx_htt_drop_pkts[txq->tid]++;
+			}
+		}
 		spin_unlock_bh(&ar->htt.tx_lock);
 
 		return ret;
@@ -4202,6 +4210,10 @@ int ath10k_mac_tx_push_txq(struct ieee80211_hw *hw,
 
 	spin_lock_bh(&ar->htt.tx_lock);
 	artxq->num_fw_queued++;
+	if (txq->sta) {
+		arsta = (struct ath10k_sta *)sta->drv_priv;
+		arsta->drv_tx_pkts[txq->tid]++;
+	}
 	spin_unlock_bh(&ar->htt.tx_lock);
 
 	return skb_len;
