@@ -643,6 +643,8 @@ struct sta_info {
 
 	u64 tx_mc_packets;
 	u64 tx_bc_packets;
+	u64 rx_packets;
+	u64 rx_forwarded_packets;
 
 	/* keep last! */
 	struct ieee80211_sta sta;

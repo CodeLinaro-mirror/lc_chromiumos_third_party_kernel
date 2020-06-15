@@ -879,6 +879,67 @@ static ssize_t sta_per_sta_per_txq_stats_read(struct file *file,
 
 STA_OPS(per_sta_per_txq_stats);
 
+static ssize_t sta_per_sta_rx_stats_read(struct file *file,
+					 char __user *userbuf,
+					 size_t count, loff_t *ppos)
+{
+	int retval = 0, len = 0;
+	char *buf;
+	const int size = 4096;
+	struct sta_info *sta = file->private_data;
+	struct ieee80211_local *local = sta->local;
+	struct ieee80211_sub_if_data *sdata = sta->sdata;
+	int i;
+
+	if (!local->rx_stats_enabled)
+		return -ENOTSUPP;
+
+	buf = kzalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	rcu_read_lock();
+
+	len += scnprintf(buf + len, size - len, "per sta rx stats:\n");
+	for (i = 0; i < IEEE80211_BW_NUM; i++)
+		sta->rx_packets += sta->rx_bw_pkt[i];
+	len += scnprintf(buf + len, size - len, "Rx packets : %llu\n",
+			 sta->rx_packets);
+
+	len += scnprintf(buf + len, size - len,
+			 "Rx multi-cast/broad-cast packets:\n");
+	len += scnprintf(buf + len, size - len, "mc_pkts: %llu\n",
+			 sta->mc_bc_stat.mc_pkts);
+	len += scnprintf(buf + len, size - len, "bc_pkts: %llu\n",
+			 sta->mc_bc_stat.bc_pkts);
+	len += scnprintf(buf + len, size - len, "dropped rx_pkts: %llu\n",
+			 sta->rx_stats.dropped);
+	len += scnprintf(buf + len, size - len, "rx forwarded_pkts: %llu\n",
+			 sta->rx_forwarded_packets);
+
+	if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT)
+		len +=
+		scnprintf(buf + len, size - len,
+			  "\nMesh packets\nFwded_frames: %d\nFwded_mcast: %d\nFwded_unicast: %d\nDropped_frames_ttl: %d\nDropped_frames_no_route: %d\nDropped_frames_congestion: %d\n",
+			  sdata->u.mesh.mshstats.fwded_frames,
+			  sdata->u.mesh.mshstats.fwded_mcast,
+			  sdata->u.mesh.mshstats.fwded_unicast,
+			  sdata->u.mesh.mshstats.dropped_frames_ttl,
+			  sdata->u.mesh.mshstats.dropped_frames_no_route,
+			  sdata->u.mesh.mshstats.dropped_frames_congestion);
+
+	rcu_read_unlock();
+
+	if (len > size)
+		len = size;
+	retval = simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	kfree(buf);
+
+	return retval;
+}
+
+STA_OPS(per_sta_rx_stats);
+
 
 #define DEBUGFS_ADD(name) \
 	debugfs_create_file(#name, 0400, \
@@ -1036,6 +1097,7 @@ void ieee80211_sta_debugfs_add(struct sta_info *sta)
 	DEBUGFS_ADD(rx_stats);
 	DEBUGFS_ADD(mc_bc_stats);
 	DEBUGFS_ADD(mc_bc_rx_limit);
+	DEBUGFS_ADD(per_sta_rx_stats);
 
 	DEBUGFS_ADD_COUNTER(rx_duplicates, rx_stats.num_duplicates);
 	DEBUGFS_ADD_COUNTER(rx_fragments, rx_stats.fragments);

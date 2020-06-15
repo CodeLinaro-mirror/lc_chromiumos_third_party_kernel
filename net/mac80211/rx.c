@@ -2266,6 +2266,7 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 	struct sk_buff *skb, *xmit_skb;
 	struct ethhdr *ehdr = (struct ethhdr *) rx->skb->data;
 	struct sta_info *dsta;
+	int i;
 
 	skb = rx->skb;
 	xmit_skb = NULL;
@@ -2308,6 +2309,9 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 				 */
 				xmit_skb = skb;
 				skb = NULL;
+				for (i = 0; i < IEEE80211_BW_NUM; i++)
+					rx->sta->rx_forwarded_packets +=
+							dsta->rx_bw_pkt[i];
 			}
 		}
 	}
