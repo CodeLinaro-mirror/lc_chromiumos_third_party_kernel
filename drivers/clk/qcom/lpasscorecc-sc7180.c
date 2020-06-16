@@ -320,7 +320,7 @@ static struct gdsc lpass_core_hm_gdsc = {
 		.name = "lpass_core_hm_gdsc",
 	},
 	.pwrsts = PWRSTS_OFF_ON,
-	.flags = RETAIN_FF_ENABLE,
+	.flags = RETAIN_FF_ENABLE | ALWAYS_ON,
 };
 
 static struct gdsc *lpass_core_hm_sc7180_gdscs[] = {
