@@ -369,11 +369,9 @@ static inline u32 ath10k_ce_base_address(struct ath10k *ar, unsigned int ce_id)
 	(((x) & CE_WRAPPER_INTERRUPT_SUMMARY_HOST_MSI_MASK) >> \
 		CE_WRAPPER_INTERRUPT_SUMMARY_HOST_MSI_LSB)
 #define CE_WRAPPER_INTERRUPT_SUMMARY_ADDRESS			0x0000
-#define CE_INTERRUPT_SUMMARY		(GENMASK(CE_COUNT_MAX - 1, 0))
 
-inline bool ath10k_ce_engine_int_status_check(struct ath10k *ar,
-						     u32 ce_ctrl_addr,
-						     unsigned int mask);
+bool ath10k_ce_engine_int_status_check(struct ath10k *ar, u32 ce_ctrl_addr,
+				       unsigned int mask);
 
 static inline u32 ath10k_ce_gen_interrupt_summary(struct ath10k *ar)
 {
@@ -386,7 +384,6 @@ static inline u32 ath10k_ce_gen_interrupt_summary(struct ath10k *ar)
 
 	ce = ath10k_ce_priv(ar);
 
-	spin_lock_bh(&ce->ce_lock);
 	for (ce_id = 0; ce_id < CE_COUNT; ce_id++) {
 		ce_state = &ce->ce_states[ce_id];
 		ctrl_addr = ce_state->ctrl_addr;
@@ -395,7 +392,6 @@ static inline u32 ath10k_ce_gen_interrupt_summary(struct ath10k *ar)
 			irq_summary |= BIT(ce_id);
 		}
 	}
-	spin_unlock_bh(&ce->ce_lock);
 
 	return irq_summary;
 }
