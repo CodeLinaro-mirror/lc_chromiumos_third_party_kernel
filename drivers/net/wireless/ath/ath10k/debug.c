@@ -2616,6 +2616,8 @@ static void ath10k_peer_ps_state_disable(void *data,
 
 	spin_lock_bh(&ar->data_lock);
 	arsta->peer_ps_state = WMI_PEER_PS_STATE_DISABLED;
+	arsta->ps_start_time = WMI_PEER_RESET_PS_TIME;
+	arsta->ps_total_duration = WMI_PEER_RESET_PS_DURATION;
 	spin_unlock_bh(&ar->data_lock);
 }
 
@@ -2650,10 +2652,12 @@ static ssize_t ath10k_write_ps_state_enable(struct file *file,
 	}
 	ar->ps_state_enable = ps_state_enable;
 
-	if (!ar->ps_state_enable)
+	if (!ar->ps_state_enable) {
+		ar->ps_timekeeper_enable = WMI_PEER_RESET_PS_TIME_KEEPER;
 		ieee80211_iterate_stations_atomic(ar->hw,
 						  ath10k_peer_ps_state_disable,
 						  ar);
+	}
 
 	ret = count;
 
@@ -2772,6 +2776,122 @@ static const struct file_operations fops_tpc_stats_final = {
 	.open = ath10k_tpc_stats_final_open,
 	.release = ath10k_tpc_stats_final_release,
 	.read = ath10k_tpc_stats_final_read,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static ssize_t ath10k_write_ps_timekeeper_enable(struct file *file,
+						 const char __user *user_buf,
+						 size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	ssize_t ret;
+	u8 ps_timekeeper_enable;
+
+	if (kstrtou8_from_user(user_buf, count, 0, &ps_timekeeper_enable))
+		return -EINVAL;
+
+	if (ps_timekeeper_enable > 1)
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->state != ATH10K_STATE_ON) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	if (!ar->ps_state_enable) {
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (ar->ps_timekeeper_enable == ps_timekeeper_enable) {
+		ret = count;
+		goto exit;
+	}
+
+	ar->ps_timekeeper_enable = ps_timekeeper_enable;
+	ret = count;
+exit:
+	mutex_unlock(&ar->conf_mutex);
+
+	return ret;
+}
+
+static ssize_t ath10k_read_ps_timekeeper_enable(struct file *file,
+						char __user *user_buf,
+						size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	int len = 0;
+	char buf[32];
+
+	mutex_lock(&ar->conf_mutex);
+	len = scnprintf(buf, sizeof(buf) - len, "%d\n",
+			ar->ps_timekeeper_enable);
+	mutex_unlock(&ar->conf_mutex);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_ps_timekeeper_enable = {
+	.read = ath10k_read_ps_timekeeper_enable,
+	.write = ath10k_write_ps_timekeeper_enable,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static void ath10k_reset_peer_ps_duration(void *data, struct ieee80211_sta *sta)
+{
+	struct ath10k *ar = data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+
+	spin_lock_bh(&ar->data_lock);
+	arsta->ps_total_duration = WMI_PEER_RESET_PS_DURATION;
+	spin_unlock_bh(&ar->data_lock);
+}
+
+static ssize_t ath10k_write_reset_ps_duration(struct file *file,
+					      const  char __user *user_buf,
+					      size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	int ret;
+	u8 reset_ps_duration;
+
+	if (kstrtou8_from_user(user_buf, count, 0, &reset_ps_duration))
+		return -EINVAL;
+
+	if (reset_ps_duration != 1)
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->state != ATH10K_STATE_ON) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	if (!ar->ps_state_enable) {
+		ret = -EINVAL;
+		goto exit;
+	}
+	ar->reset_ps_duration = reset_ps_duration;
+	ieee80211_iterate_stations_atomic(ar->hw,
+					  ath10k_reset_peer_ps_duration,
+					  ar);
+
+	ret = count;
+exit:
+	mutex_unlock(&ar->conf_mutex);
+	return ret;
+}
+
+static const struct file_operations fops_reset_ps_duration = {
+	.write = ath10k_write_reset_ps_duration,
+	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -3560,6 +3680,17 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("ps_state_enable", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_ps_state_enable);
+
+	if (test_bit(WMI_SERVICE_PEER_POWER_SAVE_DURATION_SUPPORT,
+		     ar->wmi.svc_map)) {
+		debugfs_create_file("ps_timekeeper_enable", 0600,
+				    ar->debug.debugfs_phy, ar,
+				    &fops_ps_timekeeper_enable);
+
+		debugfs_create_file("reset_ps_duration", 0600,
+				    ar->debug.debugfs_phy, ar,
+				    &fops_reset_ps_duration);
+	}
 
 	if (test_bit(WMI_SERVICE_TPC_STATS_FINAL, ar->wmi.svc_map))
 		debugfs_create_file("tpc_stats_final", 0400,

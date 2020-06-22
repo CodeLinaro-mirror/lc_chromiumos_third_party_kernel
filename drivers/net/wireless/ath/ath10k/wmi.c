@@ -5178,6 +5178,7 @@ ath10k_wmi_event_peer_sta_ps_state_chg(struct ath10k *ar, struct sk_buff *skb)
 	struct wmi_peer_sta_ps_state_chg_event *ev;
 	struct ieee80211_sta *sta;
 	struct ath10k_sta *arsta;
+	u32 peer_previous_ps_state;
 	u8 peer_addr[ETH_ALEN];
 
 	lockdep_assert_held(&ar->data_lock);
@@ -5196,7 +5197,37 @@ ath10k_wmi_event_peer_sta_ps_state_chg(struct ath10k *ar, struct sk_buff *skb)
 	}
 
 	arsta = (struct ath10k_sta *)sta->drv_priv;
+	peer_previous_ps_state = arsta->peer_ps_state;
 	arsta->peer_ps_state = __le32_to_cpu(ev->peer_ps_state);
+	arsta->peer_current_ps_valid = !WMI_PEER_CURRENT_VALID_PS_STATE;
+
+	if (test_bit(WMI_SERVICE_PEER_POWER_SAVE_DURATION_SUPPORT,
+		     ar->wmi.svc_map)) {
+		if (!(ev->ps_supported_bitmap & WMI_PEER_PS_VALID))
+			goto exit;
+
+		if (!(ev->ps_supported_bitmap & WMI_PEER_PS_STATE_TIMESTAMP))
+			goto exit;
+
+		if (!ev->peer_ps_valid)
+			goto exit;
+
+		arsta->peer_current_ps_valid = WMI_PEER_CURRENT_VALID_PS_STATE;
+
+		if (arsta->peer_ps_state == 1) {
+			arsta->ps_start_time = __le32_to_cpu
+					      (ev->peer_ps_timestamp);
+			arsta->ps_start_jiffies = jiffies;
+		} else if (!arsta->peer_ps_state && peer_previous_ps_state == 1)
+			arsta->ps_total_duration = arsta->ps_total_duration +
+					   __le32_to_cpu(ev->peer_ps_timestamp)
+					    - arsta->ps_start_time;
+
+		if (ar->ps_timekeeper_enable)
+			trace_ath10k_ps_timekeeper(ar, peer_addr, __le32_to_cpu
+						  (ev->peer_ps_timestamp),
+						   arsta->peer_ps_state);
+	}
 
 exit:
 	rcu_read_unlock();

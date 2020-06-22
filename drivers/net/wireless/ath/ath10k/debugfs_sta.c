@@ -520,6 +520,75 @@ static const struct file_operations fops_peer_ps_state = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_dbg_sta_read_current_ps_duration(struct file *file,
+						       char __user *user_buf,
+						       size_t count,
+						       loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ath10k *ar = arsta->arvif->ar;
+	u32 time_since_station_in_power_save;
+	char buf[20];
+	int len = 0;
+
+	spin_lock_bh(&ar->data_lock);
+
+	if (arsta->peer_ps_state == 1 && arsta->peer_current_ps_valid)
+		time_since_station_in_power_save = jiffies_to_msecs(jiffies
+						 - arsta->ps_start_jiffies);
+	else
+		time_since_station_in_power_save = 0;
+
+	len = scnprintf(buf, sizeof(buf) - len, "%d\n",
+			time_since_station_in_power_save);
+	spin_unlock_bh(&ar->data_lock);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_current_ps_duration = {
+	.open = simple_open,
+	.read = ath10k_dbg_sta_read_current_ps_duration,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static ssize_t ath10k_dbg_sta_read_total_ps_duration(struct file *file,
+						     char __user *user_buf,
+						     size_t count, loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ath10k *ar = arsta->arvif->ar;
+	char buf[20];
+	u32 power_save_duration;
+	int len = 0;
+
+	spin_lock_bh(&ar->data_lock);
+
+	if (arsta->peer_ps_state == 1 && arsta->peer_current_ps_valid)
+		power_save_duration = jiffies_to_msecs(jiffies
+						 - arsta->ps_start_jiffies)
+						 + arsta->ps_total_duration;
+	else
+		power_save_duration = arsta->ps_total_duration;
+
+	len = scnprintf(buf, sizeof(buf) - len, "%d\n",
+			power_save_duration);
+
+	spin_unlock_bh(&ar->data_lock);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_total_ps_duration = {
+	.open = simple_open,
+	.read = ath10k_dbg_sta_read_total_ps_duration,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 #define STR_PKTS_BYTES  ((strstr(str[j], "pkts")) ? "packets" : "bytes")
 
 static ssize_t ath10k_dbg_sta_dump_tx_stats(struct file *file,
@@ -807,6 +876,14 @@ void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	}
 	debugfs_create_file("peer_ps_state", 0400, dir, sta,
 			    &fops_peer_ps_state);
+
+	if (test_bit(WMI_SERVICE_PEER_POWER_SAVE_DURATION_SUPPORT,
+		     ar->wmi.svc_map)) {
+		debugfs_create_file("current_ps_duration", 0440, dir, sta,
+				    &fops_current_ps_duration);
+		debugfs_create_file("total_ps_duration", 0440, dir, sta,
+				    &fops_total_ps_duration);
+	}
 	debugfs_create_file("ampdu_subframe_count", S_IRUGO | S_IWUSR, dir, sta,
 			    &fops_set_ampdu_subframe_count);
 	if (test_bit(WMI_SERVICE_CFR_CAPTURE_SUPPORT, ar->wmi.svc_map))

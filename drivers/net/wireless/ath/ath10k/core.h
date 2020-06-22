@@ -471,6 +471,10 @@ struct ath10k_sta {
 #endif
 	/* Protected with ar->data_lock */
 	u32 peer_ps_state;
+	u32 ps_start_time;
+	u32 ps_start_jiffies;
+	u8 peer_current_ps_valid;
+	u32 ps_total_duration;
 	u8 ampdu_subframe_count;
 	struct ath10k_cfr_capture cfr_capture;
 	struct work_struct tid_config_wk;
@@ -946,6 +950,8 @@ struct ath10k {
 	bool ani_enabled;
 	/* protected by conf_mutex */
 	u8 ps_state_enable;
+	u8 ps_timekeeper_enable;
+	u8 reset_ps_duration;
 
 	bool p2p;
 
