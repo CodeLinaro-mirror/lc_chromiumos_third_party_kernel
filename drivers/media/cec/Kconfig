@@ -4,3 +4,5 @@ config MEDIA_CEC_RC
 	depends on CEC_CORE=m || RC_CORE=y
 	---help---
 	  Pass on CEC remote control messages to the RC framework.
+
+source "drivers/media/cec/i2c/Kconfig"
