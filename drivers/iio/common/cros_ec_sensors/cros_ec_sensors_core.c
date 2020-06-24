@@ -31,6 +31,7 @@
 static char *cros_ec_loc[] = {
 	[MOTIONSENSE_LOC_BASE] = "base",
 	[MOTIONSENSE_LOC_LID] = "lid",
+	[MOTIONSENSE_LOC_CAMERA] = "camera",
 	[MOTIONSENSE_LOC_MAX] = "unknown",
 };
 
@@ -88,6 +89,14 @@ static void get_default_min_max_freq(enum motionsensor_type type,
 	case MOTIONSENSE_TYPE_BARO:
 		*min_freq = 250;
 		*max_freq = 20000;
+		break;
+	case MOTIONSENSE_TYPE_SYNC:
+		/*
+		 * Frequency for sync/counter sensors is overloaded for
+		 * enable/disable.
+		 */
+		*min_freq = 0;
+		*max_freq = 1;
 		break;
 	case MOTIONSENSE_TYPE_ACTIVITY:
 	default:
@@ -331,9 +340,21 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 			if (!buffer)
 				return -ENOMEM;
 
+#if IS_ENABLED(CONFIG_IIO_CROS_EC_SENSORS_RING)
+			/*
+			 * To preserve backward compatibility, when sensor ring
+			 * is set, all events are going to the ring buffer.
+			 * To pull event to the individual buffers,
+			 * we need triggers.
+			 */
+			ret = devm_iio_triggered_buffer_setup(dev, indio_dev,
+					NULL, trigger_capture, NULL);
+			if (ret)
+				return ret;
+#else
 			iio_device_attach_buffer(indio_dev, buffer);
 			indio_dev->modes = INDIO_BUFFER_SOFTWARE;
-
+#endif
 			ret = cros_ec_sensorhub_register_push_data(
 					sensor_hub, sensor_platform->sensor_num,
 					indio_dev, push_data);
@@ -411,14 +432,14 @@ static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
 	ret = strtobool(buf, &calibrate);
 	if (ret < 0)
 		return ret;
-	if (!calibrate)
-		return -EINVAL;
 
 	mutex_lock(&st->cmd_lock);
 	st->param.cmd = MOTIONSENSE_CMD_PERFORM_CALIB;
+	st->param.perform_calib.enable = calibrate;
 	ret = cros_ec_motion_send_host_cmd(st, 0);
 	if (ret != 0) {
-		dev_warn(&indio_dev->dev, "Unable to calibrate sensor\n");
+		dev_warn(&indio_dev->dev, "Unable to calibrate sensor: %d\n",
+			 ret);
 	} else {
 		/* Save values */
 		for (i = CROS_EC_SENSOR_X; i < CROS_EC_SENSOR_MAX_AXIS; i++)
@@ -466,6 +487,21 @@ const struct iio_chan_spec_ext_info cros_ec_sensors_ext_info[] = {
 	{ },
 };
 EXPORT_SYMBOL_GPL(cros_ec_sensors_ext_info);
+
+const struct iio_chan_spec_ext_info cros_ec_sensors_limited_info[] = {
+	{
+		.name = "id",
+		.shared = IIO_SHARED_BY_ALL,
+		.read = cros_ec_sensors_id
+	},
+	{
+		.name = "location",
+		.shared = IIO_SHARED_BY_ALL,
+		.read = cros_ec_sensors_loc
+	},
+	{ },
+};
+EXPORT_SYMBOL_GPL(cros_ec_sensors_limited_info);
 
 /**
  * cros_ec_sensors_idx_to_reg - convert index into offset in shared memory
