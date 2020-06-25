@@ -1684,7 +1684,7 @@ int intel_master_process_wakeen_event(struct platform_device *pdev)
  * PM calls
  */
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 
 static int intel_suspend(struct device *dev)
 {
@@ -1741,6 +1741,9 @@ static int intel_suspend(struct device *dev)
 
 	return 0;
 }
+#endif
+
+#ifdef CONFIG_PM
 
 static int intel_suspend_runtime(struct device *dev)
 {
@@ -1804,6 +1807,9 @@ static int intel_suspend_runtime(struct device *dev)
 
 	return ret;
 }
+#endif
+
+#ifdef CONFIG_PM_SLEEP
 
 static int intel_resume(struct device *dev)
 {
@@ -1899,6 +1905,9 @@ static int intel_resume(struct device *dev)
 
 	return ret;
 }
+#endif
+
+#ifdef CONFIG_PM
 
 static int intel_resume_runtime(struct device *dev)
 {
@@ -2074,7 +2083,6 @@ static int intel_resume_runtime(struct device *dev)
 
 	return ret;
 }
-
 #endif
 
 static const struct dev_pm_ops intel_pm = {
