@@ -623,9 +623,13 @@ out:
 	rhashtable_walk_stop(&iter);
 	rhashtable_walk_exit(&iter);
 
-	if (paths_deactivated > 0)
-		sdata_info(sta->sdata, " MESH MPL the link to %pM is broken and %d path deactivated \n",
-			  sta->addr, paths_deactivated);
+	if (paths_deactivated > 0) {
+		sdata_info(sta->sdata, " MESH MPL the link to %pM is broken and %d path deactivated signal %d dbm signal_avg %d dbm\n",
+			   sta->addr, paths_deactivated,
+			   sta->rx_stats.last_signal,
+			   sta->rx_stats_avg.signal);
+		mesh_continuous_tx_fail_cnt(sta);
+	}
 }
 
 static void mesh_path_free_rcu(struct mesh_table *tbl,

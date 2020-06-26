@@ -728,6 +728,55 @@ static ssize_t sta_mc_bc_rx_limit_write(struct file *file,
 
 STA_OPS_RW(mc_bc_rx_limit);
 
+static ssize_t sta_tx_fail_cnt_read(struct file *file, char __user *userbuf,
+				    size_t count, loff_t *ppos)
+{
+	char buf[10 * MAX_TX_FAIL_CNT], *p = buf;
+	int i;
+	struct sta_info *sta = file->private_data;
+
+	for (i = 0; i < MAX_TX_FAIL_CNT; i++) {
+		p += scnprintf(p, sizeof(buf) + buf - p, "%d : %u ",
+			       i, sta->mesh->tx_fail_cnt[i]);
+	}
+	p += scnprintf(p, (sizeof(buf) + buf - p), "\n");
+	return simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+}
+
+static ssize_t sta_tx_fail_cnt_write(struct file *file,
+				     const char __user *userbuf,
+				     size_t count, loff_t *ppos)
+{
+	struct sta_info *sta = file->private_data;
+	char _buf[2], *buf = _buf;
+	int ret;
+	u8 val;
+
+	if (count > sizeof(_buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, userbuf, count))
+		return -EFAULT;
+
+	buf[sizeof(_buf) - 1] = '\0';
+
+	ret = kstrtou8_from_user(userbuf, count, 0, &val);
+
+	if (ret || val > 2)
+		return -EINVAL;
+
+	if (val != MESH_RESET_TX_FAIL_COUNT) {
+		sta->mesh->tx_fail_log = val;
+		return count;
+	}
+
+	memset(sta->mesh->tx_fail_cnt, 0, sizeof(u32) * MAX_TX_FAIL_CNT);
+
+	return count;
+}
+
+STA_OPS_RW(tx_fail_cnt);
+
 static ssize_t sta_vht_capa_read(struct file *file, char __user *userbuf,
 				 size_t count, loff_t *ppos)
 {
@@ -989,6 +1038,9 @@ void ieee80211_sta_debugfs_add(struct sta_info *sta)
 	DEBUGFS_ADD(rx_stats);
 	DEBUGFS_ADD(mc_bc_stats);
 	DEBUGFS_ADD(mc_bc_rx_limit);
+#ifdef CONFIG_MAC80211_MESH
+	DEBUGFS_ADD(tx_fail_cnt);
+#endif
 
 	DEBUGFS_ADD_COUNTER(rx_duplicates, rx_stats.num_duplicates);
 	DEBUGFS_ADD_COUNTER(rx_fragments, rx_stats.fragments);

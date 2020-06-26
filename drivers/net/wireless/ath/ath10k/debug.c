@@ -639,6 +639,76 @@ static const struct file_operations fops_chip_id = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_pkt_status_read(struct file *file,
+				      char __user *user_buf,
+				      size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	struct ath10k_vif *arvif;
+	u8 buf[128];
+	size_t len = 0;
+
+	mutex_lock(&ar->conf_mutex);
+	list_for_each_entry(arvif, &ar->arvifs, list) {
+		if (!arvif->is_started)
+			continue;
+		if (arvif->vif->type != NL80211_IFTYPE_MESH_POINT)
+			continue;
+		len += scnprintf(buf + len, sizeof(buf) - len,
+				 "ACKed pkt count :%u\n",
+				 arvif->pkt_status[HTT_TX_COMPL_STATE_ACK]);
+		len += scnprintf(buf + len, sizeof(buf) - len,
+				 "NoAck pkt count :%u\n",
+				 arvif->pkt_status[HTT_TX_COMPL_STATE_NOACK]);
+		len += scnprintf(buf + len, sizeof(buf) - len,
+				 "Dropped pkt count :%u\n",
+				 arvif->pkt_status[HTT_TX_COMPL_STATE_DISCARD]);
+	}
+
+	mutex_unlock(&ar->conf_mutex);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static ssize_t ath10k_pkt_status_write(struct file *file,
+				       const char __user *user_buf,
+				       size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	struct ath10k_vif *arvif;
+	u8 reset;
+	int ret;
+
+	ret = kstrtou8_from_user(user_buf, count, 0, &reset);
+	if (ret)
+		return ret;
+
+	if (reset != 1)
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+	list_for_each_entry(arvif, &ar->arvifs, list) {
+		if (!arvif->is_started)
+			continue;
+		if (arvif->vif->type != NL80211_IFTYPE_MESH_POINT)
+			continue;
+		arvif->pkt_status[HTT_TX_COMPL_STATE_ACK] = 0;
+		arvif->pkt_status[HTT_TX_COMPL_STATE_NOACK] = 0;
+		arvif->pkt_status[HTT_TX_COMPL_STATE_DISCARD] = 0;
+	}
+	mutex_unlock(&ar->conf_mutex);
+
+	return count;
+}
+
+static const struct file_operations fops_pkt_status = {
+	.read = ath10k_pkt_status_read,
+	.write = ath10k_pkt_status_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static ssize_t ath10k_reg_addr_read(struct file *file,
 				    char __user *user_buf,
 				    size_t count, loff_t *ppos)
@@ -3384,6 +3454,9 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("simulate_fw_crash", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_simulate_fw_crash);
+
+	debugfs_create_file("pkt_status", 0600, ar->debug.debugfs_phy, ar,
+			    &fops_pkt_status);
 
 	debugfs_create_file("reg_addr", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_reg_addr);
