@@ -1911,7 +1911,6 @@ static void rtw_phy_get_tx_power_base(struct rtw_dev *rtwdev, u8 band,
 				      u8 ch, struct rtw_power_params *pwr_param)
 {
 	struct rtw_hal *hal = &rtwdev->hal;
-	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
 	struct rtw_txpwr_idx *pwr_idx;
 	u8 group;
 	u8 base;
@@ -1945,7 +1944,7 @@ void rtw_get_tx_power_params(struct rtw_dev *rtwdev, u8 path, u8 rate, u8 bw,
 
 	rtw_phy_get_tx_power_base(rtwdev, band, bw, path, rate, ch, pwr_param);
 	rtw_phy_get_tx_power_limit(rtwdev, band, bw, path, rate, ch, regd, pwr_param);
-	pwr_param->remnant = (rate <= DESC_RATE11M ?
+	pwr_param->pwr_remnant = (rate <= DESC_RATE11M ?
 			      dm_info->txagc_remnant_cck :
 			      dm_info->txagc_remnant_ofdm);
 }
