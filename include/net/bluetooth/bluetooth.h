@@ -183,12 +183,6 @@ static inline const char *basename(const char *path)
 				basename(__FILE__), __func__, ##__VA_ARGS__)
 #define BT_DBG(fmt, ...)	pr_debug("%s:%s() " fmt "\n",		\
 				basename(__FILE__), __func__, ##__VA_ARGS__)
-#if IS_ENABLED(CONFIG_BT_FEATURE_DEBUG)
-#define BT_DBG(fmt, ...)	bt_dbg(fmt "\n", ##__VA_ARGS__)
-#else
-#define BT_DBG(fmt, ...)	pr_debug(fmt "\n", ##__VA_ARGS__)
-#endif
-
 #define bt_dev_info(hdev, fmt, ...)				\
 	BT_INFO("%s: " fmt, (hdev)->name, ##__VA_ARGS__)
 #define bt_dev_warn(hdev, fmt, ...)				\
