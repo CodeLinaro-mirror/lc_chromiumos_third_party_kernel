@@ -306,6 +306,17 @@ void ieee80211s_update_metric(struct ieee80211_local *local,
 
 	failed = !(txinfo->flags & IEEE80211_TX_STAT_ACK);
 
+	if (failed) {
+		sta->mesh->fail_cnt++;
+	} else if (sta->mesh->fail_cnt) {
+		if (sta->mesh->fail_cnt >= MAX_TX_FAIL_CNT)
+			sdata_info(sta->sdata, " MESH MPL HIGHER fail cnt %u\n",
+				   sta->mesh->fail_cnt);
+		else
+			sta->mesh->tx_fail_cnt[sta->mesh->fail_cnt]++;
+		sta->mesh->fail_cnt = 0;
+	}
+
 	/* moving average, scaled to 100.
 	 * feed failure as 100 and success as 0
 	 */
@@ -369,6 +380,22 @@ u32 airtime_link_metric_get(struct ieee80211_local *local,
 	estimated_retx = ((1 << (2 * ARITH_SHIFT)) / (s_unit - err));
 	result = (tx_time * estimated_retx) >> (2 * ARITH_SHIFT);
 	return (u32)result;
+}
+
+void mesh_continuous_tx_fail_cnt(struct sta_info *sta)
+{
+	int i;
+
+	if (sta->mesh->tx_fail_log != MESH_ENABLE_TX_FAIL_COUNT_LOG)
+		return;
+
+	sdata_info(sta->sdata, "MESH MPL continuous fail cnt :\n");
+	for (i = 0; i < MAX_TX_FAIL_CNT; i++)
+		sdata_info(sta->sdata, "%d : %u", i,
+			   sta->mesh->tx_fail_cnt[i]);
+
+	sdata_info(sta->sdata, "Current continuos tx fail count %u\n",
+		   sta->mesh->fail_cnt);
 }
 
 /**
@@ -504,8 +531,12 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 				mpath_table_updated = 1;
 			} else if (MP_DIFF(new_metric, mpath->metric) > (mpath->metric*LOG_PERCENT_DIFF)/100) {
 				mpath_dbg(sdata,
-					  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x\n",
-					  mpath->dst, sta->addr, mpath->metric, new_metric, action);
+					  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x signal %d dbm signal_avg %d dbm\n",
+					  mpath->dst, sta->addr, mpath->metric,
+					  new_metric, action,
+					  sta->rx_stats.last_signal,
+					  sta->rx_stats_avg.signal);
+				mesh_continuous_tx_fail_cnt(sta);
 			}
 			mesh_path_assign_nexthop(mpath, sta);
 			mpath->flags |= MESH_PATH_SN_VALID;

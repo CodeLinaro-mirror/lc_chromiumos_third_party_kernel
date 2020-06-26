@@ -549,6 +549,7 @@ struct ath10k_vif {
 
 	struct ieee80211_tid_config *tid_config;
 	struct rate_info fixed_txrate;
+	u32 pkt_status[HTT_TX_COMPL_STATE_DISCARD + 1];
 };
 
 struct ath10k_vif_iter {
