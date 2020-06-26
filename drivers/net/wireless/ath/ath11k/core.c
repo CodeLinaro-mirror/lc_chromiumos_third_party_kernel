@@ -69,6 +69,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.idle_ps = false,
 		.cold_boot_calib = true,
 		.supports_suspend = false,
+		.hal_desc_sz = sizeof(struct hal_rx_desc_ipq8074),
 	},
 	{
 		.hw_rev = ATH11K_HW_IPQ6018_HW10,
@@ -108,6 +109,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.idle_ps = false,
 		.cold_boot_calib = true,
 		.supports_suspend = false,
+		.hal_desc_sz = sizeof(struct hal_rx_desc_ipq8074),
 	},
 	{
 		.name = "qca6390 hw2.0",
@@ -146,6 +148,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.idle_ps = true,
 		.cold_boot_calib = false,
 		.supports_suspend = true,
+		.hal_desc_sz = sizeof(struct hal_rx_desc_ipq8074),
 	},
 	{
 		.name = "qcn9074 hw1.0",
@@ -173,6 +176,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.supports_monitor = true,
 		.supports_shadow_regs = false,
 		.idle_ps = false,
+		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9074),
 	},
 };
 
@@ -985,10 +989,56 @@ static void ath11k_core_restart(struct work_struct *work)
 	complete(&ab->driver_recovery);
 }
 
+static int ath11k_check_hw_param(struct ath11k_base *ab,
+				 const struct ath11k_hw_params *hw_params)
+{
+	const struct ath11k_hw_ops *hw_ops;
+
+	if (!hw_params->hw_ops) {
+		ath11k_err(ab, "invalid hw ops in hw version: 0x%x\n", ab->hw_rev);
+		return -EINVAL;
+	}
+
+	hw_ops = hw_params->hw_ops;
+
+	if (WARN_ON(!hw_ops->get_hw_mac_from_pdev_id ||
+		    !hw_ops->tx_mesh_enable ||
+		    !hw_ops->rx_desc_get_first_msdu ||
+		    !hw_ops->rx_desc_get_last_msdu ||
+		    !hw_ops->rx_desc_get_l3_pad_bytes ||
+		    !hw_ops->rx_desc_get_hdr_status ||
+		    !hw_ops->rx_desc_encrypt_valid ||
+		    !hw_ops->rx_desc_get_encrypt_type ||
+		    !hw_ops->rx_desc_get_decap_type ||
+		    !hw_ops->rx_desc_get_mesh_ctl ||
+		    !hw_ops->rx_desc_get_mpdu_seq_ctl_vld ||
+		    !hw_ops->rx_desc_get_mpdu_fc_valid ||
+		    !hw_ops->rx_desc_get_mpdu_start_seq_no ||
+		    !hw_ops->rx_desc_get_msdu_len ||
+		    !hw_ops->rx_desc_get_msdu_sgi ||
+		    !hw_ops->rx_desc_get_msdu_rate_mcs ||
+		    !hw_ops->rx_desc_get_msdu_rx_bw ||
+		    !hw_ops->rx_desc_get_msdu_freq ||
+		    !hw_ops->rx_desc_get_msdu_pkt_type ||
+		    !hw_ops->rx_desc_get_msdu_nss ||
+		    !hw_ops->rx_desc_get_mpdu_tid ||
+		    !hw_ops->rx_desc_get_mpdu_peer_id ||
+		    !hw_ops->rx_desc_copy_attn_end_tlv ||
+		    !hw_ops->rx_desc_get_mpdu_start_tag ||
+		    !hw_ops->rx_desc_get_mpdu_ppdu_id ||
+		    !hw_ops->rx_desc_set_msdu_len ||
+		    !hw_ops->rx_desc_get_attention)) {
+		ath11k_err(ab, "Unsupported hw ops in hw version: 0x%x\n", ab->hw_rev);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int ath11k_init_hw_params(struct ath11k_base *ab)
 {
 	const struct ath11k_hw_params *hw_params = NULL;
-	int i;
+	int i, ret;
 
 	for (i = 0; i < ARRAY_SIZE(ath11k_hw_params); i++) {
 		hw_params = &ath11k_hw_params[i];
@@ -999,6 +1049,12 @@ static int ath11k_init_hw_params(struct ath11k_base *ab)
 
 	if (i == ARRAY_SIZE(ath11k_hw_params)) {
 		ath11k_err(ab, "Unsupported hardware version: 0x%x\n", ab->hw_rev);
+		return -EINVAL;
+	}
+
+	ret = ath11k_check_hw_param(ab, hw_params);
+	if (ret) {
+		ath11k_err(ab, "hw praram check failed  hardware version: 0x%x\n", ab->hw_rev);
 		return -EINVAL;
 	}
 
