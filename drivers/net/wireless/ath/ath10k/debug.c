@@ -884,6 +884,7 @@ static int ath10k_debug_htt_stats_req(struct ath10k *ar)
 		return 0;
 
 	cookie = get_jiffies_64();
+	ar->debug.htt_req_cookie = cookie;
 
 	ret = ath10k_htt_h2t_stats_req(&ar->htt, ar->debug.htt_stats_mask,
 				       ar->debug.reset_htt_stats, cookie);
@@ -3439,6 +3440,8 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("tpc_stats", 0400, ar->debug.debugfs_phy, ar,
 			    &fops_tpc_stats);
+
+        ath10k_htt_debug_stats_init(ar);
 
 	if (test_bit(WMI_SERVICE_COEX_GPIO, ar->wmi.svc_map))
 		debugfs_create_file("btcoex", 0644, ar->debug.debugfs_phy, ar,
