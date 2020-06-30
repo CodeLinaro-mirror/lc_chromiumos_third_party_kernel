@@ -130,6 +130,7 @@ int ath10k_debug_get_et_sset_count(struct ieee80211_hw *hw,
 void ath10k_debug_get_et_stats(struct ieee80211_hw *hw,
 			       struct ieee80211_vif *vif,
 			       struct ethtool_stats *stats, u64 *data);
+void ath10k_htt_debug_stats_init(struct ath10k *ar);
 
 static inline u64 ath10k_debug_get_fw_dbglog_mask(struct ath10k *ar)
 {
@@ -212,6 +213,7 @@ static inline int ath10k_debug_is_extd_tx_stats_enabled(struct ath10k *ar)
 #define ath10k_debug_get_et_strings NULL
 #define ath10k_debug_get_et_sset_count NULL
 #define ath10k_debug_get_et_stats NULL
+#define ath10k_htt_debug_stats_init NULL
 
 #endif /* CONFIG_ATH10K_DEBUGFS */
 #ifdef CONFIG_MAC80211_DEBUGFS

@@ -23,6 +23,8 @@
 #include "trace.h"
 #include "mac.h"
 #include "spectral.h"
+#include "debug_htt_stats.h"
+
 #include <linux/log2.h>
 #include <linux/bitfield.h>
 
@@ -3338,6 +3340,9 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	case HTT_T2H_MSG_TYPE_STATS_CONF:
 		trace_ath10k_htt_stats(ar, skb->data, skb->len);
+		spin_lock_bh(&ar->data_lock);
+		ath10k_htt_process_stats(ar, skb);
+		spin_unlock_bh(&ar->data_lock);
 		break;
 	case HTT_T2H_MSG_TYPE_TX_INSPECT_IND:
 		/* Firmware can return tx frames if it's unable to fully
