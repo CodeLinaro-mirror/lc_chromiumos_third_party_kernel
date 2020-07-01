@@ -141,6 +141,22 @@ static int rtw_debugfs_get_rf_read(struct seq_file *m, void *v)
 	return 0;
 }
 
+static int rtw_debugfs_get_fix_rate(struct seq_file *m, void *v)
+{
+	struct rtw_debugfs_priv *debugfs_priv = m->private;
+	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
+	u8 fix_rate = dm_info->fix_rate;
+
+	if (fix_rate >= DESC_RATE_MAX) {
+		seq_printf(m, "Fix rate disabled, fix_rate = %u\n", fix_rate);
+		return 0;
+	}
+
+	seq_printf(m, "Data frames fixed at desc rate %u\n", fix_rate);
+	return 0;
+}
+
 static int rtw_debugfs_copy_from_user(char tmp[], int size,
 				      const char __user *buffer, size_t count,
 				      int num)
@@ -398,6 +414,31 @@ static ssize_t rtw_debugfs_set_rf_read(struct file *filp,
 	return count;
 }
 
+static ssize_t rtw_debugfs_set_fix_rate(struct file *filp,
+					const char __user *buffer,
+					size_t count, loff_t *loff)
+{
+	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
+	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
+	u8 fix_rate;
+	char tmp[32 + 1];
+	int ret;
+
+	rtw_debugfs_copy_from_user(tmp, sizeof(tmp), buffer, count, 1);
+
+	ret = kstrtou8(tmp, 0, &fix_rate);
+	if (ret) {
+		rtw_warn(rtwdev, "invalid args, [rate]\n");
+		return ret;
+	}
+
+	dm_info->fix_rate = fix_rate;
+
+	return count;
+}
+
 static int rtw_debug_get_mac_page(struct seq_file *m, void *v)
 {
 	struct rtw_debugfs_priv *debugfs_priv = m->private;
@@ -531,8 +572,8 @@ static int rtw_debugfs_get_tx_pwr_tbl(struct seq_file *m, void *v)
 	u8 ch = hal->current_channel;
 	u8 regd = rtwdev->regd.txpwr_regd;
 
-	seq_printf(m, "%-4s %-10s %-3s%6s %-4s %4s (%-4s %-4s) %-4s\n",
-		   "path", "rate", "pwr", "", "base", "", "byr", "lmt", "rem");
+	seq_printf(m, "%-4s %-10s %-3s%6s %-4s %4s (%-4s %-4s %-4s) %-4s\n",
+		   "path", "rate", "pwr", "", "base", "", "byr", "lmt", "sar", "rem");
 
 	mutex_lock(&hal->tx_power_mutex);
 	for (path = RF_PATH_A; path <= RF_PATH_B; path++) {
@@ -554,13 +595,15 @@ static int rtw_debugfs_get_tx_pwr_tbl(struct seq_file *m, void *v)
 
 			seq_printf(m, "%4c ", path + 'A');
 			rtw_print_rate(m, rate);
-			seq_printf(m, " %3u(0x%02x) %4u %4d (%4d %4d) %4d\n",
+			seq_printf(m, " %3u(0x%02x) %4u %4d (%4d %4d %4d) %4d\n",
 				   hal->tx_pwr_tbl[path][rate],
 				   hal->tx_pwr_tbl[path][rate],
 				   pwr_param.pwr_base,
-				   min_t(s8, pwr_param.pwr_offset,
-					 pwr_param.pwr_limit),
+				   min3(pwr_param.pwr_offset,
+					pwr_param.pwr_limit,
+					pwr_param.pwr_sar),
 				   pwr_param.pwr_offset, pwr_param.pwr_limit,
+				   pwr_param.pwr_sar,
 				   pwr_param.pwr_remnant);
 		}
 	}
@@ -822,6 +865,11 @@ static struct rtw_debugfs_priv rtw_debug_priv_read_reg = {
 	.cb_read = rtw_debugfs_get_read_reg,
 };
 
+static struct rtw_debugfs_priv rtw_debug_priv_fix_rate = {
+	.cb_write = rtw_debugfs_set_fix_rate,
+	.cb_read = rtw_debugfs_get_fix_rate,
+};
+
 static struct rtw_debugfs_priv rtw_debug_priv_dump_cam = {
 	.cb_write = rtw_debugfs_set_single_input,
 	.cb_read = rtw_debugfs_get_dump_cam,
@@ -872,6 +920,7 @@ void rtw_debugfs_init(struct rtw_dev *rtwdev)
 	rtw_debugfs_add_rw(read_reg);
 	rtw_debugfs_add_w(rf_write);
 	rtw_debugfs_add_rw(rf_read);
+	rtw_debugfs_add_rw(fix_rate);
 	rtw_debugfs_add_rw(dump_cam);
 	rtw_debugfs_add_rw(rsvd_page);
 	rtw_debugfs_add_r(phy_info);
