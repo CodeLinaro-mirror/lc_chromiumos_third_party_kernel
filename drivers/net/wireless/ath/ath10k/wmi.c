@@ -1825,6 +1825,7 @@ static void ath10k_wmi_tx_beacon_nowait(struct ath10k_vif *arvif)
 	struct sk_buff *bcn;
 	bool dtim_zero;
 	bool deliver_cab;
+	u32 timeout;
 	int ret;
 
 	spin_lock_bh(&ar->data_lock);
@@ -1855,10 +1856,21 @@ static void ath10k_wmi_tx_beacon_nowait(struct ath10k_vif *arvif)
 
 		spin_lock_bh(&ar->data_lock);
 
-		if (ret == 0)
+		if (ret == 0) {
 			arvif->beacon_state = ATH10K_BEACON_SENT;
-		else
+			arvif->swba_evnt_miss_cnt = 0;
+
+			if (!arvif->vif->bmiss_threshold ||
+			    !(ar->hw->dbg_mask & IEEE80211_HW_DBG_DRIVER_LOG))
+				goto unlock;
+
+			timeout = arvif->beacon_interval *
+				  arvif->vif->bmiss_threshold;
+			mod_timer(&arvif->swba_event_check_timer,
+				  (jiffies + msecs_to_jiffies(timeout)));
+		} else {
 			arvif->beacon_state = ATH10K_BEACON_SCHEDULED;
+		}
 	}
 
 unlock:

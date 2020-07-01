@@ -1002,6 +1002,9 @@ static void ath10k_mac_vif_beacon_cleanup(struct ath10k_vif *arvif)
 
 	lockdep_assert_held(&ar->data_lock);
 
+	if (arvif->vif->type == NL80211_IFTYPE_MESH_POINT ||
+	    arvif->vif->type == NL80211_IFTYPE_AP)
+		del_timer_sync(&arvif->swba_event_check_timer);
 	ath10k_mac_vif_beacon_free(arvif);
 
 	if (arvif->beacon_buf) {
@@ -5137,6 +5140,32 @@ static int ath10k_mac_set_txbf_conf(struct ath10k_vif *arvif)
 					 ar->wmi.vdev_param->txbf, value);
 }
 
+static void ath10k_swba_event_miss_notify(struct timer_list *t)
+{
+	struct ath10k_vif *arvif = from_timer(arvif, t, swba_event_check_timer);
+	struct ath10k *ar = arvif->ar;
+	u32 timeout;
+
+	spin_lock_bh(&ar->data_lock);
+
+	if (!(ar->hw->dbg_mask & IEEE80211_HW_DBG_DRIVER_LOG) ||
+	    !arvif->vif->bmiss_threshold)
+		goto out;
+
+	arvif->swba_evnt_miss_cnt++;
+
+	ath10k_warn(arvif->ar, "Failed to receive SWBA event %u for %pM\n",
+		    arvif->swba_evnt_miss_cnt, arvif->vif->addr);
+
+	timeout = arvif->beacon_interval * arvif->vif->bmiss_threshold;
+
+	mod_timer(&arvif->swba_event_check_timer,
+		  jiffies + msecs_to_jiffies(timeout));
+
+out:
+	spin_unlock_bh(&ar->data_lock);
+}
+
 /*
  * TODO:
  * Figure out how to handle WMI_VDEV_SUBTYPE_P2P_DEVICE,
@@ -5179,6 +5208,11 @@ static int ath10k_add_interface(struct ieee80211_hw *hw,
 		memset(arvif->bitrate_mask.control[i].vht_mcs, 0xff,
 		       sizeof(arvif->bitrate_mask.control[i].vht_mcs));
 	}
+
+	if (vif->type == NL80211_IFTYPE_MESH_POINT ||
+	    vif->type == NL80211_IFTYPE_AP)
+		timer_setup(&arvif->swba_event_check_timer,
+			    ath10k_swba_event_miss_notify, 0);
 
 	if (ar->num_peers >= ar->max_num_peers) {
 		ath10k_warn(ar, "refusing vdev creation due to insufficient peer entry resources in firmware\n");
@@ -5489,6 +5523,10 @@ err_vdev_delete:
 	spin_unlock_bh(&ar->data_lock);
 
 err:
+	if (vif->type == NL80211_IFTYPE_MESH_POINT ||
+	    vif->type == NL80211_IFTYPE_AP)
+		del_timer_sync(&arvif->swba_event_check_timer);
+
 	if (arvif->beacon_buf) {
 		dma_free_coherent(ar->dev, IEEE80211_MAX_FRAME_LEN,
 				  arvif->beacon_buf, arvif->beacon_paddr);
