@@ -561,8 +561,12 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 				mpath_table_updated = 1;
 			} else if (MP_DIFF(last_hop_metric, mpath->metric) > (mpath->metric*LOG_PERCENT_DIFF)/100) {
 				mpath_dbg(sdata,
-					  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x\n",
-					  mpath->dst, sta->addr, mpath->metric, last_hop_metric, action);
+					  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x signal %d dbm signal_avg %d dbm\n",
+					  mpath->dst, sta->addr, mpath->metric,
+					  last_hop_metric, action,
+					  sta->rx_stats.last_signal,
+					  sta->rx_stats_avg.signal);
+				mesh_continuous_tx_fail_cnt(sta);
 			}
 
 			mesh_path_assign_nexthop(mpath, sta);
