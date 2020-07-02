@@ -15033,6 +15033,28 @@ void cfg80211_cqm_txe_notify(struct net_device *dev,
 }
 EXPORT_SYMBOL(cfg80211_cqm_txe_notify);
 
+void cfg80211_cqm_mpath_change_notify(struct net_device *dev,
+				      const u8 *peer,
+				      enum nl80211_mpath_change_notify event,
+				      gfp_t gfp)
+{
+	struct sk_buff *msg;
+
+	msg = cfg80211_prepare_cqm(dev, peer, gfp);
+	if (!msg)
+		return;
+
+	if (nla_put_u32(msg, NL80211_ATTR_CQM_MPATH_CHANGE_EVENT, event))
+		goto nla_put_failure;
+
+	cfg80211_send_cqm(msg, gfp);
+	return;
+
+ nla_put_failure:
+	nlmsg_free(msg);
+}
+EXPORT_SYMBOL(cfg80211_cqm_mpath_change_notify);
+
 void cfg80211_cqm_pktloss_notify(struct net_device *dev,
 				 const u8 *peer, u32 num_packets, gfp_t gfp)
 {

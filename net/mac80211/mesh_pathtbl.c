@@ -628,7 +628,7 @@ out:
 			   sta->addr, paths_deactivated,
 			   sta->rx_stats.last_signal,
 			   sta->rx_stats_avg.signal);
-		mesh_continuous_tx_fail_cnt(sta);
+		mesh_continuous_tx_fail_cnt(sta, NL80211_MPATH_BROKEN_NOTIFY);
 	}
 }
 

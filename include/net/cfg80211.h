@@ -5840,6 +5840,10 @@ void cfg80211_cqm_pktloss_notify(struct net_device *dev,
 void cfg80211_cqm_txe_notify(struct net_device *dev, const u8 *peer,
 			     u32 num_packets, u32 rate, u32 intvl, gfp_t gfp);
 
+void cfg80211_cqm_mpath_change_notify(struct net_device *dev,
+				      const u8 *peer,
+				      enum nl80211_mpath_change_notify event,
+				      gfp_t gfp);
 /**
  * cfg80211_cqm_beacon_loss_notify - beacon loss event
  * @dev: network device

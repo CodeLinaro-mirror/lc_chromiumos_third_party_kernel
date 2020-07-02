@@ -4219,6 +4219,11 @@ enum nl80211_ps_state {
 	NL80211_PS_ENABLED,
 };
 
+enum nl80211_mpath_change_notify {
+	NL80211_MPATH_METRIC_CHANGE,
+	NL80211_MPATH_BROKEN_NOTIFY,
+};
+
 /**
  * enum nl80211_attr_cqm - connection quality monitor attributes
  * @__NL80211_ATTR_CQM_INVALID: invalid
@@ -4263,11 +4268,13 @@ enum nl80211_attr_cqm {
 	NL80211_ATTR_CQM_TXE_INTVL,
 	NL80211_ATTR_CQM_BEACON_LOSS_EVENT,
 	NL80211_ATTR_CQM_RSSI_LEVEL,
+	NL80211_ATTR_CQM_MPATH_CHANGE_EVENT,
 
 	/* keep last */
 	__NL80211_ATTR_CQM_AFTER_LAST,
 	NL80211_ATTR_CQM_MAX = __NL80211_ATTR_CQM_AFTER_LAST - 1
 };
+
 
 /**
  * enum nl80211_cqm_rssi_threshold_event - RSSI threshold event

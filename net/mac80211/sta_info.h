@@ -828,7 +828,8 @@ void mc_bc_burst_size(struct sta_info *sta);
 void ieee80211_sta_ps_deliver_wakeup(struct sta_info *sta);
 void ieee80211_sta_ps_deliver_poll_response(struct sta_info *sta);
 void ieee80211_sta_ps_deliver_uapsd(struct sta_info *sta);
-void mesh_continuous_tx_fail_cnt(struct sta_info *sta);
+void mesh_continuous_tx_fail_cnt(struct sta_info *sta,
+				 enum nl80211_mpath_change_notify event);
 
 unsigned long ieee80211_sta_last_active(struct sta_info *sta);
 

@@ -382,12 +382,16 @@ u32 airtime_link_metric_get(struct ieee80211_local *local,
 	return (u32)result;
 }
 
-void mesh_continuous_tx_fail_cnt(struct sta_info *sta)
+void mesh_continuous_tx_fail_cnt(struct sta_info *sta,
+				 enum nl80211_mpath_change_notify event)
 {
 	int i;
 
 	if (sta->mesh->tx_fail_log != MESH_ENABLE_TX_FAIL_COUNT_LOG)
 		return;
+
+	cfg80211_cqm_mpath_change_notify(sta->sdata->dev, sta->sta.addr,
+					 event, GFP_ATOMIC);
 
 	sdata_info(sta->sdata, "MESH MPL continuous fail cnt :\n");
 	for (i = 0; i < MAX_TX_FAIL_CNT; i++)
@@ -430,6 +434,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	bool process = true;
 	u8 hopcount;
 	bool mpath_table_updated = 0;
+	bool mpath_metric_change = 0;
 
 	rcu_read_lock();
 	sta = sta_info_get(sdata, mgmt->sa);
@@ -536,7 +541,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 					  new_metric, action,
 					  sta->rx_stats.last_signal,
 					  sta->rx_stats_avg.signal);
-				mesh_continuous_tx_fail_cnt(sta);
+				mpath_metric_change = 1;
 			}
 			mesh_path_assign_nexthop(mpath, sta);
 			mpath->flags |= MESH_PATH_SN_VALID;
@@ -597,7 +602,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 					  last_hop_metric, action,
 					  sta->rx_stats.last_signal,
 					  sta->rx_stats_avg.signal);
-				mesh_continuous_tx_fail_cnt(sta);
+				mpath_metric_change = 1;
 			}
 
 			mesh_path_assign_nexthop(mpath, sta);
@@ -614,6 +619,9 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 		} else
 			spin_unlock_bh(&mpath->state_lock);
 	}
+
+	if (mpath_metric_change)
+		mesh_continuous_tx_fail_cnt(sta, NL80211_MPATH_METRIC_CHANGE);
 
 	rcu_read_unlock();
 
