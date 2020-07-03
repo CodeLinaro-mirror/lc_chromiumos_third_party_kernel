@@ -3683,11 +3683,9 @@ static void skylake_update_primary_plane(struct drm_plane *plane,
 	plane_ctl |= skl_plane_ctl_tiling(fb->modifier);
 	plane_ctl |= skl_plane_ctl_rotation(rotation);
 
-	/* Sizes are 0 based */
+	/* Plane window size is 0 based */
 	src_w--;
 	src_h--;
-	dst_w--;
-	dst_h--;
 
 	intel_crtc->dspaddr_offset = surf_addr;
 
