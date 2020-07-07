@@ -110,6 +110,28 @@ void ath10k_debug_print_boot_info(struct ath10k *ar);
 void ath10k_print_driver_info(struct ath10k *ar);
 
 #ifdef CONFIG_ATH10K_DEBUGFS
+#define ATH10K_MEMORY_STATS_INC(_field, _size) { \
+	ar->debug.memory_stats._field += (_size); }
+#define ATH10K_MEMORY_STATS_DEC(_field, _size) { \
+	ar->debug.memory_stats._field -= (_size); }
+#define ATH10K_MEMORY_STATS_HTT_INC(_field, _size) { \
+	htt->ar->debug.memory_stats._field += (_size); }
+#define ATH10K_MEMORY_STATS_HTT_DEC(_field, _size) { \
+	htt->ar->debug.memory_stats._field -= (_size); }
+#define ATH10K_MEMORY_STATS_RX_POST_BUF_CHECK \
+	ar->debug.memory_stats.rx_post_buf
+#define ATH10K_MEMORY_STATS_RX_BUF_COUNT_CHECK \
+	ar->debug.memory_stats.rx_buf_count
+#else
+#define ATH10K_MEMORY_STATS_INC(field, size)
+#define ATH10K_MEMORY_STATS_DEC(field, size)
+#define ATH10K_MEMORY_STATS_HTT_INC(field, size)
+#define ATH10K_MEMORY_STATS_HTT_DEC(field, size)
+#define ATH10K_MEMORY_STATS_RX_POST_BUF_CHECK	0
+#define ATH10K_MEMORY_STATS_RX_BUF_COUNT_CHECK	0
+#endif
+
+#ifdef CONFIG_ATH10K_DEBUGFS
 int ath10k_debug_start(struct ath10k *ar);
 void ath10k_debug_stop(struct ath10k *ar);
 int ath10k_debug_create(struct ath10k *ar);

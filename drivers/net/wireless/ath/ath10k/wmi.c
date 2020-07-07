@@ -1773,6 +1773,8 @@ struct sk_buff *ath10k_wmi_alloc_skb(struct ath10k *ar, u32 len)
 	if (!skb)
 		return NULL;
 
+	ATH10K_MEMORY_STATS_INC(wmi_alloc, skb->truesize);
+
 	skb_reserve(skb, WMI_SKB_HEADROOM);
 	if (!IS_ALIGNED((unsigned long)skb->data, 4))
 		ath10k_warn(ar, "Unaligned WMI skb\n");
@@ -1785,6 +1787,7 @@ struct sk_buff *ath10k_wmi_alloc_skb(struct ath10k *ar, u32 len)
 
 static void ath10k_wmi_htc_tx_complete(struct ath10k *ar, struct sk_buff *skb)
 {
+	ATH10K_MEMORY_STATS_DEC(wmi_alloc, skb->truesize);
 	dev_kfree_skb(skb);
 }
 
@@ -5294,6 +5297,8 @@ static int ath10k_wmi_alloc_chunk(struct ath10k *ar, u32 req_id,
 	if (!vaddr)
 		return -ENOMEM;
 
+	ATH10K_MEMORY_STATS_INC(dma_alloc, pool_size);
+
 	memset(vaddr, 0, pool_size);
 
 	ar->wmi.mem_chunks[idx].vaddr = vaddr;
@@ -5461,7 +5466,7 @@ static void ath10k_wmi_event_service_ready_work(struct work_struct *work)
 	struct sk_buff *skb = ar->svc_rdy_skb;
 	struct wmi_svc_rdy_ev_arg arg = {};
 	u32 num_units, req_id, unit_size, num_mem_reqs, num_unit_info, i;
-	int ret;
+	int ret, count = 0;
 	bool allocated;
 
 	if (!skb) {
@@ -5589,11 +5594,15 @@ static void ath10k_wmi_event_service_ready_work(struct work_struct *work)
 			   unit_size,
 			   num_units);
 
+		count += num_units * unit_size;
+
 		ret = ath10k_wmi_alloc_host_mem(ar, req_id, num_units,
 						unit_size);
 		if (ret)
 			return;
 	}
+
+	ATH10K_MEMORY_STATS_INC(peer_cache, count);
 
 skip_mem_alloc:
 	ath10k_dbg(ar, ATH10K_DBG_WMI,
@@ -9469,6 +9478,7 @@ void ath10k_wmi_free_host_mem(struct ath10k *ar)
 
 	/* free the host memory chunks requested by firmware */
 	for (i = 0; i < ar->wmi.num_mem_chunks; i++) {
+		ATH10K_MEMORY_STATS_DEC(dma_alloc, ar->wmi.mem_chunks[i].len);
 		dma_free_coherent(ar->dev,
 				  ar->wmi.mem_chunks[i].len,
 				  ar->wmi.mem_chunks[i].vaddr,

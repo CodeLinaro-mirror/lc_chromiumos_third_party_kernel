@@ -241,6 +241,7 @@ static void ath10k_htt_tx_free_cont_txbuf_32(struct ath10k_htt *htt)
 	dma_free_coherent(ar->dev, size, htt->txbuf.vaddr_txbuff_32,
 			  htt->txbuf.paddr);
 	htt->txbuf.vaddr_txbuff_32 = NULL;
+	ATH10K_MEMORY_STATS_DEC(tx_dma_alloc, size);
 }
 
 static int ath10k_htt_tx_alloc_cont_txbuf_32(struct ath10k_htt *htt)
@@ -256,6 +257,8 @@ static int ath10k_htt_tx_alloc_cont_txbuf_32(struct ath10k_htt *htt)
 							GFP_KERNEL);
 	if (!htt->txbuf.vaddr_txbuff_32)
 		return -ENOMEM;
+
+	ATH10K_MEMORY_STATS_INC(tx_dma_alloc, size);
 
 	htt->txbuf.size = size;
 
@@ -310,6 +313,8 @@ static void ath10k_htt_tx_free_cont_frag_desc_32(struct ath10k_htt *htt)
 			  htt->frag_desc.vaddr_desc_32,
 			  htt->frag_desc.paddr);
 
+	ATH10K_MEMORY_STATS_HTT_DEC(tx_dma_alloc, size);
+
 	htt->frag_desc.vaddr_desc_32 = NULL;
 }
 
@@ -330,6 +335,9 @@ static int ath10k_htt_tx_alloc_cont_frag_desc_32(struct ath10k_htt *htt)
 		ath10k_err(ar, "failed to alloc fragment desc memory\n");
 		return -ENOMEM;
 	}
+
+	ATH10K_MEMORY_STATS_INC(tx_dma_alloc, size);
+
 	htt->frag_desc.size = size;
 
 	return 0;
@@ -410,12 +418,15 @@ static int ath10k_htt_tx_alloc_txq(struct ath10k_htt *htt)
 	if (!htt->tx_q_state.vaddr)
 		return -ENOMEM;
 
+	ATH10K_MEMORY_STATS_INC(tx_dma_alloc, size);
+
 	htt->tx_q_state.paddr = dma_map_single(ar->dev, htt->tx_q_state.vaddr,
 					       size, DMA_TO_DEVICE);
 	ret = dma_mapping_error(ar->dev, htt->tx_q_state.paddr);
 	if (ret) {
 		ath10k_warn(ar, "failed to dma map tx_q_state: %d\n", ret);
 		kfree(htt->tx_q_state.vaddr);
+		ATH10K_MEMORY_STATS_DEC(tx_dma_alloc, size);
 		return -EIO;
 	}
 
@@ -424,6 +435,11 @@ static int ath10k_htt_tx_alloc_txq(struct ath10k_htt *htt)
 
 static void ath10k_htt_tx_free_txdone_fifo(struct ath10k_htt *htt)
 {
+	size_t size;
+
+	size = roundup_pow_of_two(htt->max_num_pending_tx);
+	ATH10K_MEMORY_STATS_HTT_DEC(fifo_alloc,
+				    size * sizeof(htt->txdone_fifo));
 	WARN_ON(!kfifo_is_empty(&htt->txdone_fifo));
 	kfifo_free(&htt->txdone_fifo);
 }
@@ -435,6 +451,8 @@ static int ath10k_htt_tx_alloc_txdone_fifo(struct ath10k_htt *htt)
 
 	size = roundup_pow_of_two(htt->max_num_pending_tx);
 	ret = kfifo_alloc(&htt->txdone_fifo, size, GFP_KERNEL);
+	ATH10K_MEMORY_STATS_HTT_INC(fifo_alloc,
+				    size * sizeof(htt->txdone_fifo));
 	return ret;
 }
 
@@ -556,6 +574,7 @@ void ath10k_htt_htc_tx_complete(struct ath10k *ar, struct sk_buff *skb)
 
 void ath10k_htt_hif_tx_complete(struct ath10k *ar, struct sk_buff *skb)
 {
+	ATH10K_MEMORY_STATS_DEC(htt_tx_alloc, skb->truesize);
 	dev_kfree_skb_any(skb);
 }
 EXPORT_SYMBOL(ath10k_htt_hif_tx_complete);
@@ -584,6 +603,8 @@ int ath10k_htt_h2t_ver_req_msg(struct ath10k_htt *htt)
 		dev_kfree_skb_any(skb);
 		return ret;
 	}
+
+	ATH10K_MEMORY_STATS_INC(htt_tx_alloc, skb->truesize);
 
 	return 0;
 }
@@ -691,6 +712,8 @@ static int ath10k_htt_send_frag_desc_bank_cfg_32(struct ath10k_htt *htt)
 		return ret;
 	}
 
+	ATH10K_MEMORY_STATS_INC(htt_tx_alloc, skb->truesize);
+
 	return 0;
 }
 
@@ -752,6 +775,8 @@ static int ath10k_htt_send_frag_desc_bank_cfg_64(struct ath10k_htt *htt)
 		dev_kfree_skb_any(skb);
 		return ret;
 	}
+
+	ATH10K_MEMORY_STATS_INC(htt_tx_alloc, skb->truesize);
 
 	return 0;
 }
@@ -863,6 +888,8 @@ static int ath10k_htt_send_rx_ring_cfg_32(struct ath10k_htt *htt)
 		return ret;
 	}
 
+	ATH10K_MEMORY_STATS_INC(htt_tx_alloc, skb->truesize);
+
 	return 0;
 }
 
@@ -932,6 +959,8 @@ static int ath10k_htt_send_rx_ring_cfg_64(struct ath10k_htt *htt)
 		return ret;
 	}
 
+	ATH10K_MEMORY_STATS_INC(htt_tx_alloc, skb->truesize);
+
 	return 0;
 }
 
@@ -979,6 +1008,8 @@ static int ath10k_htt_h2t_aggr_cfg_msg_32(struct ath10k_htt *htt,
 		return ret;
 	}
 
+	ATH10K_MEMORY_STATS_INC(htt_tx_alloc, skb->truesize);
+
 	return 0;
 }
 
@@ -1025,6 +1056,8 @@ static int ath10k_htt_h2t_aggr_cfg_msg_v2(struct ath10k_htt *htt,
 		dev_kfree_skb_any(skb);
 		return ret;
 	}
+
+	ATH10K_MEMORY_STATS_INC(htt_tx_alloc, skb->truesize);
 
 	return 0;
 }
@@ -1153,6 +1186,8 @@ int ath10k_htt_mgmt_tx(struct ath10k_htt *htt, struct sk_buff *msdu)
 		res = -EIO;
 		goto err_free_txdesc;
 	}
+
+	ATH10K_MEMORY_STATS_INC(htt_tx_alloc, txdesc->truesize);
 
 	skb_put(txdesc, len);
 	cmd = (struct htt_cmd *)txdesc->data;

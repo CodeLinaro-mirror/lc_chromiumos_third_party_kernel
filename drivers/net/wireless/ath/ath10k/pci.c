@@ -808,6 +808,10 @@ static int __ath10k_pci_rx_post_buf(struct ath10k_pci_pipe *pipe)
 		return ret;
 	}
 
+	ATH10K_MEMORY_STATS_INC(rx_post_buf, skb->truesize);
+	ATH10K_MEMORY_STATS_INC(rx_buf_count,
+				ATH10K_MEMORY_STATS_RX_BUF_COUNT_CHECK + 1);
+
 	return 0;
 }
 
@@ -943,6 +947,8 @@ static int ath10k_pci_diag_read_mem(struct ath10k *ar, u32 address, void *data,
 		goto done;
 	}
 
+	ATH10K_MEMORY_STATS_INC(dma_alloc, alloc_nbytes);
+
 	/* The address supplied by the caller is in the
 	 * Target CPU virtual address space.
 	 *
@@ -1009,9 +1015,11 @@ static int ath10k_pci_diag_read_mem(struct ath10k *ar, u32 address, void *data,
 
 done:
 
-	if (data_buf)
+	if (data_buf) {
+		ATH10K_MEMORY_STATS_DEC(dma_alloc, alloc_nbytes);
 		dma_free_coherent(ar->dev, alloc_nbytes, data_buf,
 				  ce_data_base);
+	}
 
 	mutex_unlock(&ar_pci->ce_diag_mutex);
 
@@ -1089,6 +1097,8 @@ int ath10k_pci_diag_write_mem(struct ath10k *ar, u32 address,
 		goto done;
 	}
 
+	ATH10K_MEMORY_STATS_INC(dma_alloc, alloc_nbytes);
+
 	/*
 	 * The address supplied by the caller is in the
 	 * Target CPU virtual address space.
@@ -1163,6 +1173,7 @@ int ath10k_pci_diag_write_mem(struct ath10k *ar, u32 address,
 
 done:
 	if (data_buf) {
+		ATH10K_MEMORY_STATS_DEC(dma_alloc, alloc_nbytes);
 		dma_free_coherent(ar->dev, alloc_nbytes, data_buf,
 				  ce_data_base);
 	}
@@ -1220,6 +1231,13 @@ static void ath10k_pci_process_rx_cb(struct ath10k_ce_pipe *ce_state,
 					     &nbytes) == 0) {
 		skb = transfer_context;
 		max_nbytes = skb->len + skb_tailroom(skb);
+		if (pipe_info->buf_sz <= ATH10K_MEMORY_STATS_RX_POST_BUF_CHECK)
+			ATH10K_MEMORY_STATS_DEC(rx_post_buf, skb->truesize);
+
+		if (ATH10K_MEMORY_STATS_RX_BUF_COUNT_CHECK > 0)
+			ATH10K_MEMORY_STATS_DEC
+				(rx_buf_count,
+				 ATH10K_MEMORY_STATS_RX_BUF_COUNT_CHECK - 1);
 		dma_unmap_single(ar->dev, ATH10K_SKB_RXCB(skb)->paddr,
 				 max_nbytes, DMA_FROM_DEVICE);
 
@@ -1995,6 +2013,13 @@ static void ath10k_pci_rx_pipe_cleanup(struct ath10k_pci_pipe *pci_pipe)
 
 		ce_ring->per_transfer_context[i] = NULL;
 
+		if (skb->truesize <= ATH10K_MEMORY_STATS_RX_POST_BUF_CHECK)
+			ATH10K_MEMORY_STATS_DEC(rx_post_buf, skb->truesize);
+
+		if (ATH10K_MEMORY_STATS_RX_BUF_COUNT_CHECK > 0)
+			ATH10K_MEMORY_STATS_DEC
+				(rx_buf_count,
+				 ATH10K_MEMORY_STATS_RX_BUF_COUNT_CHECK - 1);
 		dma_unmap_single(ar->dev, ATH10K_SKB_RXCB(skb)->paddr,
 				 skb->len + skb_tailroom(skb),
 				 DMA_FROM_DEVICE);
@@ -2126,6 +2151,8 @@ int ath10k_pci_hif_exchange_bmi_msg(struct ath10k *ar,
 	treq = kmemdup(req, req_len, GFP_KERNEL);
 	if (!treq)
 		return -ENOMEM;
+
+	ATH10K_MEMORY_STATS_INC(skb_alloc, req_len);
 
 	req_paddr = dma_map_single(ar->dev, treq, req_len, DMA_TO_DEVICE);
 	ret = dma_mapping_error(ar->dev, req_paddr);

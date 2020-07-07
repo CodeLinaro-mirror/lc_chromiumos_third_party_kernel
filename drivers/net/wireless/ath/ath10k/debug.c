@@ -3050,6 +3050,8 @@ int ath10k_debug_create(struct ath10k *ar)
 	if (!ar->debug.cal_data)
 		return -ENOMEM;
 
+	ATH10K_MEMORY_STATS_INC(malloc_size, ATH10K_DEBUG_CAL_DATA_LEN);
+
 	INIT_LIST_HEAD(&ar->debug.fw_stats.pdevs);
 	INIT_LIST_HEAD(&ar->debug.fw_stats.vdevs);
 	INIT_LIST_HEAD(&ar->debug.fw_stats.peers);
@@ -3060,6 +3062,9 @@ int ath10k_debug_create(struct ath10k *ar)
 	pbuf = kzalloc(tx_delay_stats_size, GFP_KERNEL);
 	if (!pbuf)
 		return -ENOMEM;
+
+	ATH10K_MEMORY_STATS_INC(malloc_size, tx_delay_stats_size);
+
 	for (i = 0; i < ARRAY_SIZE(ar->debug.tx_delay_stats); i++) {
 		ar->debug.tx_delay_stats[i] = pbuf;
 		pbuf++;
@@ -3080,6 +3085,11 @@ void ath10k_debug_destroy(struct ath10k *ar)
 {
 	vfree(ar->debug.cal_data);
 	ar->debug.cal_data = NULL;
+
+	ATH10K_MEMORY_STATS_DEC(malloc_size, ATH10K_DEBUG_CAL_DATA_LEN);
+	ATH10K_MEMORY_STATS_DEC(malloc_size,
+				sizeof(struct ath10k_tx_delay_stats) *
+				ARRAY_SIZE(ar->debug.tx_delay_stats));
 
 	ath10k_debug_fw_stats_reset(ar);
 
@@ -3566,6 +3576,81 @@ static const struct file_operations fops_burst_enable = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_memory_stats_read(struct file *file, char __user *ubuf,
+					size_t count, loff_t *ppos)
+{
+	char *buf;
+	struct ath10k *ar = file->private_data;
+	int ret;
+	size_t len = 0, buf_len = 2048;
+
+	buf = kzalloc(buf_len, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	mutex_lock(&ar->conf_mutex);
+	len += scnprintf(buf + len, buf_len - len, "Memory Stats:\n");
+	len += scnprintf(buf + len, buf_len - len, "malloc size : %u\n",
+			 ar->debug.memory_stats.malloc_size);
+	len += scnprintf(buf + len, buf_len - len, "ce_ring_alloc size: %u\n",
+			 ar->debug.memory_stats.ce_ring_alloc);
+	len += scnprintf(buf + len, buf_len - len, "dma_alloc size:: %u\n",
+			 ar->debug.memory_stats.dma_alloc);
+	len += scnprintf(buf + len, buf_len - len, "tx_dma_alloc size: %u\n",
+			 ar->debug.memory_stats.tx_dma_alloc);
+	len += scnprintf(buf + len, buf_len - len, "skb_alloc size: %u\n",
+			 ar->debug.memory_stats.skb_alloc);
+	len += scnprintf(buf + len, buf_len - len, "htc_skb_alloc size: %u\n",
+			 ar->debug.memory_stats.htc_skb_alloc);
+	len += scnprintf(buf + len, buf_len - len, "htt_tx_alloc size: %u\n",
+			 ar->debug.memory_stats.htt_tx_alloc);
+	len += scnprintf(buf + len, buf_len - len, "wmi_alloc size: %u\n",
+			 ar->debug.memory_stats.wmi_alloc);
+	len += scnprintf(buf + len, buf_len - len, "rx_post_buf size: %u\n",
+			 ar->debug.memory_stats.rx_post_buf);
+	len += scnprintf(buf + len, buf_len - len,
+			 "netbufs_rx_alloc size: %u\n",
+			 ar->debug.memory_stats.rx_alloc);
+	len += scnprintf(buf + len, buf_len - len, "rx_desc size: %u\n",
+			 ar->debug.memory_stats.rx_desc);
+	len += scnprintf(buf + len, buf_len - len, "peer_object size : %u\n",
+			 ar->debug.memory_stats.per_peer);
+	len += scnprintf(buf + len, buf_len - len, "fifo_alloc size: %u\n\n",
+			 ar->debug.memory_stats.fifo_alloc);
+	len += scnprintf(buf + len, buf_len - len, "Total size: %u\n\n",
+			 (ar->debug.memory_stats.malloc_size +
+			 ar->debug.memory_stats.ce_ring_alloc +
+			 ar->debug.memory_stats.dma_alloc +
+			 ar->debug.memory_stats.tx_dma_alloc +
+			 ar->debug.memory_stats.skb_alloc +
+			 ar->debug.memory_stats.htc_skb_alloc +
+			 ar->debug.memory_stats.htt_tx_alloc +
+			 ar->debug.memory_stats.wmi_alloc +
+			 ar->debug.memory_stats.rx_post_buf +
+			 ar->debug.memory_stats.rx_alloc +
+			 ar->debug.memory_stats.rx_desc +
+			 ar->debug.memory_stats.per_peer +
+			 ar->debug.memory_stats.fifo_alloc));
+	len += scnprintf(buf + len, buf_len - len, "rx_buf count: %u\n",
+			 ar->debug.memory_stats.rx_buf_count);
+	len += scnprintf(buf + len, buf_len - len, "peer_cache count: %u\n\n",
+			 ar->debug.memory_stats.peer_cache);
+
+	mutex_unlock(&ar->conf_mutex);
+
+	ret = simple_read_from_buffer(ubuf, count, ppos, buf, len);
+
+	kfree(buf);
+
+	return ret;
+}
+
+static const struct file_operations fops_memory_stats = {
+	.open = simple_open,
+	.read = ath10k_memory_stats_read,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
 int ath10k_debug_register(struct ath10k *ar)
 {
 	ar->debug.debugfs_phy = debugfs_create_dir("ath10k",
@@ -3717,6 +3802,9 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("burst_enable", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_burst_enable);
+
+	debugfs_create_file("memory_stats", 0400, ar->debug.debugfs_phy, ar,
+			    &fops_memory_stats);
 
 	ath10k_txdelay_debugfs_register(ar);
 

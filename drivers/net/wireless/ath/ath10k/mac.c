@@ -767,6 +767,8 @@ static int ath10k_peer_create(struct ath10k *ar,
 	peer->vif = vif;
 	peer->sta = sta;
 
+	ATH10K_MEMORY_STATS_INC(per_peer, sizeof(*peer));
+
 	spin_unlock_bh(&ar->data_lock);
 
 	ar->num_peers++;
@@ -871,6 +873,7 @@ static int ath10k_peer_delete(struct ath10k *ar, u32 vdev_id, const u8 *addr)
 		}
 	}
 
+	ATH10K_MEMORY_STATS_DEC(per_peer, sizeof(struct ath10k_peer));
 	ar->num_peers--;
 
 	return 0;
@@ -6951,6 +6954,8 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 				ret = -ENOMEM;
 				goto exit;
 			}
+			ATH10K_MEMORY_STATS_INC(malloc_size,
+						sizeof(*arsta->tx_stats));
 		}
 
 		ret = ath10k_peer_create(ar, vif, sta, arvif->vdev_id,
@@ -6959,6 +6964,8 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 			ath10k_warn(ar, "failed to add peer %pM for vdev %d when adding a new sta: %i\n",
 				    sta->addr, arvif->vdev_id, ret);
 			ath10k_mac_dec_num_stations(arvif, sta);
+			ATH10K_MEMORY_STATS_DEC(malloc_size,
+						sizeof(*arsta->tx_stats));
 			kfree(arsta->tx_stats);
 			goto exit;
 		}
@@ -6972,6 +6979,8 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 			spin_unlock_bh(&ar->data_lock);
 			ath10k_peer_delete(ar, arvif->vdev_id, sta->addr);
 			ath10k_mac_dec_num_stations(arvif, sta);
+			ATH10K_MEMORY_STATS_DEC(malloc_size,
+						sizeof(*arsta->tx_stats));
 			kfree(arsta->tx_stats);
 			ret = -ENOENT;
 			goto exit;
@@ -6993,6 +7002,8 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 			ath10k_peer_delete(ar, arvif->vdev_id,
 					   sta->addr);
 			ath10k_mac_dec_num_stations(arvif, sta);
+			ATH10K_MEMORY_STATS_DEC(malloc_size,
+						sizeof(*arsta->tx_stats));
 			kfree(arsta->tx_stats);
 			goto exit;
 		}
@@ -7005,6 +7016,8 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 				    sta->addr, arvif->vdev_id, ret);
 			ath10k_peer_delete(ar, arvif->vdev_id, sta->addr);
 			ath10k_mac_dec_num_stations(arvif, sta);
+			ATH10K_MEMORY_STATS_DEC(malloc_size,
+						sizeof(*arsta->tx_stats));
 			kfree(arsta->tx_stats);
 
 			if (num_tdls_stations != 0)
@@ -7061,6 +7074,8 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 		spin_unlock_bh(&ar->data_lock);
 
 		if (ath10k_debug_is_extd_tx_stats_enabled(ar)) {
+			ATH10K_MEMORY_STATS_DEC(malloc_size,
+						sizeof(*arsta->tx_stats));
 			kfree(arsta->tx_stats);
 			arsta->tx_stats = NULL;
 		}

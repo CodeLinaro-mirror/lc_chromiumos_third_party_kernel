@@ -910,6 +910,8 @@ static int ath10k_download_cal_dt(struct ath10k *ar, const char *dt_name)
 		goto out;
 	}
 
+	ATH10K_MEMORY_STATS_INC(malloc_size, data_len);
+
 	ret = of_property_read_u8_array(node, dt_name, data, data_len);
 	if (ret) {
 		ath10k_warn(ar, "failed to read calibration data from DT: %d\n",

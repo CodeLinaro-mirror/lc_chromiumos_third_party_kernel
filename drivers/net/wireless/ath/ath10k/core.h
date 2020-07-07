@@ -603,6 +603,25 @@ struct ath10k_tx_delay_stats {
 #define ATH10K_MAX_PROFILES_PER_PRIRORITY 4
 
 #define ATH10K_FTMR_MAX_NUM_VDEVS 20
+
+struct ath10k_memory_stats {
+	u32 malloc_size;
+	u32 ce_ring_alloc;
+	u32 dma_alloc;
+	u32 tx_dma_alloc;
+	u32 skb_alloc;
+	u32 htc_skb_alloc;
+	u32 htt_tx_alloc;
+	u32 wmi_alloc;
+	u32 rx_post_buf;
+	u32 rx_buf_count;
+	u32 rx_alloc;
+	u32 rx_desc;
+	u32 per_peer;
+	u32 fifo_alloc;
+	u32 peer_cache;
+};
+
 struct ath10k_debug {
 	struct dentry *debugfs_phy;
 
@@ -637,6 +656,7 @@ struct ath10k_debug {
 	int ftmr_enabled[ATH10K_FTMR_MAX_NUM_VDEVS];
 	u32 burst_dur[4];
 	struct ath10k_tx_delay_stats *tx_delay_stats[IEEE80211_NUM_TIDS];
+	struct ath10k_memory_stats memory_stats;
 };
 
 enum ath10k_state {

@@ -26,6 +26,7 @@
 static void ath10k_htc_control_tx_complete(struct ath10k *ar,
 					   struct sk_buff *skb)
 {
+	ATH10K_MEMORY_STATS_DEC(htc_skb_alloc, skb->truesize);
 	kfree_skb(skb);
 }
 
@@ -733,6 +734,8 @@ int ath10k_htc_connect_service(struct ath10k_htc *htc,
 		return status;
 	}
 
+	ATH10K_MEMORY_STATS_INC(htc_skb_alloc, skb->truesize);
+
 	/* wait for response */
 	time_left = wait_for_completion_timeout(&htc->ctl_resp,
 						ATH10K_HTC_CONN_SVC_TIMEOUT_HZ);
@@ -931,6 +934,8 @@ int ath10k_htc_start(struct ath10k_htc *htc)
 		kfree_skb(skb);
 		return status;
 	}
+
+	ATH10K_MEMORY_STATS_INC(htc_skb_alloc, skb->truesize);
 
 	return 0;
 }

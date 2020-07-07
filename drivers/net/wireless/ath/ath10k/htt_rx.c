@@ -60,6 +60,7 @@ static void ath10k_htt_rx_ring_free(struct ath10k_htt *htt)
 					 skb->len + skb_tailroom(skb),
 					 DMA_FROM_DEVICE);
 			hash_del(&rxcb->hlist);
+			ATH10K_MEMORY_STATS_HTT_DEC(rx_desc, skb->truesize);
 			dev_kfree_skb_any(skb);
 		}
 	} else {
@@ -68,6 +69,7 @@ static void ath10k_htt_rx_ring_free(struct ath10k_htt *htt)
 			if (!skb)
 				continue;
 
+			ATH10K_MEMORY_STATS_HTT_DEC(rx_desc, skb->truesize);
 			rxcb = ATH10K_SKB_RXCB(skb);
 			dma_unmap_single(htt->ar->dev, rxcb->paddr,
 					 skb->len + skb_tailroom(skb),
@@ -184,6 +186,8 @@ static int __ath10k_htt_rx_ring_fill_n(struct ath10k_htt *htt, int num)
 		htt->rx_ops->htt_set_paddrs_ring(htt, paddr, idx);
 		htt->rx_ring.fill_cnt++;
 
+		ATH10K_MEMORY_STATS_HTT_INC(rx_desc, skb->truesize);
+
 		if (htt->rx_ring.in_ord_rx) {
 			hash_add(htt->rx_ring.skb_table,
 				 &ATH10K_SKB_RXCB(skb)->hlist,
@@ -288,6 +292,14 @@ void ath10k_htt_rx_free(struct ath10k_htt *htt)
 	ath10k_htt_rx_ring_free(htt);
 	spin_unlock_bh(&htt->rx_ring.lock);
 
+	ATH10K_MEMORY_STATS_HTT_DEC(malloc_size,
+				    htt->rx_ring.size *
+				    sizeof(struct sk_buff *));
+	ATH10K_MEMORY_STATS_HTT_DEC(dma_alloc,
+				    htt->rx_ops->htt_get_rx_ring_size(htt));
+	ATH10K_MEMORY_STATS_HTT_DEC(dma_alloc,
+				    sizeof(*htt->rx_ring.alloc_idx.vaddr));
+
 	dma_free_coherent(htt->ar->dev,
 			  htt->rx_ops->htt_get_rx_ring_size(htt),
 			  htt->rx_ops->htt_get_vaddr_ring(htt),
@@ -316,6 +328,7 @@ static inline struct sk_buff *ath10k_htt_rx_netbuf_pop(struct ath10k_htt *htt)
 
 	idx = htt->rx_ring.sw_rd_idx.msdu_payld;
 	msdu = htt->rx_ring.netbufs_ring[idx];
+	ATH10K_MEMORY_STATS_HTT_DEC(rx_desc, msdu->truesize);
 	htt->rx_ring.netbufs_ring[idx] = NULL;
 	htt->rx_ops->htt_reset_paddrs_ring(htt, idx);
 
@@ -591,9 +604,14 @@ int ath10k_htt_rx_alloc(struct ath10k_htt *htt)
 
 	size = htt->rx_ops->htt_get_rx_ring_size(htt);
 
+	ATH10K_MEMORY_STATS_INC(malloc_size,
+				htt->rx_ring.size * sizeof(struct sk_buff *));
+
 	vaddr_ring = dma_alloc_coherent(htt->ar->dev, size, &paddr, GFP_KERNEL);
 	if (!vaddr_ring)
 		goto err_dma_ring;
+
+	ATH10K_MEMORY_STATS_INC(dma_alloc, size);
 
 	htt->rx_ops->htt_config_paddrs_ring(htt, vaddr_ring);
 	htt->rx_ring.base_paddr = paddr;
@@ -603,6 +621,9 @@ int ath10k_htt_rx_alloc(struct ath10k_htt *htt)
 				   &paddr, GFP_KERNEL);
 	if (!vaddr)
 		goto err_dma_idx;
+
+	ATH10K_MEMORY_STATS_INC(dma_alloc,
+				sizeof(*htt->rx_ring.alloc_idx.vaddr));
 
 	htt->rx_ring.alloc_idx.vaddr = vaddr;
 	htt->rx_ring.alloc_idx.paddr = paddr;

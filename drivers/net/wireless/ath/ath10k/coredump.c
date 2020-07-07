@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1178,6 +1178,8 @@ static struct ath10k_dump_file_data *ath10k_coredump_build(struct ath10k *ar)
 	if (!buf)
 		return NULL;
 
+	ATH10K_MEMORY_STATS_INC(malloc_size, len);
+
 	mutex_lock(&ar->dump_mutex);
 
 	dump_data = (struct ath10k_dump_file_data *)(buf);
@@ -1267,6 +1269,8 @@ int ath10k_coredump_submit(struct ath10k *ar)
 		return -ENODATA;
 	}
 
+	ATH10K_MEMORY_STATS_DEC(malloc_size, dump->len);
+
 	dev_coredumpv(ar->dev, dump, le32_to_cpu(dump->len), GFP_KERNEL);
 
 	return 0;
@@ -1281,6 +1285,9 @@ int ath10k_coredump_create(struct ath10k *ar)
 	ar->coredump.fw_crash_data = vzalloc(sizeof(*ar->coredump.fw_crash_data));
 	if (!ar->coredump.fw_crash_data)
 		return -ENOMEM;
+
+	ATH10K_MEMORY_STATS_INC(malloc_size,
+				sizeof(*ar->coredump.fw_crash_data));
 
 	return 0;
 }
@@ -1298,6 +1305,8 @@ int ath10k_coredump_register(struct ath10k *ar)
 		crash_data->ramdump_buf = vzalloc(crash_data->ramdump_buf_len);
 		if (!crash_data->ramdump_buf)
 			return -ENOMEM;
+		ATH10K_MEMORY_STATS_INC(malloc_size,
+					crash_data->ramdump_buf_len);
 	}
 
 	return 0;
@@ -1306,6 +1315,8 @@ int ath10k_coredump_register(struct ath10k *ar)
 void ath10k_coredump_unregister(struct ath10k *ar)
 {
 	struct ath10k_fw_crash_data *crash_data = ar->coredump.fw_crash_data;
+
+	ATH10K_MEMORY_STATS_DEC(malloc_size, crash_data->ramdump_buf_len);
 
 	vfree(crash_data->ramdump_buf);
 }
@@ -1317,6 +1328,9 @@ void ath10k_coredump_destroy(struct ath10k *ar)
 		ar->coredump.fw_crash_data->ramdump_buf = NULL;
 		ar->coredump.fw_crash_data->ramdump_buf_len = 0;
 	}
+
+	ATH10K_MEMORY_STATS_DEC(malloc_size,
+				sizeof(*ar->coredump.fw_crash_data));
 
 	vfree(ar->coredump.fw_crash_data);
 	ar->coredump.fw_crash_data = NULL;

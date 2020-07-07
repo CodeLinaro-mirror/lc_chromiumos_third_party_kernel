@@ -1468,6 +1468,10 @@ ath10k_ce_alloc_src_ring(struct ath10k *ar, unsigned int ce_id,
 	if (src_ring == NULL)
 		return ERR_PTR(-ENOMEM);
 
+	ATH10K_MEMORY_STATS_INC(ce_ring_alloc, sizeof(*src_ring) +
+				(nentries *
+				 sizeof(*src_ring->per_transfer_context)));
+
 	src_ring->nentries = nentries;
 	src_ring->nentries_mask = nentries - 1;
 
@@ -1484,6 +1488,10 @@ ath10k_ce_alloc_src_ring(struct ath10k *ar, unsigned int ce_id,
 		kfree(src_ring);
 		return ERR_PTR(-ENOMEM);
 	}
+
+	ATH10K_MEMORY_STATS_INC(ce_ring_alloc,
+				nentries *
+				sizeof(struct ce_desc) + CE_DESC_RING_ALIGN);
 
 	src_ring->base_addr_ce_space_unaligned = base_addr;
 
@@ -1528,6 +1536,10 @@ ath10k_ce_alloc_src_ring_64(struct ath10k *ar, unsigned int ce_id,
 	if (!src_ring)
 		return ERR_PTR(-ENOMEM);
 
+	ATH10K_MEMORY_STATS_INC(ce_ring_alloc, sizeof(*src_ring) +
+				(nentries *
+				 sizeof(*src_ring->per_transfer_context)));
+
 	src_ring->nentries = nentries;
 	src_ring->nentries_mask = nentries - 1;
 
@@ -1543,6 +1555,10 @@ ath10k_ce_alloc_src_ring_64(struct ath10k *ar, unsigned int ce_id,
 		kfree(src_ring);
 		return ERR_PTR(-ENOMEM);
 	}
+
+	ATH10K_MEMORY_STATS_INC(ce_ring_alloc,
+				nentries *
+				sizeof(struct ce_desc_64) + CE_DESC_RING_ALIGN);
 
 	src_ring->base_addr_ce_space_unaligned = base_addr;
 
@@ -1586,6 +1602,11 @@ ath10k_ce_alloc_dest_ring(struct ath10k *ar, unsigned int ce_id,
 	if (dest_ring == NULL)
 		return ERR_PTR(-ENOMEM);
 
+	ATH10K_MEMORY_STATS_INC(ce_ring_alloc,
+				sizeof(*dest_ring) +
+				(nentries *
+				 sizeof(*dest_ring->per_transfer_context)));
+
 	dest_ring->nentries = nentries;
 	dest_ring->nentries_mask = nentries - 1;
 
@@ -1602,6 +1623,10 @@ ath10k_ce_alloc_dest_ring(struct ath10k *ar, unsigned int ce_id,
 		kfree(dest_ring);
 		return ERR_PTR(-ENOMEM);
 	}
+
+	ATH10K_MEMORY_STATS_INC(ce_ring_alloc,
+				nentries *
+				sizeof(struct ce_desc) + CE_DESC_RING_ALIGN);
 
 	dest_ring->base_addr_ce_space_unaligned = base_addr;
 
@@ -1632,6 +1657,11 @@ ath10k_ce_alloc_dest_ring_64(struct ath10k *ar, unsigned int ce_id,
 	if (!dest_ring)
 		return ERR_PTR(-ENOMEM);
 
+	ATH10K_MEMORY_STATS_INC(ce_ring_alloc,
+				sizeof(*dest_ring) +
+				(nentries *
+				 sizeof(*dest_ring->per_transfer_context)));
+
 	dest_ring->nentries = nentries;
 	dest_ring->nentries_mask = nentries - 1;
 
@@ -1647,6 +1677,10 @@ ath10k_ce_alloc_dest_ring_64(struct ath10k *ar, unsigned int ce_id,
 		kfree(dest_ring);
 		return ERR_PTR(-ENOMEM);
 	}
+
+	ATH10K_MEMORY_STATS_INC(ce_ring_alloc,
+				nentries * sizeof(struct ce_desc_64) +
+				CE_DESC_RING_ALIGN);
 
 	dest_ring->base_addr_ce_space_unaligned = base_addr;
 
@@ -1953,6 +1987,8 @@ void ath10k_ce_alloc_rri(struct ath10k *ar)
 	if (!ce->vaddr_rri)
 		return;
 
+	ATH10K_MEMORY_STATS_INC(dma_alloc, CE_COUNT * sizeof(u32));
+
 	ath10k_ce_write32(ar, ar->hw_ce_regs->ce_rri_low,
 			  lower_32_bits(ce->paddr_rri));
 	ath10k_ce_write32(ar, ar->hw_ce_regs->ce_rri_high,
@@ -1974,6 +2010,8 @@ EXPORT_SYMBOL(ath10k_ce_alloc_rri);
 void ath10k_ce_free_rri(struct ath10k *ar)
 {
 	struct ath10k_ce *ce = ath10k_ce_priv(ar);
+
+	ATH10K_MEMORY_STATS_DEC(dma_alloc, CE_COUNT * sizeof(u32));
 
 	dma_free_coherent(ar->dev, (CE_COUNT * sizeof(u32)),
 			  ce->vaddr_rri,
