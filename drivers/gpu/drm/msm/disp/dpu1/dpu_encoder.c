@@ -1220,13 +1220,6 @@ static void dpu_encoder_virt_disable(struct drm_encoder *drm_enc)
 	priv = drm_enc->dev->dev_private;
 	dpu_kms = to_dpu_kms(priv->kms);
 
-	if (drm_enc->encoder_type == DRM_MODE_ENCODER_TMDS && priv->dp) {
-		if (msm_dp_display_disable(priv->dp, drm_enc)) {
-			DPU_ERROR_ENC(dpu_enc, "dp display disable failed\n");
-			return;
-		}
-	}
-
 	trace_dpu_enc_disable(DRMID(drm_enc));
 
 	/* wait for idle */
@@ -1254,6 +1247,11 @@ static void dpu_encoder_virt_disable(struct drm_encoder *drm_enc)
 	}
 
 	DPU_DEBUG_ENC(dpu_enc, "encoder disabled\n");
+
+	if (drm_enc->encoder_type == DRM_MODE_ENCODER_TMDS && priv->dp) {
+		if (msm_dp_display_disable(priv->dp, drm_enc))
+			DPU_ERROR_ENC(dpu_enc, "dp display disable failed\n");
+	}
 
 	mutex_unlock(&dpu_enc->enc_lock);
 }
