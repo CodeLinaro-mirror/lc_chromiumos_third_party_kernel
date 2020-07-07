@@ -6737,6 +6737,11 @@ struct wmi_force_fw_hang_cmd {
 	__le32 delay_ms;
 } __packed;
 
+struct wmi_fw_test_cmd {
+	__le32 param_id;
+	__le32 param_value;
+} __packed;
+
 enum wmi_pdev_reset_mode_type {
 	WMI_RST_MODE_TX_FLUSH = 1,
 	WMI_RST_MODE_WARM_RESET,

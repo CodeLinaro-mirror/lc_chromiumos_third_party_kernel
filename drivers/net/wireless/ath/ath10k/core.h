@@ -657,6 +657,8 @@ struct ath10k_debug {
 	/* protected by conf_mutex */
 	u64 fw_dbglog_mask;
 	u32 fw_dbglog_level;
+	u32 fw_test_param_id;
+	u32 fw_test_param_value;
 	u32 reg_addr;
 	u32 nf_cal_period;
 	void *cal_data;

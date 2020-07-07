@@ -7895,6 +7895,26 @@ ath10k_wmi_op_gen_force_fw_hang(struct ath10k *ar,
 }
 
 static struct sk_buff *
+ath10k_wmi_op_gen_fw_test(struct ath10k *ar, u32 param_id,
+			  u32 param_value)
+{
+	struct wmi_fw_test_cmd *cmd;
+	struct sk_buff *skb;
+
+	skb = ath10k_wmi_alloc_skb(ar, sizeof(*cmd));
+	if (!skb)
+		return ERR_PTR(-ENOMEM);
+
+	cmd = (struct wmi_fw_test_cmd *)skb->data;
+	cmd->param_id = __cpu_to_le32(param_id);
+	cmd->param_value = __cpu_to_le32(param_value);
+
+	ath10k_dbg(ar, ATH10K_DBG_WMI, "ath10k WMI: fw_test %d %d",
+		   param_id, param_value);
+	return skb;
+}
+
+static struct sk_buff *
 ath10k_wmi_op_gen_dbglog_cfg(struct ath10k *ar, u64 module_enable,
 			     u32 log_level)
 {
@@ -9368,6 +9388,7 @@ static const struct wmi_ops wmi_10_4_ops = {
 	.gen_pdev_set_wmm = ath10k_wmi_op_gen_pdev_set_wmm,
 	.gen_force_fw_hang = ath10k_wmi_op_gen_force_fw_hang,
 	.gen_mgmt_tx = ath10k_wmi_op_gen_mgmt_tx,
+	.gen_fw_test = ath10k_wmi_op_gen_fw_test,
 	.gen_dbglog_cfg = ath10k_wmi_10_4_op_gen_dbglog_cfg,
 	.gen_pktlog_enable = ath10k_wmi_op_gen_pktlog_enable,
 	.gen_pktlog_disable = ath10k_wmi_op_gen_pktlog_disable,

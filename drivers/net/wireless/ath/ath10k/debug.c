@@ -1254,6 +1254,68 @@ static const struct file_operations fops_fw_dbglog = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_write_fw_test(struct file *file,
+				    const char __user *user_buf,
+				    size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	char buf[32] = {0};
+	ssize_t rc;
+	u32 param_id;
+	u32 param_value;
+	int ret;
+
+	rc = simple_write_to_buffer(buf, sizeof(buf) - 1,
+				    ppos, user_buf, count);
+	if (rc < 0)
+		return rc;
+
+	buf[*ppos - 1] = '\0';
+
+	ret = sscanf(buf, "%u %x", &param_id, &param_value);
+
+	if (ret != 2)
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->state != ATH10K_STATE_ON &&
+	    ar->state != ATH10K_STATE_RESTARTED) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	if (param_id) {
+		ar->debug.fw_test_param_id = param_id;
+		ar->debug.fw_test_param_value = param_value;
+	} else {
+		ath10k_warn(ar, "Enter a valid param ID!");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ret = ath10k_wmi_fw_test(ar, ar->debug.fw_test_param_id,
+				 ar->debug.fw_test_param_value);
+
+	if (ret) {
+		ath10k_warn(ar, "failed to do fw_test: %d\n", ret);
+		goto exit;
+	}
+
+	ret = count;
+
+exit:
+	mutex_unlock(&ar->conf_mutex);
+	return ret;
+}
+
+static const struct file_operations fops_fw_test = {
+	.write = ath10k_write_fw_test,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static int ath10k_debug_cal_data_fetch(struct ath10k *ar)
 {
 	u32 hi_addr;
@@ -3762,6 +3824,9 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("burst_dur", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_burst_dur);
+
+	debugfs_create_file("fw_test", 0600, ar->debug.debugfs_phy, ar,
+			    &fops_fw_test);
 
 	debugfs_create_file("ps_state_enable", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_ps_state_enable);
