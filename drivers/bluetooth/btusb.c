@@ -573,6 +573,23 @@ static void btusb_rtl_cmd_timeout(struct hci_dev *hdev)
 	gpiod_set_value_cansleep(reset_gpio, 0);
 }
 
+static void btusb_qca_cmd_timeout(struct hci_dev *hdev)
+{
+	struct btusb_data *data = hci_get_drvdata(hdev);
+	int err;
+
+	if (++data->cmd_timeout_cnt < 5)
+		return;
+
+	bt_dev_err(hdev, "Multiple cmd timeouts seen. Resetting usb device.");
+	/* This is not an unbalanced PM reference since the device will reset */
+	err = usb_autopm_get_interface(data->intf);
+	if (!err)
+		usb_queue_reset_device(data->intf);
+	else
+		bt_dev_err(hdev, "Failed usb_autopm_get_interface with %d", err);
+}
+
 static inline void btusb_free_frags(struct btusb_data *data)
 {
 	unsigned long flags;
@@ -1922,6 +1939,16 @@ static int btusb_setup_intel(struct hci_dev *hdev)
 	struct intel_version ver;
 
 	BT_DBG("%s", hdev->name);
+
+	/* Observed race condition during controller recovery mechanism
+	 * resulting the controller not responding to the reset command.
+	 *
+	 * To avoid such race condition need a delay of 30ms soon after the
+	 * USB re-enumeration and before sending the Reset command which shall
+	 * allow controller to completely recover and process the Reset command.
+	 */
+	BT_DBG("Delay 30ms to avoid race condition");
+	mdelay(30);
 
 	/* The controller has a bug with the first HCI command sent to it
 	 * returning number of completed commands as zero. This would stall the
@@ -3704,6 +3731,9 @@ static bool btusb_prevent_wake(struct hci_dev *hdev)
 {
 	struct btusb_data *data = hci_get_drvdata(hdev);
 
+	if (test_bit(BTUSB_WAKEUP_DISABLE, &data->flags))
+		return true;
+
 	return !device_may_wakeup(&data->udev->dev);
 }
 
@@ -3941,6 +3971,7 @@ static int btusb_probe(struct usb_interface *intf,
 	if (id->driver_info & BTUSB_QCA_ROME) {
 		data->setup_on_usb = btusb_setup_qca;
 		hdev->set_bdaddr = btusb_set_bdaddr_ath3012;
+		hdev->cmd_timeout = btusb_qca_cmd_timeout;
 		set_bit(HCI_QUIRK_SIMULTANEOUS_DISCOVERY, &hdev->quirks);
 		btusb_check_needs_reset_resume(intf);
 	}
