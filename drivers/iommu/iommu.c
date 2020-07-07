@@ -1542,6 +1542,7 @@ out_put_group:
 
 	return ERR_PTR(ret);
 }
+EXPORT_SYMBOL_GPL(iommu_group_get_for_dev);
 
 struct iommu_domain *iommu_group_default_domain(struct iommu_group *group)
 {

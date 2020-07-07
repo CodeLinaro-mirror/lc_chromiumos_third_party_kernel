@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 // Copyright(c) 2015-17 Intel Corporation.
 
 #include <linux/module.h>
@@ -20,9 +20,9 @@
 static const struct sdw_device_id *
 sdw_get_device_id(struct sdw_slave *slave, struct sdw_driver *drv)
 {
-	const struct sdw_device_id *id = drv->id_table;
+	const struct sdw_device_id *id;
 
-	while (id && id->mfg_id) {
+	for (id = drv->id_table; id && id->mfg_id; id++)
 		if (slave->id.mfg_id == id->mfg_id &&
 		    slave->id.part_id == id->part_id  &&
 		    (!id->sdw_version ||
@@ -30,8 +30,6 @@ sdw_get_device_id(struct sdw_slave *slave, struct sdw_driver *drv)
 		    (!id->class_id ||
 		     slave->id.class_id == id->class_id))
 			return id;
-		id++;
-	}
 
 	return NULL;
 }

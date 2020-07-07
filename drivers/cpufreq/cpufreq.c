@@ -23,6 +23,7 @@
 #include <linux/kernel_stat.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/of.h>
 #include <linux/pm_qos.h>
 #include <linux/slab.h>
 #include <linux/suspend.h>
@@ -1528,10 +1529,20 @@ static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 			return ret;
 	}
 
-	/* Create sysfs link on CPU registration */
 	policy = per_cpu(cpufreq_cpu_data, cpu);
-	if (policy)
+	if (policy) {
+		/* Create sysfs link on CPU registration */
 		add_cpu_dev_symlink(policy, cpu);
+
+		/*
+		 * Some usb devices request cpu frequency larger than a
+		 * specific value
+		 */
+		down_write(&policy->rwsem);
+		of_property_read_u32(dev->of_node, "complex-usb-min-frequency",
+				     &policy->complexusb_minfreq);
+		up_write(&policy->rwsem);
+	}
 
 	return 0;
 }
@@ -2414,6 +2425,21 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	new_data.min = freq_qos_read_value(&policy->constraints, FREQ_QOS_MIN);
 	new_data.max = freq_qos_read_value(&policy->constraints, FREQ_QOS_MAX);
 
+	/*
+	 * adjust if plug complex usb device
+	 * This code doesn't use cpufreq_verify_within_limits()
+	 * because we don't want to override someone else's max
+	 * (if the device is thermally throttled we'd rather just
+	 * sacrifice the quality of USB instead of going over our
+	 * thermal budget).
+	 */
+	if (policy->complexusb_cnt && policy->complexusb_minfreq) {
+		if (policy->complexusb_minfreq > new_data.min)
+			new_data.min = policy->complexusb_minfreq;
+		if (new_data.min > new_data.max)
+			new_data.min = new_data.max;
+	}
+
 	pr_debug("setting new policy for CPU %u: %u - %u kHz\n",
 		 new_data.cpu, new_data.min, new_data.max);
 
@@ -2528,6 +2554,49 @@ void cpufreq_update_limits(unsigned int cpu)
 		cpufreq_update_policy(cpu);
 }
 EXPORT_SYMBOL_GPL(cpufreq_update_limits);
+
+/**
+ * cpufreq_start_complex_usb
+ *
+ * set cpu min frequency to complex-usb-min-frequency
+ * which define in dts
+ */
+void cpufreq_start_complex_usb(void)
+{
+	struct cpufreq_policy *policy = cpufreq_cpu_get(0);
+	bool need_update;
+
+	down_write(&policy->rwsem);
+	policy->complexusb_cnt++;
+	need_update = policy->complexusb_cnt == 1;
+	up_write(&policy->rwsem);
+	cpufreq_cpu_put(policy);
+
+	if (need_update)
+		cpufreq_update_policy(0);
+}
+EXPORT_SYMBOL(cpufreq_start_complex_usb);
+
+/**
+ * cpufreq_end_complex_usb
+ *
+ * revover cpu min frequency
+ */
+void cpufreq_end_complex_usb(void)
+{
+	struct cpufreq_policy *policy = cpufreq_cpu_get(0);
+	bool need_update;
+
+	down_write(&policy->rwsem);
+	policy->complexusb_cnt--;
+	need_update = policy->complexusb_cnt == 0;
+	up_write(&policy->rwsem);
+	cpufreq_cpu_put(policy);
+
+	if (need_update)
+		cpufreq_update_policy(0);
+}
+EXPORT_SYMBOL(cpufreq_end_complex_usb);
 
 /*********************************************************************
  *               BOOST						     *
