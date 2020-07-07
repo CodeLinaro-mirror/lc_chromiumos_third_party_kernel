@@ -657,6 +657,26 @@ out:
 	return ret;
 }
 
+/**
+ * ioctl_drop_cache - drop all caches for a superblock
+ *
+ * @sb: superblock to drop caches for
+ *
+ * Clears the dcache and evicts all inodes for a mount
+ *
+ * Returns 0 on success, -EPERM on permission failure.
+ */
+static int ioctl_drop_cache(struct super_block *sb)
+{
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	shrink_dcache_sb(sb);
+	invalidate_inodes(sb, false);
+
+	return 0;
+}
+
 /*
  * do_vfs_ioctl() is not for drivers and not intended to be EXPORT_SYMBOL()'d.
  * It's just a simple helper for sys_ioctl and compat_sys_ioctl.
@@ -719,6 +739,9 @@ static int do_vfs_ioctl(struct file *filp, unsigned int fd,
 
 	case FIDEDUPERANGE:
 		return ioctl_file_dedupe_range(filp, argp);
+
+	case FS_IOC_DROP_CACHE:
+		return ioctl_drop_cache(inode->i_sb);
 
 	case FIONREAD:
 		if (!S_ISREG(inode->i_mode))
