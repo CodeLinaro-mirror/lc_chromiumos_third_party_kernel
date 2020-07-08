@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2011 Atheros Communications Inc.
  * Copyright (c) 2011-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1937,6 +1937,7 @@ enum htt_tx_compl_state {
 	HTT_TX_COMPL_STATE_ACK,
 	HTT_TX_COMPL_STATE_NOACK,
 	HTT_TX_COMPL_STATE_DISCARD,
+	HTT_TX_COMPL_STATES_MAX,
 };
 
 struct htt_peer_map_event {

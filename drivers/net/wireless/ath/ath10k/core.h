@@ -477,6 +477,7 @@ struct ath10k_sta {
 	struct work_struct tid_config_wk;
 	u8 sta_kickout;
 	unsigned long sta_kickout_timeout;
+	u32 pkt_status[HTT_TX_COMPL_STATES_MAX];
 };
 
 #define ATH10K_VDEV_SETUP_TIMEOUT_HZ	(5 * HZ)
@@ -549,7 +550,7 @@ struct ath10k_vif {
 
 	struct ieee80211_tid_config *tid_config;
 	struct rate_info fixed_txrate;
-	u32 pkt_status[HTT_TX_COMPL_STATE_DISCARD + 1];
+	u32 pkt_status[HTT_TX_COMPL_STATES_MAX];
 
 	struct timer_list swba_event_check_timer;
 	u32 swba_evnt_miss_cnt;

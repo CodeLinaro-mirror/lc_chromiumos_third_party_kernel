@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2011 Atheros Communications Inc.
  * Copyright (c) 2011-2016 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -110,6 +110,7 @@ int ath10k_txrx_tx_unref(struct ath10k_htt *htt,
 	struct ath10k_txq *artxq;
 	struct ieee80211_vif *vif;
 	struct ath10k_vif *arvif;
+	struct ath10k_sta *arsta;
 	struct sk_buff *msdu;
 
 	ath10k_dbg(ar, ATH10K_DBG_HTT,
@@ -136,7 +137,9 @@ int ath10k_txrx_tx_unref(struct ath10k_htt *htt,
 	vif = skb_cb->vif;
 	arvif = (void *)vif->drv_priv;
 
-	arvif->pkt_status[tx_done->status]++;
+	if (tx_done->status &&
+	    tx_done->status < HTT_TX_COMPL_STATES_MAX)
+		arvif->pkt_status[tx_done->status]++;
 
 	if (txq) {
 		artxq = (void *)txq->drv_priv;
@@ -148,6 +151,13 @@ int ath10k_txrx_tx_unref(struct ath10k_htt *htt,
 	if (htt->num_pending_tx == 0)
 		wake_up(&htt->empty_tx_wq);
 	spin_unlock_bh(&htt->tx_lock);
+
+	if (txq && txq->sta) {
+		arsta = (struct ath10k_sta *)txq->sta->drv_priv;
+		if (tx_done->status &&
+		    tx_done->status < HTT_TX_COMPL_STATES_MAX)
+			arsta->pkt_status[tx_done->status]++;
+	}
 
 	if (txq && txq->sta && skb_cb->airtime_est)
 		ieee80211_sta_register_pending_airtime(txq->sta, txq->tid,

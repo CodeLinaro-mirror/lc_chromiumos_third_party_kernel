@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014-2017 Qualcomm Atheros, Inc.
+ * Copyright (c) 2018-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -360,6 +361,73 @@ static const struct file_operations fops_peer_debug_trigger = {
 	.open = simple_open,
 	.read = ath10k_dbg_sta_read_peer_debug_trigger,
 	.write = ath10k_dbg_sta_write_peer_debug_trigger,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static ssize_t ath10k_dbg_sta_read_peer_pkt_status(struct file *file,
+						   char __user *user_buf,
+						   size_t count,
+						   loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ath10k *ar = arsta->arvif->ar;
+	char buf[128];
+	int len = 0;
+
+	mutex_lock(&ar->conf_mutex);
+
+	len += scnprintf(buf + len, sizeof(buf) - len, "ACKed pkt count :%u\n",
+			 arsta->pkt_status[HTT_TX_COMPL_STATE_ACK]);
+	len += scnprintf(buf + len, sizeof(buf) - len, "NoAck pkt count :%u\n",
+			 arsta->pkt_status[HTT_TX_COMPL_STATE_NOACK]);
+	len += scnprintf(buf + len, sizeof(buf) - len,
+			 "Discarded pkt count :%u\n",
+			 arsta->pkt_status[HTT_TX_COMPL_STATE_DISCARD]);
+	mutex_unlock(&ar->conf_mutex);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static ssize_t
+ath10k_dbg_sta_write_peer_pkt_status(struct file *file,
+				     const char __user *user_buf,
+				     size_t count, loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ath10k *ar = arsta->arvif->ar;
+	u8 reset;
+	int ret;
+
+	if (kstrtou8_from_user(user_buf, count, 0, &reset))
+		return -EINVAL;
+
+	if (reset != 1)
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->state != ATH10K_STATE_ON) {
+		ret = -ENETDOWN;
+		goto out;
+	}
+
+	arsta->pkt_status[HTT_TX_COMPL_STATE_ACK] = 0;
+	arsta->pkt_status[HTT_TX_COMPL_STATE_NOACK] = 0;
+	arsta->pkt_status[HTT_TX_COMPL_STATE_DISCARD] = 0;
+
+out:
+	mutex_unlock(&ar->conf_mutex);
+
+	return count;
+}
+
+static const struct file_operations fops_peer_pkt_status = {
+	.open = simple_open,
+	.read = ath10k_dbg_sta_read_peer_pkt_status,
+	.write = ath10k_dbg_sta_write_peer_pkt_status,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -797,6 +865,8 @@ void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			    &fops_rx_duration);
 	debugfs_create_file("peer_debug_trigger", 0600, dir, sta,
 			    &fops_peer_debug_trigger);
+	debugfs_create_file("peer_pkt_status", 0600, dir, sta,
+			    &fops_peer_pkt_status);
 
 	if (ath10k_peer_stats_enabled(ar) &&
 	    ath10k_debug_is_extd_tx_stats_enabled(ar)){
