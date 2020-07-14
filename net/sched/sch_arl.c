@@ -1364,8 +1364,8 @@ static int arl_change(struct Qdisc *sch, struct nlattr *opt)
 	if (tb[TCA_ARL_MODE])
 		q->params.mode = nla_get_u32(tb[TCA_ARL_MODE]);
 
-	/* The default config set the minimum rate to 70% of connection speed */
-	q->params.rate = div_u64(q->params.min_rate * 100, 70);
+	/* The default config set the minimum rate to 60% of connection speed */
+	q->params.rate = div_u64(q->params.min_rate * 100, 60);
 
 	if (tb[TCA_ARL_LIMIT])
 		q->params.limit = nla_get_u32(tb[TCA_ARL_LIMIT]);
