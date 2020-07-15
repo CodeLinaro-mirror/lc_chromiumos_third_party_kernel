@@ -590,7 +590,7 @@ void mesh_plink_broken(struct sta_info *sta)
 	struct mesh_path *mpath;
 	struct rhashtable_iter iter;
 	int ret;
-	int paths_deactivated = 0;
+	int paths_deactivated = 0, signal_avg;
 
 	ret = rhashtable_walk_init(&tbl->rhead, &iter, GFP_ATOMIC);
 	if (ret)
@@ -624,10 +624,11 @@ out:
 	rhashtable_walk_exit(&iter);
 
 	if (paths_deactivated > 0) {
+		signal_avg = -ewma_signal_read(&sta->rx_stats_avg.signal);
 		sdata_info(sta->sdata, " MESH MPL the link to %pM is broken and %d path deactivated signal %d dbm signal_avg %d dbm\n",
 			   sta->addr, paths_deactivated,
 			   sta->rx_stats.last_signal,
-			   sta->rx_stats_avg.signal);
+			   signal_avg);
 		mesh_continuous_tx_fail_cnt(sta, NL80211_MPATH_BROKEN_NOTIFY);
 	}
 }

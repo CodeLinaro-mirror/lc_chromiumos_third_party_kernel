@@ -310,8 +310,8 @@ void ieee80211s_update_metric(struct ieee80211_local *local,
 		sta->mesh->fail_cnt++;
 	} else if (sta->mesh->fail_cnt) {
 		if (sta->mesh->fail_cnt >= MAX_TX_FAIL_CNT)
-			sdata_info(sta->sdata, " MESH MPL HIGHER fail cnt %u\n",
-				   sta->mesh->fail_cnt);
+			sdata_info(sta->sdata, " MESH MPL HIGHER fail cnt %u for peer %pM\n",
+				   sta->mesh->fail_cnt, sta->sta.addr);
 		else
 			sta->mesh->tx_fail_cnt[sta->mesh->fail_cnt]++;
 		sta->mesh->fail_cnt = 0;
@@ -394,9 +394,13 @@ void mesh_continuous_tx_fail_cnt(struct sta_info *sta,
 					 event, GFP_ATOMIC);
 
 	sdata_info(sta->sdata, "MESH MPL continuous fail cnt :\n");
-	for (i = 0; i < MAX_TX_FAIL_CNT; i++)
+	for (i = 0; i < MAX_TX_FAIL_CNT; i++) {
+		if (!sta->mesh->tx_fail_cnt[i])
+			continue;
+
 		sdata_info(sta->sdata, "%d : %u", i,
 			   sta->mesh->tx_fail_cnt[i]);
+	}
 
 	sdata_info(sta->sdata, "Current continuos tx fail count %u\n",
 		   sta->mesh->fail_cnt);
@@ -435,6 +439,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	u8 hopcount;
 	bool mpath_table_updated = 0;
 	bool mpath_metric_change = 0;
+	int signal_avg;
 
 	rcu_read_lock();
 	sta = sta_info_get(sdata, mgmt->sa);
@@ -535,12 +540,14 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 					  mpath->dst, sta->addr, new_metric, action);
 				mpath_table_updated = 1;
 			} else if (MP_DIFF(new_metric, mpath->metric) > (mpath->metric*LOG_PERCENT_DIFF)/100) {
+				signal_avg =
+				-ewma_signal_read(&sta->rx_stats_avg.signal);
 				mpath_dbg(sdata,
 					  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x signal %d dbm signal_avg %d dbm\n",
 					  mpath->dst, sta->addr, mpath->metric,
 					  new_metric, action,
 					  sta->rx_stats.last_signal,
-					  sta->rx_stats_avg.signal);
+					  signal_avg);
 				mpath_metric_change = 1;
 			}
 			mesh_path_assign_nexthop(mpath, sta);
@@ -596,12 +603,14 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 					  mpath->dst, sta->addr, last_hop_metric, action);
 				mpath_table_updated = 1;
 			} else if (MP_DIFF(last_hop_metric, mpath->metric) > (mpath->metric*LOG_PERCENT_DIFF)/100) {
+				signal_avg =
+				-ewma_signal_read(&sta->rx_stats_avg.signal);
 				mpath_dbg(sdata,
 					  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x signal %d dbm signal_avg %d dbm\n",
 					  mpath->dst, sta->addr, mpath->metric,
 					  last_hop_metric, action,
 					  sta->rx_stats.last_signal,
-					  sta->rx_stats_avg.signal);
+					  signal_avg);
 				mpath_metric_change = 1;
 			}
 

@@ -736,6 +736,9 @@ static ssize_t sta_tx_fail_cnt_read(struct file *file, char __user *userbuf,
 	struct sta_info *sta = file->private_data;
 
 	for (i = 0; i < MAX_TX_FAIL_CNT; i++) {
+		if (!sta->mesh->tx_fail_cnt[i])
+			continue;
+
 		p += scnprintf(p, sizeof(buf) + buf - p, "%d : %u ",
 			       i, sta->mesh->tx_fail_cnt[i]);
 	}
