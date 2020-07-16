@@ -2372,6 +2372,9 @@ struct ieee80211_hw {
 	u8 tx_sk_pacing_shift;
 	u8 weight_multiplier;
 	u32 dbg_mask;
+	u32 rx_clear_count;
+	u32 cycle_count;
+	u8 medium_busy;
 };
 
 static inline bool _ieee80211_hw_check(struct ieee80211_hw *hw,

@@ -625,10 +625,10 @@ out:
 
 	if (paths_deactivated > 0) {
 		signal_avg = -ewma_signal_read(&sta->rx_stats_avg.signal);
-		sdata_info(sta->sdata, " MESH MPL the link to %pM is broken and %d path deactivated signal %d dbm signal_avg %d dbm\n",
+		sdata_info(sta->sdata, " MESH MPL the link to %pM is broken and %d path deactivated signal %d dbm signal_avg %d dbm medium busy %u\n",
 			   sta->addr, paths_deactivated,
 			   sta->rx_stats.last_signal,
-			   signal_avg);
+			   signal_avg, sta->local->hw.medium_busy);
 		mesh_continuous_tx_fail_cnt(sta, NL80211_MPATH_BROKEN_NOTIFY);
 	}
 }

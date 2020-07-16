@@ -590,6 +590,14 @@ void ath10k_hw_fill_survey_time(struct ath10k *ar, struct survey_info *survey,
 
 	survey->time = CCNT_TO_MSEC(ar, cc);
 	survey->time_busy = CCNT_TO_MSEC(ar, rcc);
+
+	if (ar->calc_busy) {
+		if (!survey->time)
+			return;
+
+		ar->hw->medium_busy = div_u64((survey->time_busy * 100),
+					      survey->time);
+	}
 }
 
 /* The firmware does not support setting the coverage class. Instead this

@@ -709,6 +709,30 @@ static const struct file_operations fops_pkt_status = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_medium_busy_read(struct file *file,
+				       char __user *user_buf,
+				       size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	u8 buf[50];
+	size_t len = 0;
+
+	mutex_lock(&ar->conf_mutex);
+	len += scnprintf(buf + len, sizeof(buf) - len,
+			 "Medium Busy in percentage %u\n",
+			 ar->hw->medium_busy);
+	mutex_unlock(&ar->conf_mutex);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_medium_busy = {
+	.read = ath10k_medium_busy_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static ssize_t ath10k_reg_addr_read(struct file *file,
 				    char __user *user_buf,
 				    size_t count, loff_t *ppos)
@@ -3458,6 +3482,9 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("pkt_status", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_pkt_status);
+
+	debugfs_create_file("medium_busy", 0400, ar->debug.debugfs_phy, ar,
+			    &fops_medium_busy);
 
 	debugfs_create_file("reg_addr", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_reg_addr);

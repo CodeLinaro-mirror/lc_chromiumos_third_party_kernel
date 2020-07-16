@@ -3306,6 +3306,7 @@ static int ath10k_wmi_10_4_op_pull_fw_stats(struct ath10k *ar,
 	for (i = 0; i < num_pdev_stats; i++) {
 		const struct wmi_10_4_pdev_stats *src;
 		struct ath10k_fw_stats_pdev *dst;
+		struct survey_info survey = {0};
 
 		src = (void *)skb->data;
 		if (!skb_pull(skb, sizeof(*src)))
@@ -3320,6 +3321,17 @@ static int ath10k_wmi_10_4_op_pull_fw_stats(struct ath10k *ar,
 		ath10k_wmi_pull_pdev_stats_rx(&src->rx, dst);
 		dst->rx_ovfl_errs = __le32_to_cpu(src->rx_ovfl_errs);
 		ath10k_wmi_pull_pdev_stats_extra(&src->extra, dst);
+
+		ar->calc_busy = true;
+
+		ath10k_hw_fill_survey_time(ar, &survey, dst->cycle_count,
+					   dst->rx_clear_count,
+					   ar->hw->cycle_count,
+					   ar->hw->rx_clear_count);
+
+		ar->calc_busy = false;
+		ar->hw->rx_clear_count = dst->rx_clear_count;
+		ar->hw->cycle_count = dst->cycle_count;
 
 		list_add_tail(&dst->list, &stats->pdevs);
 	}
