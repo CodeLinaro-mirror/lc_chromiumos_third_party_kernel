@@ -97,6 +97,9 @@
 /* Default Airtime weight multipler (Tuned for multiclient performance) */
 #define ATH10K_AIRTIME_WEIGHT_MULTIPLIER  4
 
+#define ATH10K_MAX_AGGR_RETRY_COUNT 255
+#define ATH10K_AGGR_SW_RETRY_THRESHOLD 30
+
 struct ath10k;
 
 enum ath10k_bus {
@@ -1195,6 +1198,8 @@ struct ath10k {
 	bool burst_enabled;
 
 	bool calc_busy;
+
+	u8 aggr_sw_retry_thold;
 
 	/* must be last */
 	u8 drv_priv[0] __aligned(sizeof(void *));
