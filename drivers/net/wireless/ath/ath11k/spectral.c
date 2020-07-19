@@ -11,11 +11,9 @@
 #define ATH11K_SPECTRAL_EVENT_TIMEOUT_MS	1
 
 #define ATH11K_SPECTRAL_DWORD_SIZE		4
-/* HW bug, expected BIN size is 2 bytes but HW report as 4 bytes */
-#define ATH11K_SPECTRAL_BIN_SIZE		4
-#define ATH11K_SPECTRAL_ATH11K_MIN_BINS		64
-#define ATH11K_SPECTRAL_ATH11K_MIN_IB_BINS	32
-#define ATH11K_SPECTRAL_ATH11K_MAX_IB_BINS	256
+#define ATH11K_SPECTRAL_ATH11K_MIN_BINS		32
+#define ATH11K_SPECTRAL_ATH11K_MIN_IB_BINS	16
+#define ATH11K_SPECTRAL_ATH11K_MAX_IB_BINS	(ab->hw_params.spectral_max_fft_bins >> 1)
 
 #define ATH11K_SPECTRAL_SCAN_COUNT_MAX		4095
 
@@ -445,7 +443,7 @@ static ssize_t ath11k_write_file_spectral_bins(struct file *file,
 		return -EINVAL;
 
 	if (val < ATH11K_SPECTRAL_ATH11K_MIN_BINS ||
-	    val > SPECTRAL_ATH11K_MAX_NUM_BINS)
+	    val > ar->ab->hw_params.spectral_max_fft_bins)
 		return -EINVAL;
 
 	if (!is_power_of_2(val))
@@ -581,7 +579,7 @@ int ath11k_spectral_process_fft(struct ath11k *ar,
 	struct spectral_tlv *tlv;
 	int tlv_len, bin_len, num_bins;
 	u16 length, freq;
-	u8 chan_width_mhz;
+	u8 chan_width_mhz, bin_sz;
 	int ret;
 
 	lockdep_assert_held(&ar->spectral.lock);
@@ -596,7 +594,7 @@ int ath11k_spectral_process_fft(struct ath11k *ar,
 	tlv_len = FIELD_GET(SPECTRAL_TLV_HDR_LEN, __le32_to_cpu(tlv->header));
 	/* convert Dword into bytes */
 	tlv_len *= ATH11K_SPECTRAL_DWORD_SIZE;
-	bin_len = tlv_len - (sizeof(*fft_report) - sizeof(*tlv));
+	bin_len = tlv_len - ab->hw_params.spectral_fft_hdr_len;
 
 	if (data_len < (bin_len + sizeof(*fft_report))) {
 		ath11k_warn(ab, "mismatch in expected bin len %d and data len %d\n",
@@ -604,7 +602,9 @@ int ath11k_spectral_process_fft(struct ath11k *ar,
 		return -EINVAL;
 	}
 
-	num_bins = bin_len / ATH11K_SPECTRAL_BIN_SIZE;
+	bin_sz = ab->hw_params.spectral_fft_sz + ab->hw_params.spectral_fft_pad_sz;
+	num_bins = bin_len / bin_sz;
+
 	/* Only In-band bins are useful to user for visualize */
 	num_bins >>= 1;
 
@@ -738,7 +738,8 @@ static int ath11k_spectral_process_data(struct ath11k *ar,
 			 * is 4 DWORD size (16 bytes).
 			 * Need to remove this workaround once HW bug fixed
 			 */
-			tlv_len = sizeof(*summary) - sizeof(*tlv);
+			tlv_len = sizeof(*summary) - sizeof(*tlv) +
+				  ab->hw_params.spectral_summary_pad_sz;
 
 			if (tlv_len < (sizeof(*summary) - sizeof(*tlv))) {
 				ath11k_warn(ab, "failed to parse spectral summary at bytes %d tlv_len:%d\n",
@@ -897,6 +898,7 @@ void ath11k_spectral_deinit(struct ath11k_base *ab)
 
 static inline int ath11k_spectral_debug_register(struct ath11k *ar)
 {
+	struct ath11k_base *ab = ar->ab;
 	int ret;
 
 	ar->spectral.rfs_scan = relay_open("spectral_scan",
@@ -905,7 +907,7 @@ static inline int ath11k_spectral_debug_register(struct ath11k *ar)
 					   ATH11K_SPECTRAL_NUM_SUB_BUF,
 					   &rfs_scan_cb, NULL);
 	if (!ar->spectral.rfs_scan) {
-		ath11k_warn(ar->ab, "failed to open relay in pdev %d\n",
+		ath11k_warn(ab, "failed to open relay in pdev %d\n",
 			    ar->pdev_idx);
 		return -EINVAL;
 	}
@@ -915,7 +917,7 @@ static inline int ath11k_spectral_debug_register(struct ath11k *ar)
 						    ar->debug.debugfs_pdev, ar,
 						    &fops_scan_ctl);
 	if (!ar->spectral.scan_ctl) {
-		ath11k_warn(ar->ab, "failed to open debugfs in pdev %d\n",
+		ath11k_warn(ab, "failed to open debugfs in pdev %d\n",
 			    ar->pdev_idx);
 		ret = -EINVAL;
 		goto debug_unregister;
@@ -926,7 +928,7 @@ static inline int ath11k_spectral_debug_register(struct ath11k *ar)
 						      ar->debug.debugfs_pdev, ar,
 						      &fops_scan_count);
 	if (!ar->spectral.scan_count) {
-		ath11k_warn(ar->ab, "failed to open debugfs in pdev %d\n",
+		ath11k_warn(ab, "failed to open debugfs in pdev %d\n",
 			    ar->pdev_idx);
 		ret = -EINVAL;
 		goto debug_unregister;
@@ -937,7 +939,7 @@ static inline int ath11k_spectral_debug_register(struct ath11k *ar)
 						     ar->debug.debugfs_pdev, ar,
 						     &fops_scan_bins);
 	if (!ar->spectral.scan_bins) {
-		ath11k_warn(ar->ab, "failed to open debugfs in pdev %d\n",
+		ath11k_warn(ab, "failed to open debugfs in pdev %d\n",
 			    ar->pdev_idx);
 		ret = -EINVAL;
 		goto debug_unregister;

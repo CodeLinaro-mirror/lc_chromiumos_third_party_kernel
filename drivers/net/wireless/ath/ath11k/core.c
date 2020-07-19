@@ -70,6 +70,9 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.cold_boot_calib = true,
 		.supports_suspend = false,
 		.hal_desc_sz = sizeof(struct hal_rx_desc_ipq8074),
+		.spectral_fft_pad_sz = 2,
+		.spectral_max_fft_bins = 512,
+		.spectral_fft_hdr_len = 16,
 	},
 	{
 		.hw_rev = ATH11K_HW_IPQ6018_HW10,
@@ -110,6 +113,8 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.cold_boot_calib = true,
 		.supports_suspend = false,
 		.hal_desc_sz = sizeof(struct hal_rx_desc_ipq8074),
+		.spectral_max_fft_bins = 512,
+		.spectral_fft_hdr_len = 16,
 	},
 	{
 		.name = "qca6390 hw2.0",
@@ -184,6 +189,10 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.supports_shadow_regs = false,
 		.idle_ps = false,
 		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9074),
+		.spectral_fft_sz = 2,
+		.spectral_max_fft_bins = 1024,
+		.spectral_summary_pad_sz = 16,
+		.spectral_fft_hdr_len = 24,
 	},
 };
 

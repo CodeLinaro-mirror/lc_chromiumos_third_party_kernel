@@ -162,6 +162,10 @@ struct ath11k_hw_params {
 	bool cold_boot_calib;
 	bool supports_suspend;
 	u32 hal_desc_sz;
+	u8 spectral_fft_pad_sz;
+	u8 spectral_summary_pad_sz;
+	u8 spectral_fft_hdr_len;
+	u32 spectral_max_fft_bins;
 };
 
 struct ath11k_hw_ops {
