@@ -4387,11 +4387,6 @@ another_round:
 			goto out;
 	}
 
-	fast_recv = rcu_dereference(fast_nat_recv);
-	if (fast_recv && fast_recv(skb)) {
-		ret = NET_RX_SUCCESS;
-		goto out;
-	}
 
 	if (skb_skip_tc_classify(skb))
 		goto skip_classify;
@@ -4423,7 +4418,14 @@ skip_taps:
 	}
 #endif
 	skb_reset_tc(skb);
+
 skip_classify:
+	fast_recv = rcu_dereference(fast_nat_recv);
+	if (fast_recv && fast_recv(skb)) {
+		ret = NET_RX_SUCCESS;
+		goto out;
+	}
+
 	if (pfmemalloc && !skb_pfmemalloc_protocol(skb))
 		goto drop;
 
