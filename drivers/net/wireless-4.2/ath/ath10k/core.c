@@ -42,6 +42,7 @@ bool ath10k_enable_smart_antenna;
 #endif
 u32 ath10k_default_antenna_2g = ATH10K_DEFAULT_ANTENNA_2G;
 u32 ath10k_default_antenna_5g = ATH10K_DEFAULT_ANTENNA_5G;
+static char board_data[32];
 
 module_param_named(debug_mask, ath10k_debug_mask, uint, 0644);
 module_param_named(cryptmode, ath10k_cryptmode_param, uint, 0644);
@@ -55,6 +56,7 @@ module_param_named(enable_smart_antenna, ath10k_enable_smart_antenna,
 #endif
 module_param_named(default_antenna_2g, ath10k_default_antenna_2g, uint, 0644);
 module_param_named(default_antenna_5g, ath10k_default_antenna_5g, uint, 0644);
+module_param_string(board_data, board_data, sizeof(board_data), 0644);
 
 MODULE_PARM_DESC(debug_mask, "Debugging mask");
 MODULE_PARM_DESC(uart_print, "Uart target debugging");
@@ -67,6 +69,7 @@ MODULE_PARM_DESC(enable_smart_antenna, "Enable smart antenna supprot in fw");
 #endif
 MODULE_PARM_DESC(default_antenna_2g, "Default antenna config for 2G");
 MODULE_PARM_DESC(default_antenna_5g, "Default antenna config for 5G");
+MODULE_PARM_DESC(board_data, "Board Data File");
 
 static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 	{
@@ -1029,12 +1032,28 @@ static void ath10k_country_str_sanitize(char *country_str)
 	}
 }
 
+static int ath10k_try_load_board(struct ath10k *ar, const char *boardname,
+				 const char *prefix, const char *suffix)
+{
+	char board_bin[100];
+
+	scnprintf(board_bin, sizeof(board_bin),
+		  "%s%sboard-2%s%s.bin",
+		  prefix ? prefix : "",
+		  prefix ? "-" : "",
+		  suffix ? "-" : "",
+		  suffix ? suffix : "");
+
+	return ath10k_core_fetch_board_data_api_n(ar, boardname,
+						  board_bin);
+}
+
 static int ath10k_core_fetch_board_file(struct ath10k *ar)
 {
 	char boardname[100];
 	int ret;
 	struct device_node *node;
-	char country_str[3], board_bin[100];
+	char country_str[3] = {0}, ath_country_str[3];
 	u16 rd;
 
 	node = ar->dev->of_node;
@@ -1049,24 +1068,32 @@ static int ath10k_core_fetch_board_file(struct ath10k *ar)
 
 	if (node) {
 		if (ath10k_core_fetch_country_str(node, country_str)) {
-			scnprintf(board_bin, sizeof(board_bin),
-				  "board-2-%s.bin",
-				  country_str);
-			ath10k_country_str_sanitize(country_str);
-			rd = ath_regd_find_country_by_name(country_str);
+			memcpy(ath_country_str, country_str,
+			       sizeof(country_str));
+			ath10k_country_str_sanitize(ath_country_str);
+			rd = ath_regd_find_country_by_name(ath_country_str);
 			if (rd != 0xffff)
 				ar->ath_common.regulatory.current_rd =
 						rd | COUNTRY_ERD_FLAG;
 
-			ret = ath10k_core_fetch_board_data_api_n(ar, boardname,
-								 board_bin);
+			ret = ath10k_try_load_board(ar, boardname, board_data,
+						    country_str);
 			if (!ret)
 				goto success;
 		}
 	}
 
-	ret = ath10k_core_fetch_board_data_api_n(ar, boardname,
-						 ATH10K_BOARD_API2_FILE);
+	ret = ath10k_try_load_board(ar, boardname, board_data, NULL);
+	if (!ret)
+		goto success;
+
+	if (country_str[0]) {
+		ret = ath10k_try_load_board(ar, boardname, NULL, country_str);
+		if (!ret)
+			goto success;
+	}
+
+	ret = ath10k_try_load_board(ar, boardname, NULL, NULL);
 	if (!ret)
 		goto success;
 
