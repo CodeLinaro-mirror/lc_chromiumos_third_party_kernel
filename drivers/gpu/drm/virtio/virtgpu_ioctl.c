@@ -180,6 +180,7 @@ static int virtio_gpu_execbuffer_ioctl(struct drm_device *dev, void *data,
 	virtio_gpu_cmd_submit(vgdev, buf, exbuf->size,
 			      vfpriv->ctx_id, buflist, out_fence);
 	virtio_gpu_notify(vgdev);
+	dma_fence_put(&out_fence->f);
 	return 0;
 
 out_unresv:
