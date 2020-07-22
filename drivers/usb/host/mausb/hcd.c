@@ -239,16 +239,16 @@ static int mausb_update_device(struct usb_hcd *hcd, struct usb_device *dev);
 
 static void mausb_print_urb(struct urb *request)
 {
-	dev_vdbg(&request->dev->dev, "URB: urb=%p, ep_handle=%#x, packet_num=%d, setup_dma=%lld, is_setup_packet=%d, is_ep=%d, is_sg=%d, num_sgs=%d, num_mapped_sgs=%d, status=%d, is_transfer_buffer=%d, transfer_buffer_length=%d, is_transfer_dma=%llu, transfer_flags=%d, is_hcpriv=%d",
+	dev_vdbg(&request->dev->dev, "URB: urb=%p, ep_handle=%#x, packet_num=%d, setup_dma=%pad, is_setup_packet=%d, is_ep=%d, is_sg=%d, num_sgs=%d, num_mapped_sgs=%d, status=%d, is_transfer_buffer=%d, transfer_buffer_length=%d, is_transfer_dma=%pad, transfer_flags=%d, is_hcpriv=%d",
 		 request, ((struct mausb_endpoint_ctx *)
 			   request->ep->hcpriv)->ep_handle,
-		 request->number_of_packets, request->setup_dma,
+		 request->number_of_packets, &request->setup_dma,
 		 request->setup_packet ? 1 : 0, request->ep ? 1 : 0,
 		 request->sg ? 1 : 0, request->num_sgs,
 		 request->num_mapped_sgs, request->status,
 		 request->transfer_buffer ? 1 : 0,
 		 request->transfer_buffer_length,
-		 request->transfer_dma, request->transfer_flags,
+		 &request->transfer_dma, request->transfer_flags,
 		 (request->ep && request->ep->hcpriv) ? 1 : 0);
 }
 
