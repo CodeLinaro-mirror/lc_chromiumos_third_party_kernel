@@ -52,6 +52,12 @@ struct mgmt_hdr {
 	__le16	len;
 } __packed;
 
+struct mgmt_tlv {
+	__le16 type;
+	__u8   length;
+	__u8   value[];
+} __packed;
+
 struct mgmt_addr_info {
 	bdaddr_t	bdaddr;
 	__u8		type;
@@ -691,6 +697,18 @@ struct mgmt_rp_read_exp_features_info {
 	} features[];
 } __packed;
 
+#define MGMT_OP_READ_DEF_SYSTEM_CONFIG	0x004b
+#define MGMT_READ_DEF_SYSTEM_CONFIG_SIZE	0
+
+#define MGMT_OP_SET_DEF_SYSTEM_CONFIG	0x004c
+#define MGMT_SET_DEF_SYSTEM_CONFIG_SIZE		0
+
+#define MGMT_OP_READ_DEF_RUNTIME_CONFIG	0x004d
+#define MGMT_READ_DEF_RUNTIME_CONFIG_SIZE	0
+
+#define MGMT_OP_SET_DEF_RUNTIME_CONFIG	0x004e
+#define MGMT_SET_DEF_RUNTIME_CONFIG_SIZE	0
+
 #define MGMT_OP_SET_EXP_FEATURE		0x004a
 struct mgmt_cp_set_exp_feature {
 	__u8   uuid[16];
@@ -702,6 +720,26 @@ struct mgmt_rp_set_exp_feature {
 	__le32 flags;
 } __packed;
 
+#define MGMT_OP_GET_DEVICE_FLAGS	0x004F
+#define MGMT_GET_DEVICE_FLAGS_SIZE	7
+struct mgmt_cp_get_device_flags {
+	struct mgmt_addr_info addr;
+} __packed;
+struct mgmt_rp_get_device_flags {
+	struct mgmt_addr_info addr;
+	__le32 supported_flags;
+	__le32 current_flags;
+} __packed;
+
+#define MGMT_OP_SET_DEVICE_FLAGS	0x0050
+#define MGMT_SET_DEVICE_FLAGS_SIZE	11
+struct mgmt_cp_set_device_flags {
+	struct mgmt_addr_info addr;
+	__le32 current_flags;
+} __packed;
+struct mgmt_rp_set_device_flags {
+	struct mgmt_addr_info addr;
+} __packed;
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16	opcode;
@@ -932,4 +970,11 @@ struct mgmt_ev_phy_configuration_changed {
 struct mgmt_ev_exp_feature_changed {
 	__u8	uuid[16];
 	__le32	flags;
+} __packed;
+
+#define MGMT_EV_DEVICE_FLAGS_CHANGED		0x002a
+struct mgmt_ev_device_flags_changed {
+	struct mgmt_addr_info addr;
+	__le32 supported_flags;
+	__le32 current_flags;
 } __packed;
