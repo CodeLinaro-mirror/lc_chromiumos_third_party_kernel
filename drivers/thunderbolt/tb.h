@@ -97,6 +97,7 @@ struct tb_switch_tmu {
  * @device_name: Name of the device (or %NULL if not known)
  * @link_speed: Speed of the link in Gb/s
  * @link_width: Width of the link (1 or 2)
+ * @link_usb4: Upstream link is USB4
  * @generation: Switch Thunderbolt generation
  * @cap_plug_events: Offset to the plug events capability (%0 if not found)
  * @cap_lc: Offset to the link controller capability (%0 if not found)
@@ -136,6 +137,7 @@ struct tb_switch {
 	const char *device_name;
 	unsigned int link_speed;
 	unsigned int link_width;
+	bool link_usb4;
 	unsigned int generation;
 	int cap_plug_events;
 	int cap_lc;
@@ -286,7 +288,11 @@ struct tb_path {
 
 /* HopIDs 0-7 are reserved by the Thunderbolt protocol */
 #define TB_PATH_MIN_HOPID	8
-#define TB_PATH_MAX_HOPS	7
+/*
+ * Support paths from the farthest (depth 6) router to the host and back
+ * to the same level (not necessarily to the same router).
+ */
+#define TB_PATH_MAX_HOPS	(7 * 2)
 
 /**
  * struct tb_cm_ops - Connection manager specific operations vector
@@ -686,15 +692,21 @@ static inline bool tb_switch_is_titan_ridge(const struct tb_switch *sw)
 	}
 }
 
+static bool tb_switch_is_tgl_es(const struct tb_switch *sw)
+{
+	return sw->config.thunderbolt_version != USB4_VERSION_1_0 &&
+	       (sw->config.device_id == PCI_DEVICE_ID_INTEL_TGL_NHI0 ||
+		sw->config.device_id == PCI_DEVICE_ID_INTEL_TGL_NHI1);
+}
+
 /**
- * tb_switch_is_usb4() - Is the switch USB4 compliant
- * @sw: Switch to check
- *
- * Returns true if the @sw is USB4 compliant router, false otherwise.
- */
+  * tb_switch_is_usb4() - Is the switch USB4 compliant
+  * @sw: Switch to check
+  */
 static inline bool tb_switch_is_usb4(const struct tb_switch *sw)
 {
-	return sw->config.thunderbolt_version == USB4_VERSION_1_0;
+	return sw->config.thunderbolt_version == USB4_VERSION_1_0 ||
+	       tb_switch_is_tgl_es(sw);
 }
 
 /**
@@ -741,6 +753,20 @@ void tb_port_release_out_hopid(struct tb_port *port, int hopid);
 struct tb_port *tb_next_port_on_path(struct tb_port *start, struct tb_port *end,
 				     struct tb_port *prev);
 
+/**
+ * tb_for_each_port_on_path() - Iterate over each port on path
+ * @src: Source port
+ * @dst: Destination port
+ * @p: Port used as iterator
+ *
+ * Walks over each port on path from @src to @dst.
+ */
+#define tb_for_each_port_on_path(src, dst, p)				\
+	for ((p) = tb_next_port_on_path((src), (dst), NULL); (p);	\
+	     (p) = tb_next_port_on_path((src), (dst), (p)))
+
+int tb_port_get_link_speed(struct tb_port *port);
+
 int tb_switch_find_vse_cap(struct tb_switch *sw, enum tb_switch_vse_cap vsec);
 int tb_switch_find_cap(struct tb_switch *sw, enum tb_switch_cap cap);
 int tb_port_find_cap(struct tb_port *port, enum tb_port_cap cap);
@@ -769,8 +795,8 @@ void tb_path_free(struct tb_path *path);
 int tb_path_activate(struct tb_path *path);
 void tb_path_deactivate(struct tb_path *path);
 bool tb_path_is_invalid(struct tb_path *path);
-bool tb_path_switch_on_path(const struct tb_path *path,
-			    const struct tb_switch *sw);
+bool tb_path_port_on_path(const struct tb_path *path,
+			  const struct tb_port *port);
 
 int tb_drom_read(struct tb_switch *sw);
 int tb_drom_read_uid_only(struct tb_switch *sw, u64 *uid);
@@ -835,4 +861,13 @@ struct tb_port *usb4_switch_map_usb3_down(struct tb_switch *sw,
 					  const struct tb_port *port);
 
 int usb4_port_unlock(struct tb_port *port);
+
+int usb4_usb3_port_max_link_rate(struct tb_port *port);
+int usb4_usb3_port_actual_link_rate(struct tb_port *port);
+int usb4_usb3_port_allocated_bandwidth(struct tb_port *port, int *upstream_bw,
+				       int *downstream_bw);
+int usb4_usb3_port_allocate_bandwidth(struct tb_port *port, int *upstream_bw,
+				      int *downstream_bw);
+int usb4_usb3_port_release_bandwidth(struct tb_port *port, int *upstream_bw,
+				     int *downstream_bw);
 #endif
