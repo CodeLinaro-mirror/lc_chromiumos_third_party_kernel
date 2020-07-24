@@ -2613,8 +2613,8 @@ enum drm_connector_status drm_dp_mst_detect_port(struct drm_connector *connector
 		break;
 	}
 out:
-	drm_dp_put_port(port);
 	mutex_unlock(&mgr->destroy_connector_lock);
+	drm_dp_put_port(port);
 	return status;
 }
 EXPORT_SYMBOL(drm_dp_mst_detect_port);
