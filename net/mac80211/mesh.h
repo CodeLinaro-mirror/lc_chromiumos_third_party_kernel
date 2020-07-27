@@ -279,6 +279,9 @@ u32 airtime_link_metric_get(struct ieee80211_local *local,
 
 void mesh_path_table_debug_dump(struct ieee80211_sub_if_data *sdata);
 void mpp_path_table_debug_dump(struct ieee80211_sub_if_data *sdata);
+void mesh_bmiss_update(struct ieee80211_sub_if_data *sdata,
+		       struct ieee80211_mgmt *mgmt,
+		       struct ieee802_11_elems *ie);
 
 /* Mesh plinks */
 void mesh_neighbour_update(struct ieee80211_sub_if_data *sdata,
@@ -312,6 +315,7 @@ void mesh_path_discard_frame(struct ieee80211_sub_if_data *sdata,
 void mesh_path_tx_root_frame(struct ieee80211_sub_if_data *sdata);
 
 bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt);
+void mesh_bmiss_event(struct timer_list *t);
 
 #ifdef CONFIG_MAC80211_MESH
 static inline

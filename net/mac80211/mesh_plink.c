@@ -571,6 +571,60 @@ mesh_sta_info_get(struct ieee80211_sub_if_data *sdata,
 	return sta;
 }
 
+void mesh_bmiss_update(struct ieee80211_sub_if_data *sdata,
+		       struct ieee80211_mgmt *mgmt,
+		       struct ieee802_11_elems *elems)
+{
+	struct sta_info *sta;
+	u32 timeout;
+
+	/* mesh_sta_info_get api returns with rcu_read_lock */
+	sta = mesh_sta_info_get(sdata, mgmt->sa, elems);
+	if (!sta)
+		goto unlock_rcu;
+
+	if (!(sta->local->hw.dbg_mask & IEEE80211_HW_DBG_BMISS_LOG) ||
+	    !sta->sdata->vif.bmiss_threshold)
+		goto unlock_rcu;
+
+	sta->mesh->bmiss_count = 0;
+	sta->mesh->beacon_int = mgmt->u.beacon.beacon_int;
+	timeout = sta->mesh->beacon_int * sta->sdata->vif.bmiss_threshold;
+
+	mod_timer(&sta->mesh->bmiss_timer,
+		  (jiffies + msecs_to_jiffies(timeout)));
+
+unlock_rcu:
+	rcu_read_unlock();
+}
+
+void mesh_bmiss_event(struct timer_list *t)
+{
+	struct mesh_sta *mesh = from_timer(mesh, t, bmiss_timer);
+	struct sta_info *sta;
+	u32 timeout;
+
+	rcu_read_lock();
+	sta = mesh->link_sta;
+
+	if (!(sta->local->hw.dbg_mask & IEEE80211_HW_DBG_BMISS_LOG) ||
+	    !sta->sdata->vif.bmiss_threshold)
+		goto unlock_rcu;
+
+	mesh->bmiss_count++;
+
+	sdata_info(sta->sdata, "Beacon miss count %u from %pM\n",
+		   mesh->bmiss_count, sta->sta.addr);
+
+	timeout = sta->mesh->beacon_int * sta->sdata->vif.bmiss_threshold;
+
+	mod_timer(&sta->mesh->bmiss_timer,
+		  (jiffies + msecs_to_jiffies(timeout)));
+
+unlock_rcu:
+	rcu_read_unlock();
+}
+
 /*
  * mesh_neighbour_update - update or initialize new mesh neighbor.
  *

@@ -155,6 +155,8 @@ void mesh_sta_cleanup(struct sta_info *sta)
 	struct ieee80211_sub_if_data *sdata = sta->sdata;
 	u32 changed = mesh_plink_deactivate(sta);
 
+	del_timer_sync(&sta->mesh->bmiss_timer);
+
 	if (changed)
 		ieee80211_mbss_info_change_notify(sdata, changed);
 }
@@ -1200,6 +1202,9 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 		if (ifmsh->csa_role != IEEE80211_MESH_CSA_ROLE_INIT &&
 		    !sdata->vif.csa_active)
 			ieee80211_mesh_process_chnswitch(sdata, &elems, true);
+
+		if (stype != IEEE80211_STYPE_PROBE_RESP)
+			mesh_bmiss_update(sdata, mgmt, &elems);
 	}
 
 	if (ifmsh->sync_ops)

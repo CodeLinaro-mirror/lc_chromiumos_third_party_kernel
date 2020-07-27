@@ -1550,6 +1550,8 @@ struct ieee80211_vif {
 	u32 rate_code[IEEE80211_TID_MAX];
 	u8 rtscts[IEEE80211_TID_MAX];
 
+	u8 bmiss_threshold;
+
 	/* must be last */
 	u8 drv_priv[0] __aligned(sizeof(void *));
 };
@@ -2208,6 +2210,12 @@ enum ieee80211_hw_flags {
 	NUM_IEEE80211_HW_FLAGS
 };
 
+enum ieee80211_dbg_mask {
+	IEEE80211_HW_DBG_BMISS_LOG = 0x00000001,
+	IEEE80211_HW_DBG_DRIVER_LOG = 0x00000002,
+	IEEE80211_HW_MAX_DBG_MASK = 0x00000004,
+};
+
 /**
  * struct ieee80211_hw - hardware information and state
  *
@@ -2363,6 +2371,7 @@ struct ieee80211_hw {
 	u8 max_nan_de_entries;
 	u8 tx_sk_pacing_shift;
 	u8 weight_multiplier;
+	u32 dbg_mask;
 };
 
 static inline bool _ieee80211_hw_check(struct ieee80211_hw *hw,

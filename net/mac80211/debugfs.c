@@ -172,6 +172,54 @@ static const struct file_operations aqm_ops = {
 	.llseek = default_llseek,
 };
 
+static ssize_t dbg_mask_read(struct file *file,
+			     char __user *user_buf,
+			     size_t count,
+			     loff_t *ppos)
+{
+	struct ieee80211_local *local = file->private_data;
+	char buf[10];
+	int len = 0;
+
+	len = scnprintf(buf, sizeof(buf), "0x%x\n", local->hw.dbg_mask);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static ssize_t dbg_mask_write(struct file *file,
+			      const char __user *user_buf,
+			      size_t count,
+			      loff_t *ppos)
+{
+	struct ieee80211_local *local = file->private_data;
+	char buf[2];
+	int ret;
+	u32 mask;
+
+	if (count > sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[sizeof(buf) - 1] = '\0';
+
+	ret = kstrtou32_from_user(user_buf, count, 0, &mask);
+	if (ret || mask >= IEEE80211_HW_MAX_DBG_MASK)
+		return -EINVAL;
+
+	local->hw.dbg_mask = mask;
+
+	return count;
+}
+
+static const struct file_operations dbg_mask_ops = {
+	.write = dbg_mask_write,
+	.read = dbg_mask_read,
+	.open = simple_open,
+	.llseek = default_llseek,
+};
+
 static ssize_t txq_airtime_limit_read(struct file *file,
 				      char __user *user_buf,
 				      size_t count,
@@ -473,6 +521,7 @@ void debugfs_hw_add(struct ieee80211_local *local)
 	DEBUGFS_ADD(hwflags);
 	DEBUGFS_ADD(user_power);
 	DEBUGFS_ADD(power);
+	DEBUGFS_ADD(dbg_mask);
 	/* enable rx stats by default */
 	local->rx_stats_enabled = 1;
 	debugfs_create_bool("rx_stats_enabled", S_IWUSR | S_IRUSR, phyd,

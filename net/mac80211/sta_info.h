@@ -384,6 +384,7 @@ DECLARE_EWMA(mesh_tx_rate_avg, 8, 16)
  */
 struct mesh_sta {
 	struct timer_list plink_timer;
+	struct sta_info *link_sta;
 
 	s64 t_offset;
 	s64 t_offset_setpoint;
@@ -407,6 +408,10 @@ struct mesh_sta {
 	u32 fail_cnt;
 	u32 tx_fail_cnt[MAX_TX_FAIL_CNT];
 	u8 tx_fail_log;
+
+	struct timer_list bmiss_timer;
+	u32 bmiss_count;
+	u32 beacon_int;
 
 	/* moving percentage of failed MSDUs */
 	struct ewma_mesh_fail_avg fail_avg;
