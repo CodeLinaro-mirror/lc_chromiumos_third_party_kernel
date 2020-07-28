@@ -732,7 +732,7 @@ static int kabylake_set_bias_level(struct snd_soc_card *card,
 	if (!component || strcmp(component->name, RT5514_DEV_NAME))
 		return 0;
 
-	if (IS_ERR(priv->mclk))
+	if (IS_ERR(priv->ssp0_mclk))
 		return 0;
 
 	/*
@@ -744,17 +744,17 @@ static int kabylake_set_bias_level(struct snd_soc_card *card,
 	case SND_SOC_BIAS_PREPARE:
 		if (dapm->bias_level == SND_SOC_BIAS_ON) {
 			dev_dbg(card->dev, "Disable mclk");
-			clk_disable_unprepare(priv->mclk);
+			clk_disable_unprepare(priv->ssp0_mclk);
 		} else {
 			dev_dbg(card->dev, "Enable mclk");
-			ret = clk_set_rate(priv->mclk, 24000000);
+			ret = clk_set_rate(priv->ssp0_mclk, 24000000);
 			if (ret) {
 				dev_err(card->dev, "Can't set rate for mclk, err: %d\n",
 					ret);
 				return ret;
 			}
 
-			ret = clk_prepare_enable(priv->mclk);
+			ret = clk_prepare_enable(priv->ssp0_mclk);
 			if (ret) {
 				dev_err(card->dev, "Can't enable mclk, err: %d\n",
 					ret);
