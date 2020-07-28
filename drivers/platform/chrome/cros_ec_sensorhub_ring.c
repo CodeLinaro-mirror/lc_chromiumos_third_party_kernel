@@ -32,16 +32,38 @@
 /* To measure by how much the filter is overshooting, if it happens. */
 #define FUTURE_TS_ANALYTICS_COUNT_MAX 100
 
+#if IS_ENABLED(CONFIG_IIO_CROS_EC_SENSORS_RING)
+/*
+ * To be compliant with existing code, device buffer is only for
+ * triggered samples.
+ */
 static inline int
 cros_sensorhub_send_sample(struct cros_ec_sensorhub *sensorhub,
 			   struct cros_ec_sensors_ring_sample *sample)
 {
-	cros_ec_sensorhub_push_data_cb_t cb;
+	cros_ec_sensorhub_push_samples_cb_t cb =
+		(cros_ec_sensorhub_push_samples_cb_t)
+		sensorhub->push_data[sensorhub->sensor_num].push_data_cb;
 	int id = sample->sensor_id;
 	struct iio_dev *indio_dev;
 
 	if (id >= sensorhub->sensor_num)
 		return -EINVAL;
+
+	indio_dev = sensorhub->push_data[sensorhub->sensor_num].indio_dev;
+	if (!indio_dev)
+		return 0;
+
+	return cb(indio_dev, sample);
+}
+#else
+static inline int
+cros_sensorhub_send_sample(struct cros_ec_sensorhub *sensorhub,
+			   struct cros_ec_sensors_ring_sample *sample)
+{
+	int id = sample->sensor_id;
+	cros_ec_sensorhub_push_data_cb_t cb;
+	struct iio_dev *indio_dev;
 
 	cb = sensorhub->push_data[id].push_data_cb;
 	if (!cb)
@@ -54,6 +76,7 @@ cros_sensorhub_send_sample(struct cros_ec_sensorhub *sensorhub,
 
 	return cb(indio_dev, sample->vector, sample->timestamp);
 }
+#endif
 
 /**
  * cros_ec_sensorhub_register_push_data() - register the callback to the hub.
@@ -74,7 +97,7 @@ int cros_ec_sensorhub_register_push_data(struct cros_ec_sensorhub *sensorhub,
 					 struct iio_dev *indio_dev,
 					 cros_ec_sensorhub_push_data_cb_t cb)
 {
-	if (sensor_num >= sensorhub->sensor_num)
+	if (sensor_num >= sensorhub->sensor_num + 1)
 		return -EINVAL;
 	if (sensorhub->push_data[sensor_num].indio_dev)
 		return -EINVAL;
@@ -93,6 +116,29 @@ void cros_ec_sensorhub_unregister_push_data(struct cros_ec_sensorhub *sensorhub,
 	sensorhub->push_data[sensor_num].push_data_cb = NULL;
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensorhub_unregister_push_data);
+
+#if IS_ENABLED(CONFIG_IIO_CROS_EC_SENSORS_RING)
+int cros_ec_sensorhub_register_push_sample(
+		struct cros_ec_sensorhub *sensorhub,
+		struct iio_dev *indio_dev,
+		cros_ec_sensorhub_push_samples_cb_t cb)
+{
+	return cros_ec_sensorhub_register_push_data(
+			sensorhub,
+			sensorhub->sensor_num,
+			indio_dev,
+			(cros_ec_sensorhub_push_data_cb_t)cb);
+}
+EXPORT_SYMBOL_GPL(cros_ec_sensorhub_register_push_sample);
+
+void cros_ec_sensorhub_unregister_push_sample(
+		struct cros_ec_sensorhub *sensorhub)
+{
+	cros_ec_sensorhub_unregister_push_data(sensorhub,
+			sensorhub->sensor_num);
+}
+EXPORT_SYMBOL_GPL(cros_ec_sensorhub_unregister_push_sample);
+#endif
 
 /**
  * cros_ec_sensorhub_ring_fifo_enable() - Enable or disable interrupt generation
@@ -419,9 +465,7 @@ cros_ec_sensor_ring_process_event(struct cros_ec_sensorhub *sensorhub,
 			 * Disable filtering since we might add more jitter
 			 * if b is in a random point in time.
 			 */
-			new_timestamp = fifo_timestamp -
-					fifo_info->timestamp  * 1000 +
-					in->timestamp * 1000;
+			new_timestamp = c - b * 1000 + a * 1000;
 			/*
 			 * The timestamp can be stale if we had to use the fifo
 			 * info timestamp.
@@ -981,7 +1025,7 @@ int cros_ec_sensorhub_ring_allocate(struct cros_ec_sensorhub *sensorhub)
 	 * Add one for the sensor ring.
 	 */
 	sensorhub->push_data = devm_kcalloc(sensorhub->dev,
-			sensorhub->sensor_num,
+			sensorhub->sensor_num + 1,
 			sizeof(*sensorhub->push_data),
 			GFP_KERNEL);
 	if (!sensorhub->push_data)
