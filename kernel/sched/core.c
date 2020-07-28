@@ -1200,10 +1200,6 @@ static void __setscheduler_uclamp(struct task_struct *p,
 		if (uc_se->user_defined)
 			continue;
 
-		/* By default, RT tasks always get 100% boost */
-		if (unlikely(rt_task(p) && clamp_id == UCLAMP_MIN))
-			clamp_value = uclamp_none(UCLAMP_MAX);
-
 		uclamp_se_set(uc_se, clamp_value, false);
 	}
 
@@ -3952,11 +3948,7 @@ static noinline void __schedule_bug(struct task_struct *prev)
 		pr_err("Preemption disabled at:");
 		print_ip_sym(KERN_ERR, preempt_disable_ip);
 	}
-	if (panic_on_warn)
-		panic("scheduling while atomic\n");
-
-	dump_stack();
-	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
+	BUG();
 }
 
 /*

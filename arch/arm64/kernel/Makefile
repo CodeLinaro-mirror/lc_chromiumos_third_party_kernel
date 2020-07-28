@@ -65,6 +65,9 @@ obj-$(CONFIG_SHADOW_CALL_STACK)		+= scs.o
 
 obj-y					+= vdso/ probes/
 obj-$(CONFIG_COMPAT_VDSO)		+= vdso32/
+
+obj-$(CONFIG_ALT_SYSCALL)		+= alt-syscall.o
+
 head-y					:= head.o
 extra-y					+= $(head-y) vmlinux.lds
 
