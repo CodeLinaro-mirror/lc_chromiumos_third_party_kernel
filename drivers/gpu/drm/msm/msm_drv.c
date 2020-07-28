@@ -1039,44 +1039,7 @@ static struct drm_driver msm_driver = {
 	.patchlevel         = MSM_VERSION_PATCHLEVEL,
 };
 
-#ifdef CONFIG_PM_SLEEP
-static int msm_pm_suspend(struct device *dev)
-{
-	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = ddev->dev_private;
-
-	if (WARN_ON(priv->pm_state))
-		drm_atomic_state_put(priv->pm_state);
-
-	priv->pm_state = drm_atomic_helper_suspend(ddev);
-	if (IS_ERR(priv->pm_state)) {
-		int ret = PTR_ERR(priv->pm_state);
-		DRM_ERROR("Failed to suspend dpu, %d\n", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-static int msm_pm_resume(struct device *dev)
-{
-	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = ddev->dev_private;
-	int ret;
-
-	if (WARN_ON(!priv->pm_state))
-		return -ENOENT;
-
-	ret = drm_atomic_helper_resume(ddev, priv->pm_state);
-	if (!ret)
-		priv->pm_state = NULL;
-
-	return ret;
-}
-#endif
-
-#ifdef CONFIG_PM
-static int msm_runtime_suspend(struct device *dev)
+static int __maybe_unused msm_runtime_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
@@ -1090,7 +1053,7 @@ static int msm_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int msm_runtime_resume(struct device *dev)
+static int __maybe_unused msm_runtime_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
@@ -1103,11 +1066,43 @@ static int msm_runtime_resume(struct device *dev)
 
 	return 0;
 }
-#endif
+
+static int __maybe_unused msm_pm_suspend(struct device *dev)
+{
+
+	if (pm_runtime_suspended(dev))
+		return 0;
+
+	return msm_runtime_suspend(dev);
+}
+
+static int __maybe_unused msm_pm_resume(struct device *dev)
+{
+	if (pm_runtime_suspended(dev))
+		return 0;
+
+	return msm_runtime_resume(dev);
+}
+
+static int __maybe_unused msm_pm_prepare(struct device *dev)
+{
+	struct drm_device *ddev = dev_get_drvdata(dev);
+
+	return drm_mode_config_helper_suspend(ddev);
+}
+
+static void __maybe_unused msm_pm_complete(struct device *dev)
+{
+	struct drm_device *ddev = dev_get_drvdata(dev);
+
+	drm_mode_config_helper_resume(ddev);
+}
 
 static const struct dev_pm_ops msm_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(msm_pm_suspend, msm_pm_resume)
 	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
+	.prepare = msm_pm_prepare,
+	.complete = msm_pm_complete,
 };
 
 /*
@@ -1358,6 +1353,7 @@ static int __init msm_drm_register(void)
 	msm_dsi_register();
 	msm_edp_register();
 	msm_hdmi_register();
+	msm_dp_register();
 	adreno_register();
 	return platform_driver_register(&msm_platform_driver);
 }
@@ -1366,6 +1362,7 @@ static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
 	platform_driver_unregister(&msm_platform_driver);
+	msm_dp_unregister();
 	msm_hdmi_unregister();
 	adreno_unregister();
 	msm_edp_unregister();

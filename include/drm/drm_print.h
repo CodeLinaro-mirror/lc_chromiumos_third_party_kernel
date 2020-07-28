@@ -35,7 +35,7 @@
 #include <drm/drm.h>
 
 /* Do *not* use outside of drm_print.[ch]! */
-extern unsigned int __drm_debug;
+extern unsigned int __drm_debug_syslog;
 
 /**
  * DOC: print
@@ -85,8 +85,9 @@ void __drm_puts_coredump(struct drm_printer *p, const char *str);
 void __drm_printfn_seq_file(struct drm_printer *p, struct va_format *vaf);
 void __drm_puts_seq_file(struct drm_printer *p, const char *str);
 void __drm_printfn_info(struct drm_printer *p, struct va_format *vaf);
-void __drm_printfn_debug(struct drm_printer *p, struct va_format *vaf);
+void __drm_printfn_debug_syslog(struct drm_printer *p, struct va_format *vaf);
 void __drm_printfn_err(struct drm_printer *p, struct va_format *vaf);
+void __drm_printfn_noop(struct drm_printer *p, struct va_format *vaf);
 
 __printf(2, 3)
 void drm_printf(struct drm_printer *p, const char *f, ...);
@@ -227,7 +228,7 @@ static inline struct drm_printer drm_info_printer(struct device *dev)
 static inline struct drm_printer drm_debug_printer(const char *prefix)
 {
 	struct drm_printer p = {
-		.printfn = __drm_printfn_debug,
+		.printfn = __drm_printfn_debug_syslog,
 		.prefix = prefix
 	};
 	return p;
@@ -319,9 +320,41 @@ enum drm_debug_category {
 	DRM_UT_DRMRES		= 0x200,
 };
 
+static inline bool drm_debug_syslog_enabled(enum drm_debug_category category)
+{
+	return unlikely(__drm_debug_syslog & category);
+}
+
 static inline bool drm_debug_enabled(enum drm_debug_category category)
 {
-	return unlikely(__drm_debug & category);
+	return drm_debug_syslog_enabled(category);
+}
+
+/**
+ * drm_debug_category_printer - construct a &drm_printer that outputs to
+ * pr_debug() if enabled for the given category.
+ * @category: the DRM_UT_* message category this message belongs to
+ * @prefix: trace output prefix
+ *
+ * RETURNS:
+ * The &drm_printer object
+ */
+static inline struct drm_printer
+drm_debug_category_printer(enum drm_debug_category category,
+			   const char *prefix)
+{
+	struct drm_printer p = {
+		.prefix = prefix
+	};
+
+	if (drm_debug_syslog_enabled(category)) {
+		p.printfn = __drm_printfn_debug_syslog;
+	} else {
+		WARN(1, "Debug category %d is inactive.", category);
+		p.printfn = __drm_printfn_noop;
+	}
+
+	return p;
 }
 
 /*
