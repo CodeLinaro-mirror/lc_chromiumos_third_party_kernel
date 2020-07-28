@@ -13,6 +13,7 @@
 #include <linux/of.h>
 #include <linux/idr.h>
 #include <linux/device.h>
+#include <linux/notifier.h>
 #include <linux/sysfs.h>
 #include <linux/workqueue.h>
 #include <uapi/linux/thermal.h>
@@ -464,5 +465,8 @@ static inline void thermal_notify_framework(struct thermal_zone_device *tz,
 	int trip)
 { }
 #endif /* CONFIG_THERMAL */
+
+extern int register_thermal_notifier(struct notifier_block *);
+extern int unregister_thermal_notifier(struct notifier_block *);
 
 #endif /* __THERMAL_H__ */
