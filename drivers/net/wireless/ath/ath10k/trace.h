@@ -18,6 +18,7 @@
 #if !defined(_TRACE_H_) || defined(TRACE_HEADER_MULTI_READ)
 
 #include <linux/tracepoint.h>
+#include <linux/if_ether.h>
 #include "core.h"
 
 #if !defined(_TRACE_H_)
@@ -90,6 +91,31 @@ DEFINE_EVENT(ath10k_log_event, ath10k_log_warn,
 DEFINE_EVENT(ath10k_log_event, ath10k_log_info,
 	     TP_PROTO(struct ath10k *ar, struct va_format *vaf),
 	     TP_ARGS(ar, vaf)
+);
+
+TRACE_EVENT(ath10k_ps_timekeeper,
+	    TP_PROTO(struct ath10k *ar, void *peer_addr,
+		     u32 peer_ps_timestamp, u8 peer_ps_state),
+	    TP_ARGS(ar, peer_addr, peer_ps_timestamp, peer_ps_state),
+	    TP_STRUCT__entry(__string(device, dev_name(ar->dev))
+			     __string(driver, dev_driver_string(ar->dev))
+			     __dynamic_array(u8, peer_addr, ETH_ALEN)
+			     __field(u8, peer_ps_state)
+			     __field(u32, peer_ps_timestamp)
+	    ),
+	    TP_fast_assign(__assign_str(device, dev_name(ar->dev));
+			   __assign_str(driver, dev_driver_string(ar->dev));
+			   memcpy(__get_dynamic_array(peer_addr), peer_addr,
+				  ETH_ALEN);
+			   __entry->peer_ps_state = peer_ps_state;
+			   __entry->peer_ps_timestamp = peer_ps_timestamp;
+	    ),
+	    TP_printk("%s %s %u %u",
+		      __get_str(driver),
+		      __get_str(device),
+		      __entry->peer_ps_state,
+		      __entry->peer_ps_timestamp
+	    )
 );
 
 TRACE_EVENT(ath10k_log_dbg,
