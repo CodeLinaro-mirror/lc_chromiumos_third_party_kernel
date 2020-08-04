@@ -557,6 +557,7 @@ struct ath10k_vif {
 
 	struct timer_list swba_event_check_timer;
 	u32 swba_evnt_miss_cnt;
+	u64 tbttoffset_list[WMI_MAX_AP_VDEV];
 };
 
 struct ath10k_vif_iter {
