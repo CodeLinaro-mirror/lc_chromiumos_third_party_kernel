@@ -6895,6 +6895,11 @@ struct wmi_peer_kick_ev_arg {
 	bool reason_code_valid;
 };
 
+struct wmi_tbtt_offset_ev_arg {
+	__le32 vdev_map;
+	__le32 tbttoffset_list[WMI_MAX_AP_VDEV];
+};
+
 struct wmi_swba_ev_arg {
 	__le32 vdev_map;
 	struct wmi_tim_info_arg tim_info[WMI_MAX_AP_VDEV];
