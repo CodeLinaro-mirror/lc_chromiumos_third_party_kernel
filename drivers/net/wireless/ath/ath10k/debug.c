@@ -1058,6 +1058,71 @@ static const struct file_operations fops_htt_stats_mask = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_write_non_aggr_sw_retry_thold(struct file *file,
+						    const char __user *user_buf,
+						    size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	int ret;
+	u32 param;
+	u8 retry_thold;
+
+	if (kstrtou8_from_user(user_buf, count, 0, &retry_thold))
+		return -EINVAL;
+
+	if (retry_thold > ATH10K_MAX_AGGR_RETRY_COUNT)
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->non_aggr_sw_retry_thold == retry_thold) {
+		ret = count;
+		goto exit;
+	}
+
+	if (ar->state != ATH10K_STATE_ON) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	param = ar->wmi.pdev_param->non_agg_sw_retry_th;
+	ret = ath10k_wmi_pdev_set_param(ar, param, retry_thold);
+	if (ret) {
+		ath10k_warn(ar, "failed to set aggr retry thold: %d\n", ret);
+		goto exit;
+	}
+	ar->non_aggr_sw_retry_thold = retry_thold;
+	ret = count;
+
+exit:
+	mutex_unlock(&ar->conf_mutex);
+
+	return ret;
+}
+
+static ssize_t ath10k_read_non_aggr_sw_retry_thold(struct file *file,
+						   char __user *user_buf,
+						   size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	int len = 0;
+	char buf[32];
+
+	mutex_lock(&ar->conf_mutex);
+	len = scnprintf(buf, sizeof(buf) - len, "%d\n",
+			ar->non_aggr_sw_retry_thold);
+	mutex_unlock(&ar->conf_mutex);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_non_aggr_sw_retry_thold = {
+	.read = ath10k_read_non_aggr_sw_retry_thold,
+	.write = ath10k_write_non_aggr_sw_retry_thold,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
 static ssize_t ath10k_write_aggr_sw_retry_thold(struct file *file,
 						const char __user *user_buf,
 						size_t count, loff_t *ppos)
@@ -3631,6 +3696,10 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("aggr_sw_retry_thold", 0600, ar->debug.debugfs_phy,
 			    ar, &fops_aggr_sw_retry_thold);
+
+	debugfs_create_file("non_aggr_sw_retry_thold", 0600,
+			    ar->debug.debugfs_phy,
+			    ar, &fops_non_aggr_sw_retry_thold);
 
 	debugfs_create_file("htt_max_amsdu_ampdu", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_htt_max_amsdu_ampdu);

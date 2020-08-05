@@ -1200,6 +1200,7 @@ struct ath10k {
 	bool calc_busy;
 
 	u8 aggr_sw_retry_thold;
+	u8 non_aggr_sw_retry_thold;
 
 	/* must be last */
 	u8 drv_priv[0] __aligned(sizeof(void *));
