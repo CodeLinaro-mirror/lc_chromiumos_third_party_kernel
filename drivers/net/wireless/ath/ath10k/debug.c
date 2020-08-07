@@ -1480,6 +1480,79 @@ static const struct file_operations fops_fw_dbglog = {
 	.llseek = default_llseek,
 };
 
+#define ATH10K_ANI_CAP_SHIFT	16
+#define ATH10K_ANI_CAP_MASK	0x80000000
+#define ATH10K_ANI_LEVEL_MAX	9
+#define ATH10K_ANI_LEVEL_AUTO	255
+
+static ssize_t ath10k_write_ani_level(struct file *file,
+				      const char __user *user_buf,
+				      size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	char buf[32] = {0};
+	ssize_t rc;
+	u8 cap_enable;
+	u32 param;
+	u32 value;
+	int ret;
+
+	rc = simple_write_to_buffer(buf, sizeof(buf) - 1,
+				    ppos, user_buf, count);
+	if (rc < 0)
+		return rc;
+
+	buf[*ppos - 1] = '\0';
+
+	ret = sscanf(buf, "%u %u", &cap_enable, &value);
+
+	if (ret != 2 ||
+	    (value >  ATH10K_ANI_LEVEL_MAX && value != ATH10K_ANI_LEVEL_AUTO))
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->state != ATH10K_STATE_ON &&
+	    ar->state != ATH10K_STATE_RESTARTED) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	if (!(ar->phy_capability & WHAL_WLAN_11G_CAPABILITY))
+		param = ar->wmi.pdev_param->ani_ofdm_level;
+	else
+		param = ar->wmi.pdev_param->ani_cck_level;
+
+	if (cap_enable) {
+		value <<= ATH10K_ANI_CAP_SHIFT;
+		value |= ATH10K_ANI_CAP_MASK;
+	} else {
+		if (ar->ani_level == value)
+			goto exit;
+	}
+
+	ret = ath10k_wmi_pdev_set_param(ar, param, value);
+	if (ret) {
+		ath10k_warn(ar, "failed to set ANI level :%d\n", ret);
+		goto exit;
+	}
+
+	if (!cap_enable)
+		ar->ani_level = value;
+
+	ret = count;
+
+exit:
+	mutex_unlock(&ar->conf_mutex);
+	return ret;
+}
+
+static const struct file_operations fops_ani_level = {
+	.write = ath10k_write_ani_level,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
 static ssize_t ath10k_write_fw_test(struct file *file,
 				    const char __user *user_buf,
 				    size_t count, loff_t *ppos)
@@ -3773,6 +3846,9 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("fw_test", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_fw_test);
+
+	debugfs_create_file("ani_level", 0600, ar->debug.debugfs_phy, ar,
+			    &fops_ani_level);
 
 	debugfs_create_file("ps_state_enable", 0600, ar->debug.debugfs_phy, ar,
 			    &fops_ps_state_enable);
