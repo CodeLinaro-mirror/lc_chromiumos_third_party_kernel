@@ -28,6 +28,8 @@
 
 #if defined(CONFIG_X86)
 #include <asm/fpu/api.h>
+#elif defined(CONFIG_ARM64)
+#include <asm/neon.h>
 #elif defined(CONFIG_PPC64)
 #include <asm/switch_to.h>
 #include <asm/cputable.h>
@@ -88,6 +90,8 @@ void dc_fpu_begin(const char *function_name, const int line)
 	if (*pcpu == 1) {
 #if defined(CONFIG_X86)
 		kernel_fpu_begin();
+#elif defined(CONFIG_ARM64)
+		kernel_neon_begin()
 #elif defined(CONFIG_PPC64)
 		if (cpu_has_feature(CPU_FTR_VSX_COMP)) {
 			preempt_disable();
@@ -125,6 +129,8 @@ void dc_fpu_end(const char *function_name, const int line)
 	if (*pcpu <= 0) {
 #if defined(CONFIG_X86)
 		kernel_fpu_end();
+#elif defined(CONFIG_ARM64)
+                kernel_neon_end()
 #elif defined(CONFIG_PPC64)
 		if (cpu_has_feature(CPU_FTR_VSX_COMP)) {
 			disable_kernel_vsx();
