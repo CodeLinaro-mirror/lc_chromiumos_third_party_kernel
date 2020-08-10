@@ -192,17 +192,8 @@ static ssize_t dbg_mask_write(struct file *file,
 			      loff_t *ppos)
 {
 	struct ieee80211_local *local = file->private_data;
-	char buf[2];
 	int ret;
 	u32 mask;
-
-	if (count > sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, user_buf, count))
-		return -EFAULT;
-
-	buf[sizeof(buf) - 1] = '\0';
 
 	ret = kstrtou32_from_user(user_buf, count, 0, &mask);
 	if (ret || mask >= IEEE80211_HW_MAX_DBG_MASK)
