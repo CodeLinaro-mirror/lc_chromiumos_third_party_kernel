@@ -76,12 +76,6 @@
 /* Reserve the first 10 channels for kernel usage */
 #define STM_CHANNEL_OFFSET		0
 
-enum stm_pkt_type {
-	STM_PKT_TYPE_DATA	= 0x98,
-	STM_PKT_TYPE_FLAG	= 0xE8,
-	STM_PKT_TYPE_TRIG	= 0xF8,
-};
-
 #define stm_channel_addr(drvdata, ch)	(drvdata->chs.base +	\
 					(ch * BYTES_PER_CHANNEL))
 #define stm_channel_off(type, opts)	(type & ~opts)
@@ -96,55 +90,7 @@ module_param_named(
 	boot_nr_channel, boot_nr_channel, int, S_IRUGO
 );
 
-/**
- * struct channel_space - central management entity for extended ports
- * @base:		memory mapped base address where channels start.
- * @phys:		physical base address of channel region.
- * @guaraneed:		is the channel delivery guaranteed.
- */
-struct channel_space {
-	void __iomem		*base;
-	phys_addr_t		phys;
-	unsigned long		*guaranteed;
-};
-
 DEFINE_CORESIGHT_DEVLIST(stm_devs, "stm");
-
-/**
- * struct stm_drvdata - specifics associated to an STM component
- * @base:		memory mapped base address for this component.
- * @atclk:		optional clock for the core parts of the STM.
- * @csdev:		component vitals needed by the framework.
- * @spinlock:		only one at a time pls.
- * @chs:		the channels accociated to this STM.
- * @stm:		structure associated to the generic STM interface.
- * @mode:		this tracer's mode, i.e sysFS, or disabled.
- * @traceid:		value of the current ID for this component.
- * @write_bytes:	Maximus bytes this STM can write at a time.
- * @stmsper:		settings for register STMSPER.
- * @stmspscr:		settings for register STMSPSCR.
- * @numsp:		the total number of stimulus port support by this STM.
- * @stmheer:		settings for register STMHEER.
- * @stmheter:		settings for register STMHETER.
- * @stmhebsr:		settings for register STMHEBSR.
- */
-struct stm_drvdata {
-	void __iomem		*base;
-	struct clk		*atclk;
-	struct coresight_device	*csdev;
-	spinlock_t		spinlock;
-	struct channel_space	chs;
-	struct stm_data		stm;
-	local_t			mode;
-	u8			traceid;
-	u32			write_bytes;
-	u32			stmsper;
-	u32			stmspscr;
-	u32			numsp;
-	u32			stmheer;
-	u32			stmheter;
-	u32			stmhebsr;
-};
 
 static void stm_hwevent_enable_hw(struct stm_drvdata *drvdata)
 {

@@ -708,6 +708,7 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	struct resource		*res, *parent_res = NULL;
 	int			ret, i;
 	bool			ignore_pipe_clk;
+	struct generic_pm_domain *genpd ;
 
 	qcom = devm_kzalloc(&pdev->dev, sizeof(*qcom), GFP_KERNEL);
 	if (!qcom)
@@ -814,6 +815,8 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 		goto interconnect_exit;
 
 	device_init_wakeup(&pdev->dev, 1);
+	genpd = pd_to_genpd(qcom->dev->pm_domain);
+	genpd->flags |= GENPD_FLAG_RPM_ALWAYS_ON;
 	qcom->is_suspended = false;
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);

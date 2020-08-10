@@ -410,7 +410,6 @@
 		vddrf-supply = <&vreg_l2c_1p3>;
 		vddch0-supply = <&vreg_l10c_3p3>;
 		max-speed = <3200000>;
-		clocks = <&rpmhcc RPMH_RF_CLK2>;
 	};
 };
 
@@ -544,20 +543,20 @@
 
 &qup_uart3_default {
 	pinconf-cts {
-		/*
-		 * Configure a pull-down on 38 (CTS) to match the pull of
-		 * the Bluetooth module.
-		 */
+		/* Configure no pull on 38 (CTS) to match Bluetooth module */
 		pins = "gpio38";
-		bias-pull-down;
-		output-high;
+		bias-disable;
 	};
 
 	pinconf-rts {
-		/* We'll drive 39 (RTS), so no pull */
+		/*
+		 * Configure pull-down on 39 (RTS). This is needed to avoid a
+		 * floating pin which could mislead Bluetooth controller
+		 * with UART RFR state (READY/NOT_READY).
+		 */
 		pins = "gpio39";
 		drive-strength = <2>;
-		bias-disable;
+		bias-pull-down;
 	};
 
 	pinconf-tx {
@@ -565,7 +564,43 @@
 		pins = "gpio40";
 		drive-strength = <2>;
 		bias-disable;
-		output-high;
+	};
+
+	pinconf-rx {
+		/*
+		 * Configure a pull-up on 41 (RX). This is needed to avoid
+		 * garbage data when the TX pin of the Bluetooth module is
+		 * in tri-state (module powered off or not driving the
+		 * signal yet).
+		 */
+		pins = "gpio41";
+		bias-pull-up;
+	};
+};
+
+&qup_uart3_sleep {
+	pinconf-cts {
+		/* Configure no-pull on 38 (CTS) to match Bluetooth module */
+		pins = "gpio38";
+		bias-disable;
+	};
+
+	pinconf-rts {
+		/*
+		 * Configure pull-down on 39 (RTS). This is needed to avoid a
+		 * floating pin which could mislead Bluetooth controller
+		 * with UART RFR state (READY/NOT_READY).
+		 */
+		pins = "gpio39";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	pinconf-tx {
+		/* Configure pull-up on 40 (TX) when it isn't actively driven */
+		pins = "gpio40";
+		drive-strength = <2>;
+		bias-pull-up;
 	};
 
 	pinconf-rx {

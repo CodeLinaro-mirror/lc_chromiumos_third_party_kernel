@@ -229,8 +229,6 @@ void ipa_clock_get(struct ipa *ipa)
 		goto out_mutex_unlock;
 	}
 
-	ipa_endpoint_resume(ipa);
-
 	atomic_inc(&clock->count);
 
 out_mutex_unlock:
@@ -248,8 +246,6 @@ void ipa_clock_put(struct ipa *ipa)
 	/* If this is not the last reference there's nothing more to do */
 	if (!atomic_dec_and_mutex_lock(&clock->count, &clock->mutex))
 		return;
-
-	ipa_endpoint_suspend(ipa);
 
 	ipa_clock_disable(ipa);
 

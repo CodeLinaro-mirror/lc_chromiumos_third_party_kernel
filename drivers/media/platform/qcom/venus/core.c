@@ -357,11 +357,9 @@ static int venus_remove(struct platform_device *pdev)
 static void venus_core_shutdown(struct platform_device *pdev)
 {
 	struct venus_core *core = platform_get_drvdata(pdev);
-	int ret;
 
-	ret = venus_remove(pdev);
-	if (ret)
-		dev_warn(core->dev, "shutdown failed %d\n", ret);
+	venus_shutdown(core);
+	venus_firmware_deinit(core);
 }
 
 static __maybe_unused int venus_runtime_suspend(struct device *dev)
@@ -374,12 +372,12 @@ static __maybe_unused int venus_runtime_suspend(struct device *dev)
 	if (ret)
 		return ret;
 
+	if (pm_ops->core_power)
+		ret = pm_ops->core_power(dev, POWER_OFF);
+
 	ret = icc_set_bw(core->cpucfg_path, 0, 0);
 	if (ret)
 		return ret;
-
-	if (pm_ops->core_power)
-		ret = pm_ops->core_power(dev, POWER_OFF);
 
 	return ret;
 }
@@ -390,15 +388,16 @@ static __maybe_unused int venus_runtime_resume(struct device *dev)
 	const struct venus_pm_ops *pm_ops = core->pm_ops;
 	int ret;
 
+	/* Min vote of BW is required before turning on clk */
+	ret = icc_set_bw(core->cpucfg_path, 0, kbps_to_icc(1000));
+	if (ret)
+		return ret;
+
 	if (pm_ops->core_power) {
 		ret = pm_ops->core_power(dev, POWER_ON);
 		if (ret)
 			return ret;
 	}
-
-	ret = icc_set_bw(core->cpucfg_path, 0, kbps_to_icc(1000));
-	if (ret)
-		return ret;
 
 	return hfi_core_resume(core, false);
 }

@@ -1608,7 +1608,7 @@ static void dwc3_set_phy_speed_flags(struct dwc3 *dwc)
 	struct usb_hcd	*hcd = platform_get_drvdata(dwc->xhci);
 	struct xhci_hcd	*xhci_hcd = hcd_to_xhci(hcd);
 
-	dwc->hs_phy_flags &= ~(PHY_MODE_USB_HOST_HS | PHY_MODE_USB_HOST_LS);
+	dwc->hs_phy_flags = 0;
 
 	reg = readl(&xhci_hcd->cap_regs->hcs_params1);
 
@@ -1620,16 +1620,18 @@ static void dwc3_set_phy_speed_flags(struct dwc3 *dwc)
 				dwc->hs_phy_flags |= PHY_MODE_USB_HOST_HS;
 			else if (DEV_LOWSPEED(reg))
 				dwc->hs_phy_flags |= PHY_MODE_USB_HOST_LS;
+			if (DEV_SUPERSPEED(reg))
+				dwc->ss_phy_flags |= PHY_MODE_USB_HOST_SS;
 		}
 	}
 	phy_set_mode(dwc->usb2_generic_phy, dwc->hs_phy_flags);
+	phy_set_mode(dwc->usb3_generic_phy, dwc->ss_phy_flags);
 }
 
 static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 {
 	unsigned long	flags;
 	u32 reg;
-	struct usb_hcd  *hcd = platform_get_drvdata(dwc->xhci);
 
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
@@ -1641,12 +1643,6 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 		break;
 	case DWC3_GCTL_PRTCAP_HOST:
 		dwc3_set_phy_speed_flags(dwc);
-		if (!PMSG_IS_AUTO(msg)) {
-			if (usb_wakeup_enabled_descendants(hcd->self.root_hub))
-				dwc->need_phy_for_wakeup = true;
-			else
-				dwc->need_phy_for_wakeup = false;
-		}
 
 		/* Let controller to suspend HSPHY before PHY driver suspends */
 		if (dwc->dis_u2_susphy_quirk ||
@@ -1704,15 +1700,9 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 		spin_unlock_irqrestore(&dwc->lock, flags);
 		break;
 	case DWC3_GCTL_PRTCAP_HOST:
-		if (!PMSG_IS_AUTO(msg)) {
-			if (!dwc->need_phy_for_wakeup) {
-				ret = dwc3_core_init_for_resume(dwc);
-				if (ret)
-					return ret;
-				dwc3_set_prtcap(dwc, DWC3_GCTL_PRTCAP_HOST);
-				break;
-			}
-		}
+
+		dwc3_set_prtcap(dwc, DWC3_GCTL_PRTCAP_HOST);
+
 		/* Restore GUSB2PHYCFG bits that were modified in suspend */
 		reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
 		if (dwc->dis_u2_susphy_quirk)

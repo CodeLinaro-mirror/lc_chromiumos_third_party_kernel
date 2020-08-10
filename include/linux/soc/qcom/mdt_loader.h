@@ -9,7 +9,7 @@
 #define QCOM_MDT_RELOCATABLE	BIT(27)
 #define MDT_IMAGE_ID_WCNSS	0
 #define MDT_IMAGE_ID_MODEM	1
-#define MDT_IMAGE_ID_VENUS	2
+#define MDT_IMAGE_ID_MBA	2
 
 
 struct pil_mdt_image_info {

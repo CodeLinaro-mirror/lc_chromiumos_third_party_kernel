@@ -901,7 +901,6 @@ ap_spi_fp: &spi10 {
 		vddrf-supply = <&pp1300_l2c>;
 		vddch0-supply = <&pp3300_l10c>;
 		max-speed = <3200000>;
-		clocks = <&rpmhcc RPMH_RF_CLK2>;
 	};
 };
 
@@ -1055,18 +1054,61 @@ ap_spi_fp: &spi10 {
 &qup_uart3_default {
 	pinconf-cts {
 		/*
-		 * Configure a pull-down on CTS to match the pull of
+		 * Configure no-pull on CTS to match the pull of
 		 * the Bluetooth module.
 		 */
 		pins = "gpio38";
+		bias-disable;
+	};
+
+	pinconf-rts {
+		/* We'll drive RTS, so configure pull-down */
+		pins = "gpio39";
+		drive-strength = <2>;
 		bias-pull-down;
 	};
 
-	pinconf-rts-tx {
-		/* We'll drive RTS and TX, so no pull */
-		pins = "gpio39", "gpio40";
+	pinconf-tx {
+		/* We'll drive TX, so no pull */
+		pins = "gpio40";
 		drive-strength = <2>;
 		bias-disable;
+	};
+
+	pinconf-rx {
+		/*
+		 * Configure a pull-up on RX. This is needed to avoid
+		 * garbage data when the TX pin of the Bluetooth module is
+		 * in tri-state (module powered off or not driving the
+		 * signal yet).
+		 */
+		pins = "gpio41";
+		bias-pull-up;
+	};
+};
+
+&qup_uart3_sleep {
+	pinconf-cts {
+		/*
+		 * Configure no-pull on CTS to match the pull of
+		 * the Bluetooth module.
+		 */
+		pins = "gpio38";
+		bias-disable;
+	};
+
+	pinconf-rts {
+		/* We'll drive RTS, so configure pull-down */
+		pins = "gpio39";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	pinconf-tx {
+		/* We'll drive TX, so no pull */
+		pins = "gpio40";
+		drive-strength = <2>;
+		bias-pull-up;
 	};
 
 	pinconf-rx {

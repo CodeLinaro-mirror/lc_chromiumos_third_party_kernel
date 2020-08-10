@@ -191,6 +191,7 @@ struct tmc_drvdata {
 	struct miscdevice	miscdev;
 	spinlock_t		spinlock;
 	pid_t			pid;
+	bool			enable;
 	bool			reading;
 	union {
 		char		*buf;		/* TMC ETB */

@@ -31,7 +31,7 @@ static bool msm_gem_shrinker_lock(struct drm_device *dev, bool *unlock)
 
 	case MUTEX_TRYLOCK_RECURSIVE:
 		*unlock = false;
-		return true;
+		return false;
 	}
 
 	BUG();

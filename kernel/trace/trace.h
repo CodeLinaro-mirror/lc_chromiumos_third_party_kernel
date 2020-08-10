@@ -17,6 +17,7 @@
 #include <linux/trace_events.h>
 #include <linux/compiler.h>
 #include <linux/glob.h>
+#include <linux/coresight-stm.h>
 
 #ifdef CONFIG_FTRACE_SYSCALLS
 #include <asm/unistd.h>		/* For NR_SYSCALLS	     */
@@ -1443,11 +1444,34 @@ __event_trigger_test_discard(struct trace_event_file *file,
  * @entry: The event itself
  * @irq_flags: The state of the interrupts at the start of the event
  * @pc: The state of the preempt count at the start of the event.
+ * @len: The length of the payload data required for stm logging.
  *
  * This is a helper function to handle triggers that require data
  * from the event itself. It also tests the event against filters and
  * if the event is soft disabled and should be discarded.
  */
+#ifdef CONFIG_CORESIGHT_STM
+static inline void
+event_trigger_unlock_commit(struct trace_event_file *file,
+			    struct ring_buffer *buffer,
+			    struct ring_buffer_event *event,
+			    void *entry, unsigned long irq_flags, int pc,
+			    unsigned long len)
+{
+	enum event_trigger_type tt = ETT_NONE;
+
+	if (!__event_trigger_test_discard(file, buffer, event, entry, &tt)) {
+		if (len)
+			stm_log(OST_ENTITY_FTRACE_EVENTS, entry, len);
+
+		trace_buffer_unlock_commit(file->tr, buffer, event,
+						irq_flags, pc);
+	}
+
+	if (tt)
+		event_triggers_post_call(file, tt);
+}
+#else
 static inline void
 event_trigger_unlock_commit(struct trace_event_file *file,
 			    struct ring_buffer *buffer,
@@ -1462,7 +1486,7 @@ event_trigger_unlock_commit(struct trace_event_file *file,
 	if (tt)
 		event_triggers_post_call(file, tt);
 }
-
+#endif
 /**
  * event_trigger_unlock_commit_regs - handle triggers and finish event commit
  * @file: The file pointer assoctiated to the event

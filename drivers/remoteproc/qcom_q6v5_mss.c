@@ -882,6 +882,8 @@ static int q6v5_mba_load(struct q6v5 *qproc)
 {
 	int ret;
 	int xfermemop_ret;
+	char mba_dev_name[8] = "mba";
+	struct pil_mdt_image_info mba_info;
 	bool mba_load_err = false;
 
 	qcom_q6v5_prepare(&qproc->q6v5);
@@ -948,6 +950,10 @@ static int q6v5_mba_load(struct q6v5 *qproc)
 		goto disable_active_clks;
 	}
 
+	strlcpy(mba_info.name, mba_dev_name, ARRAY_SIZE(mba_info.name));
+	mba_info.start = qproc->mba_phys;
+	mba_info.size =  SZ_4K;
+	pil_mdt_write_image_info(qproc->dev, &mba_info, MDT_IMAGE_ID_MBA);
 	writel(qproc->mba_phys, qproc->rmb_base + RMB_MBA_IMAGE_REG);
 	if (qproc->dp_size) {
 		writel(qproc->mba_phys + SZ_1M, qproc->rmb_base + RMB_PMI_CODE_START_REG);
