@@ -335,7 +335,7 @@ static int mausb_send_mgmt_msg(struct mausb_device *dev,
 
 	hdr = (struct ma_usb_hdr_common *)event->mgmt.mgmt_hdr.hdr;
 
-	dev_info(mausb_host_dev.this_device, "Sending event=%d, type=%d",
+	dev_vdbg(mausb_host_dev.this_device, "Sending event=%d, type=%d",
 		 event->type, hdr->type);
 
 	kvec.iov_base	 = hdr;

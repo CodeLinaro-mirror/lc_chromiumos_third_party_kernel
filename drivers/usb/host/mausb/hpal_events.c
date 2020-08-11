@@ -18,7 +18,7 @@ static int mausb_mgmt_msg_received_event(struct mausb_event *event,
 {
 	int status = 0;
 
-	dev_info(mausb_host_dev.this_device, "channel=%d, type=%d", channel,
+	dev_vdbg(mausb_host_dev.this_device, "channel=%d, type=%d", channel,
 		 hdr->type);
 	if (hdr->length <= MAUSB_MAX_MGMT_SIZE) {
 		event->type = MAUSB_EVENT_TYPE_RECEIVED_MGMT_MSG;
