@@ -16,6 +16,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/ctype.h>
 #include <linux/firmware.h>
 #include <linux/of.h>
 
@@ -1036,6 +1037,7 @@ static int ath10k_try_load_board(struct ath10k *ar, const char *boardname,
 				 const char *prefix, const char *suffix)
 {
 	char board_bin[100];
+	char *c = board_bin;
 
 	scnprintf(board_bin, sizeof(board_bin),
 		  "%s%sboard-2%s%s.bin",
@@ -1043,6 +1045,13 @@ static int ath10k_try_load_board(struct ath10k *ar, const char *boardname,
 		  prefix ? "-" : "",
 		  suffix ? "-" : "",
 		  suffix ? suffix : "");
+
+	board_bin[99] = 0;
+	/* lower case only */
+	while (*c) {
+		*c = tolower(*c);
+		c++;
+	}
 
 	return ath10k_core_fetch_board_data_api_n(ar, boardname,
 						  board_bin);
