@@ -17,6 +17,7 @@
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
+
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -99,6 +100,7 @@ struct hdac_hdmi_pcm {
 	struct hdac_hdmi_pin *pin;
 	struct hdac_hdmi_cvt *cvt;
 	struct snd_jack *jack;
+	struct snd_kcontrol *eld_ctl;
 };
 
 struct hdac_hdmi_dai_pin_map {
@@ -1060,6 +1062,7 @@ static void hdac_hdmi_present_sense(struct hdac_hdmi_pin *pin)
 	struct hdac_hdmi_priv *hdmi = edev->private_data;
 	struct hdac_hdmi_pcm *pcm;
 	int size, err;
+	bool eld_valid, eld_changed;
 
 	mutex_lock(&hdmi->pin_mutex);
 	pin->eld.monitor_present = false;
@@ -1074,6 +1077,8 @@ static void hdac_hdmi_present_sense(struct hdac_hdmi_pin *pin)
 			size = -EINVAL;
 	}
 
+	eld_valid = pin->eld.eld_valid;
+
 	if (size > 0) {
 		pin->eld.eld_valid = true;
 		pin->eld.eld_size = size;
@@ -1081,6 +1086,8 @@ static void hdac_hdmi_present_sense(struct hdac_hdmi_pin *pin)
 		pin->eld.eld_valid = false;
 		pin->eld.eld_size = 0;
 	}
+
+	eld_changed = (eld_valid != pin->eld.eld_valid);
 
 	pcm = hdac_hdmi_get_pcm(edev, pin);
 
@@ -1139,6 +1146,11 @@ static void hdac_hdmi_present_sense(struct hdac_hdmi_pin *pin)
 
 	mutex_unlock(&hdmi->pin_mutex);
 
+	if (eld_changed && pcm)
+		snd_ctl_notify(edev->card,
+			       SNDRV_CTL_EVENT_MASK_VALUE |
+			       SNDRV_CTL_EVENT_MASK_INFO,
+			       &pcm->eld_ctl->id);
 }
 
 static int hdac_hdmi_add_pin(struct hdac_ext_device *edev, hda_nid_t nid)
@@ -1199,6 +1211,116 @@ static void hdac_hdmi_skl_enable_dp12(struct hdac_device *hdac)
 	if (vendor_param == -1)
 		return;
 
+}
+
+static int hdac_hdmi_eld_ctl_info(struct snd_kcontrol *kcontrol,
+			     struct snd_ctl_elem_info *uinfo)
+{
+	struct hdac_ext_device *edev = snd_kcontrol_chip(kcontrol);
+	struct hdac_hdmi_priv *hdmi = edev->private_data;
+	struct hdac_hdmi_pcm *pcm;
+	struct hdac_hdmi_pin *pin;
+	struct hdac_hdmi_eld *eld;
+
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_BYTES;
+	uinfo->count = 0;
+
+	pcm = get_hdmi_pcm_from_id(hdmi, kcontrol->id.device);
+	if (!pcm) {
+		dev_dbg(&edev->hdac.dev, "%s: no pcm, device %d\n", __func__,
+			kcontrol->id.device);
+		return 0;
+	}
+
+	pin = pcm->pin;
+	if (!pin) {
+		dev_dbg(&edev->hdac.dev, "%s: no pin, device %d\n",
+			__func__, kcontrol->id.device);
+		return 0;
+	}
+
+	mutex_lock(&hdmi->pin_mutex);
+
+	eld = &pin->eld;
+
+	if (eld->eld_valid)
+		uinfo->count = eld->eld_size;
+
+	mutex_unlock(&hdmi->pin_mutex);
+
+	return 0;
+}
+
+static int hdac_hdmi_eld_ctl_get(struct snd_kcontrol *kcontrol,
+			    struct snd_ctl_elem_value *ucontrol)
+{
+	struct hdac_ext_device *edev = snd_kcontrol_chip(kcontrol);
+	struct hdac_hdmi_priv *hdmi = edev->private_data;
+	struct hdac_hdmi_pcm *pcm;
+	struct hdac_hdmi_pin *pin;
+	struct hdac_hdmi_eld *eld;
+
+	memset(ucontrol->value.bytes.data, 0, ARRAY_SIZE(ucontrol->value.bytes.data));
+
+	pcm = get_hdmi_pcm_from_id(hdmi, kcontrol->id.device);
+	if (!pcm) {
+		dev_dbg(&edev->hdac.dev, "%s: no pcm, device %d\n", __func__,
+			kcontrol->id.device);
+		return 0;
+	}
+
+	pin = pcm->pin;
+	if (!pin) {
+		dev_dbg(&edev->hdac.dev, "%s: no pin, device %d\n",
+			__func__, kcontrol->id.device);
+		return 0;
+	}
+
+	mutex_lock(&hdmi->pin_mutex);
+
+	eld = &pin->eld;
+
+	if (eld->eld_valid) {
+		if (eld->eld_size > ARRAY_SIZE(ucontrol->value.bytes.data) ||
+		    eld->eld_size > ELD_MAX_SIZE) {
+			mutex_unlock(&hdmi->pin_mutex);
+
+			dev_err(&edev->hdac.dev, "%s: buffer too small, device %d eld_size %d\n",
+				__func__, kcontrol->id.device, eld->eld_size);
+			snd_BUG();
+			return -EINVAL;
+		}
+
+		memcpy(ucontrol->value.bytes.data, eld->eld_buffer,
+		       eld->eld_size);
+	}
+
+	mutex_unlock(&hdmi->pin_mutex);
+
+	return 0;
+}
+
+static int hdac_hdmi_create_eld_ctl(struct hdac_ext_device *edev, struct hdac_hdmi_pcm *pcm)
+{
+	struct snd_kcontrol *kctl;
+	struct snd_kcontrol_new hdmi_eld_ctl = {
+		.access	= SNDRV_CTL_ELEM_ACCESS_READ |
+			  SNDRV_CTL_ELEM_ACCESS_VOLATILE,
+		.iface	= SNDRV_CTL_ELEM_IFACE_PCM,
+		.name	= "ELD",
+		.info	= hdac_hdmi_eld_ctl_info,
+		.get	= hdac_hdmi_eld_ctl_get,
+		.device	= pcm->pcm_id,
+	};
+
+	/* add ELD ctl with the device number corresponding to the PCM stream */
+	kctl = snd_ctl_new1(&hdmi_eld_ctl, edev);
+	if (!kctl)
+		return -ENOMEM;
+
+	pcm->eld_ctl = kctl;
+
+	return snd_ctl_add(edev->card, kctl);
 }
 
 static struct snd_soc_dai_ops hdmi_dai_ops = {
@@ -1420,6 +1542,15 @@ int hdac_hdmi_jack_init(struct snd_soc_dai *dai, int device)
 			kfree(pcm);
 			return err;
 		}
+	}
+
+	/* add control for ELD Bytes */
+	err = hdac_hdmi_create_eld_ctl(edev, pcm);
+	if (err < 0) {
+		dev_err(&edev->hdac.dev,
+			"eld control add failed with err: %d for pcm: %d\n",
+			err, device);
+		return err;
 	}
 
 	list_add_tail(&pcm->head, &hdmi->pcm_list);
