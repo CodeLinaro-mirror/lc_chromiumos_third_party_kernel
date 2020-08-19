@@ -311,7 +311,7 @@ void mausb_notify_ring_events(struct mausb_ring_buffer *ring_buffer)
 {
 	int events = atomic_inc_return(&ring_buffer->mausb_ring_events);
 
-	if (events == 1)
+	if (events > 0)
 		complete(&mss.rings_events.mausb_ring_has_events);
 }
 
