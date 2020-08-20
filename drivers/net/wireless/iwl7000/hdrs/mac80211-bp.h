@@ -2992,3 +2992,14 @@ cfg80211_wiphy_tx_queue_len(struct wiphy *wiphy)
 	return wiphy->tx_queue_len;
 }
 #endif /* < 5.7 */
+
+#if CFG80211_VERSION < KERNEL_VERSION(5,10,0)
+static inline void
+LINUX_BACKPORT(cfg80211_ch_switch_started_notify)(struct net_device *dev,
+						  struct cfg80211_chan_def *chandef,
+						  u8 count, bool quiet)
+{
+	cfg80211_ch_switch_started_notify(dev, chandef, count);
+}
+#define cfg80211_ch_switch_started_notify LINUX_BACKPORT(cfg80211_ch_switch_started_notify)
+#endif /* < 5.10 */
