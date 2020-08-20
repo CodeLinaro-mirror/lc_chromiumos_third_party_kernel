@@ -865,7 +865,7 @@ config HID_PRIMAX
 config HID_QUICKSTEP
 	tristate "ChromeOS Touch Latency Measurement Device -- Quickstep"
 	depends on USB_HID
-	---help---
+	help
 	This module is the driver for the ChromeOS Touch Latency Measurement
 	Device known as Quickstep.
 
