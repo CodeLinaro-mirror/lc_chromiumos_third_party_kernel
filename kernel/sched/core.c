@@ -3910,7 +3910,7 @@ prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf
 	 * do an early lockdep release here:
 	 */
 	rq_unpin_lock(rq, rf);
-	spin_release(&rq_lockp(rq)->dep_map, 1, _THIS_IP_);
+	spin_release(&rq_lockp(rq)->dep_map, _THIS_IP_);
 #ifdef CONFIG_DEBUG_SPINLOCK
 	/* this is a valid case when another task releases the spinlock */
 	rq_lockp(rq)->owner = next;
@@ -5275,8 +5275,8 @@ static void sched_core_balance(struct rq *rq)
 	rcu_read_lock_sched();
 	raw_spin_unlock_irq(rq_lockp(rq));
 	for_each_domain(cpu, sd) {
-		if (!(sd->flags & SD_LOAD_BALANCE))
-			break;
+		//if (!(sd->flags & SD_LOAD_BALANCE))
+		//	break;
 
 		if (need_resched())
 			break;
