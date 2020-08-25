@@ -800,8 +800,8 @@ static int cpu_pm_pmu_notify(struct notifier_block *b, unsigned long cmd,
 		cpu_pm_pmu_setup(armpmu, cmd);
 		break;
 	case CPU_PM_EXIT:
-		cpu_pm_pmu_setup(armpmu, cmd);
 	case CPU_PM_ENTER_FAILED:
+		cpu_pm_pmu_setup(armpmu, cmd);
 		armpmu->start(armpmu);
 		break;
 	default:
@@ -976,11 +976,12 @@ static int of_pmu_irq_cfg(struct arm_pmu *pmu)
 
 	/* If we didn't manage to parse anything, try the interrupt affinity */
 	if (cpumask_weight(&pmu->supported_cpus) == 0) {
-		if (!using_spi) {
-			/* If using PPIs, check the affinity of the partition */
-			int ret, irq;
+		int irq = platform_get_irq(pdev, 0);
 
-			irq = platform_get_irq(pdev, 0);
+		if (irq_is_percpu(irq)) {
+			/* If using PPIs, check the affinity of the partition */
+			int ret;
+
 			ret = irq_get_percpu_devid_partition(irq, &pmu->supported_cpus);
 			if (ret) {
 				kfree(irqs);

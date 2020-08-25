@@ -12,12 +12,14 @@ config IIO_CROS_EC
 if IIO_CROS_EC
 
 config IIO_CROS_EC_SENSORS_CORE
-	tristate
+	tristate "ChromeOS EC Sensors Core"
+	depends on SYSFS && CROS_EC_SENSORHUB
 	select IIO_BUFFER
 	select IIO_TRIGGERED_BUFFER
 
 config IIO_CROS_EC_SENSORS
 	tristate "ChromeOS EC Contiguous Sensors"
+	depends on SYSFS && CROS_EC_SENSORHUB
 	select IIO_CROS_EC_SENSORS_CORE
 	help
 	  Module to handle 3d contiguous sensors like
@@ -27,6 +29,7 @@ config IIO_CROS_EC_SENSORS
 
 config IIO_CROS_EC_LIGHT_PROX
 	tristate "ChromeOS EC Light and Proximity Sensors"
+	depends on SYSFS && CROS_EC_SENSORHUB
 	select IIO_CROS_EC_SENSORS_CORE
 	help
 	  Module to handle Light and Proximity sensors
@@ -36,6 +39,7 @@ config IIO_CROS_EC_LIGHT_PROX
 
 config IIO_CROS_EC_BARO
 	tristate "ChromeOS EC Barometer Sensor"
+	depends on SYSFS && CROS_EC_SENSORHUB
 	select IIO_CROS_EC_SENSORS_CORE
 	help
 	  Module to handle Barometer sensor when
@@ -43,6 +47,7 @@ config IIO_CROS_EC_BARO
 
 config IIO_CROS_EC_ACTIVITY
 	tristate "ChromeOS EC Activity Sensors"
+	depends on SYSFS && CROS_EC_SENSORHUB
 	select IIO_CROS_EC_SENSORS_CORE
 	help
 	  Module to handle activity events detections presented by the ChromeOS

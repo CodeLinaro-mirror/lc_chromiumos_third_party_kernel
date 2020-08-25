@@ -361,7 +361,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 		dev_err(mmc_dev(card->host),
 			"FFU: %s: error %d flushing data\n",
 			mmc_hostname(card->host), err);
-		goto exit;
+		goto exit_set_normal;
 	}
 
 	/* set CMD ARG */
@@ -380,7 +380,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 		dev_err(mmc_dev(card->host),
 			"FFU: %s: error %d FFU is not supported\n",
 			mmc_hostname(card->host), err);
-		goto exit;
+		goto exit_set_normal;
 	}
 
 	err = mmc_ffu_write(card, fw->data, arg, fw->size);
@@ -388,7 +388,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 		dev_err(mmc_dev(card->host),
 			"FFU: %s: write error %d\n",
 			mmc_hostname(card->host), err);
-		goto exit;
+		goto exit_set_normal;
 	}
 	/* payload  will be checked only in op_mode supported */
 	if (card->ext_csd.ffu_mode_op) {
@@ -397,7 +397,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 			dev_err(mmc_dev(card->host),
 				"FFU: %s: error %d sending ext_csd\n",
 				mmc_hostname(card->host), err);
-			goto exit;
+			goto exit_set_normal;
 		}
 
 		/* check that the eMMC has received the payload */
@@ -417,7 +417,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 			dev_err(mmc_dev(card->host),
 				"FFU: sectors written: %d, expected %zd\n",
 				fw_prog_bytes, fw->size);
-			goto exit;
+			goto exit_set_normal;
 		}
 	}
 
@@ -426,7 +426,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 		dev_err(mmc_dev(card->host),
 			"FFU: %s: error firmware install %d\n",
 			mmc_hostname(card->host), err);
-		goto exit;
+		goto exit_set_normal;
 	}
 
 	/* read ext_csd */
@@ -435,7 +435,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 		dev_err(mmc_dev(card->host),
 			"FFU: %s: error %d sending ext_csd\n",
 			mmc_hostname(card->host), err);
-		return err;
+		goto exit;
 	}
 
 	/* return status */
@@ -444,11 +444,11 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 		dev_err(mmc_dev(card->host),
 			"FFU: %s: FFU status 0x%02x, expected 0\n",
 			mmc_hostname(card->host), err);
-		return  -EINVAL;
+		err = -EINVAL;
+		goto exit;
 	}
-	kfree(ext_csd);
 
-exit:
+exit_set_normal:
 	if (err != 0) {
 		/*
 		 * Host switch back to work in normal MMC
@@ -458,8 +458,12 @@ exit:
 			   EXT_CSD_MODE_CONFIG, 0,
 			   card->ext_csd.generic_cmd6_time);
 	}
+
+exit:
+	kfree(ext_csd);
 	release_firmware(fw);
 	mmc_put_card(card);
+
 	return err;
 }
 EXPORT_SYMBOL(mmc_ffu_invoke);

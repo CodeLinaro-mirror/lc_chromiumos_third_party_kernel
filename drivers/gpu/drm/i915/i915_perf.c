@@ -883,10 +883,6 @@ static int i915_oa_stream_init(struct i915_perf_stream *stream,
 			return ret;
 	}
 
-	ret = alloc_oa_buffer(dev_priv);
-	if (ret)
-		goto err_oa_buf_alloc;
-
 	/* PRM - observability performance counters:
 	 *
 	 *   OACONTROL, performance counter enable, note:
@@ -902,6 +898,10 @@ static int i915_oa_stream_init(struct i915_perf_stream *stream,
 	intel_runtime_pm_get(dev_priv);
 	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_ALL);
 
+	ret = alloc_oa_buffer(dev_priv);
+	if (ret)
+		goto err_oa_buf_alloc;
+
 	ret = dev_priv->perf.oa.ops.enable_metric_set(dev_priv);
 	if (ret)
 		goto err_enable;
@@ -913,11 +913,11 @@ static int i915_oa_stream_init(struct i915_perf_stream *stream,
 	return 0;
 
 err_enable:
-	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
-	intel_runtime_pm_put(dev_priv);
 	free_oa_buffer(dev_priv);
 
 err_oa_buf_alloc:
+	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
+	intel_runtime_pm_put(dev_priv);
 	if (stream->ctx)
 		oa_put_render_ctx_id(stream);
 
@@ -1224,7 +1224,7 @@ i915_perf_open_ioctl_locked(struct drm_i915_private *dev_priv,
 	 */
 	if (WARN_ON(stream->sample_flags != props->sample_flags)) {
 		ret = -ENODEV;
-		goto err_alloc;
+		goto err_flags;
 	}
 
 	list_add(&stream->link, &dev_priv->perf.streams);
@@ -1247,6 +1247,7 @@ i915_perf_open_ioctl_locked(struct drm_i915_private *dev_priv,
 
 err_open:
 	list_del(&stream->link);
+err_flags:
 	if (stream->ops->destroy)
 		stream->ops->destroy(stream);
 err_alloc:

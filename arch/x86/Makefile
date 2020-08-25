@@ -223,9 +223,11 @@ ifdef CONFIG_RETPOLINE
     RETPOLINE_CFLAGS_GCC := -mindirect-branch=thunk-extern -mindirect-branch-register
     RETPOLINE_CFLAGS_CLANG := -mretpoline-external-thunk
 
-    RETPOLINE_CFLAGS += $(call cc-option,$(RETPOLINE_CFLAGS_GCC),$(call cc-option,$(RETPOLINE_CFLAGS_CLANG)))
+    RETPOLINE_CFLAGS := $(call cc-option,$(RETPOLINE_CFLAGS_GCC),$(call cc-option,$(RETPOLINE_CFLAGS_CLANG)))
     ifneq ($(RETPOLINE_CFLAGS),)
-        KBUILD_CFLAGS += $(RETPOLINE_CFLAGS) -DRETPOLINE
+	RETPOLINE_CFLAGS += -DRETPOLINE
+	KBUILD_CFLAGS += $(RETPOLINE_CFLAGS)
+	export RETPOLINE_CFLAGS
     endif
 endif
 

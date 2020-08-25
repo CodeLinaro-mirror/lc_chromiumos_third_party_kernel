@@ -168,8 +168,12 @@ static int cros_ec_sensors_write(struct iio_dev *indio_dev,
 		/* Always roundup, so caller gets at least what it asks for. */
 		st->core.param.sensor_range.roundup = 1;
 
-		if (cros_ec_motion_send_host_cmd(&st->core, 0))
+		if (cros_ec_motion_send_host_cmd(&st->core, 0)) {
 			ret = -EIO;
+		} else {
+			st->core.range_updated = true;
+			st->core.curr_range = val;
+		}
 		break;
 	default:
 		ret = cros_ec_sensors_core_write(
@@ -196,31 +200,28 @@ static const struct iio_info ec_sensors_info = {
 	.read_raw = &cros_ec_sensors_read,
 	.write_raw = &cros_ec_sensors_write,
 	.driver_module = THIS_MODULE,
+	.read_avail = &cros_ec_sensors_core_read_avail,
 };
 
 static int cros_ec_sensors_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct cros_ec_dev *ec_dev = dev_get_drvdata(dev->parent);
-	struct cros_ec_device *ec_device;
 	struct iio_dev *indio_dev;
 	struct cros_ec_sensors_state *state;
 	struct iio_chan_spec *channel;
 	int ret, i;
 
-	if (!ec_dev || !ec_dev->ec_dev) {
-		dev_warn(&pdev->dev, "No CROS EC device found.\n");
-		return -EINVAL;
-	}
-	ec_device = ec_dev->ec_dev;
-
 	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*state));
 	if (!indio_dev)
 		return -ENOMEM;
 
-	ret = cros_ec_sensors_core_init(pdev, indio_dev, true);
+	ret = cros_ec_sensors_core_init(pdev, indio_dev, true,
+					cros_ec_sensors_capture,
+					cros_ec_sensors_push_data);
 	if (ret)
 		return ret;
+
+	iio_buffer_set_attrs(indio_dev->buffer, cros_ec_sensor_fifo_attributes);
 
 	indio_dev->info = &ec_sensors_info;
 	state = iio_priv(indio_dev);
@@ -231,7 +232,8 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 			BIT(IIO_CHAN_INFO_CALIBBIAS);
 		channel->info_mask_shared_by_all =
 			BIT(IIO_CHAN_INFO_SCALE) |
-			BIT(IIO_CHAN_INFO_FREQUENCY) |
+			BIT(IIO_CHAN_INFO_SAMP_FREQ);
+		channel->info_mask_shared_by_all_available =
 			BIT(IIO_CHAN_INFO_SAMP_FREQ);
 		channel->scan_type.realbits = CROS_EC_SENSOR_BITS;
 		channel->scan_type.storagebits = CROS_EC_SENSOR_BITS;
@@ -251,24 +253,9 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 			break;
 		case MOTIONSENSE_TYPE_GYRO:
 			channel->type = IIO_ANGL_VEL;
-			/*
-			 * Workaround for b:65000611:
-			 * The BMI160 gyro EC code may report minimal frequency
-			 * at 25mHz instead of 25Hz.
-			 */
-			if (state->core.min_freq < 1000)
-				state->core.min_freq = 25000;
 			break;
 		case MOTIONSENSE_TYPE_MAG:
 			channel->type = IIO_MAGN;
-			/*
-			 * Workaround for b:68394559:
-			 * The BMM150 frequency reported by the EC can be too
-			 * high. Scale it down to default when greater than
-			 * 50Hz.
-			 */
-			if (state->core.max_freq > 50000)
-				state->core.max_freq = 25000;
 			break;
 		default:
 			dev_warn(&pdev->dev, "unknown\n");
@@ -292,11 +279,6 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 		state->core.read_ec_sensors_data = cros_ec_sensors_read_lpc;
 	else
 		state->core.read_ec_sensors_data = cros_ec_sensors_read_cmd;
-
-	ret = devm_iio_triggered_buffer_setup(dev, indio_dev, NULL,
-			cros_ec_sensors_capture, NULL);
-	if (ret)
-		return ret;
 
 	return devm_iio_device_register(dev, indio_dev);
 }

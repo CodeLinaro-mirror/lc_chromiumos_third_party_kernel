@@ -305,10 +305,17 @@ static int drm_syncobj_create(struct drm_file *file_private,
 static int drm_syncobj_destroy(struct drm_file *file_private,
 			       u32 handle)
 {
+	struct drm_syncobj *syncobj;
+
 	spin_lock(&file_private->syncobj_table_lock);
+	syncobj = idr_find(&file_private->syncobj_idr, handle);
 	idr_remove(&file_private->syncobj_idr, handle);
 	spin_unlock(&file_private->syncobj_table_lock);
 
+	if (!syncobj)
+		return -EINVAL;
+
+	drm_syncobj_put(syncobj);
 	return 0;
 }
 

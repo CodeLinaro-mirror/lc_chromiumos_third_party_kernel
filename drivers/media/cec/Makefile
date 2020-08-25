@@ -9,3 +9,5 @@ ifeq ($(CONFIG_CEC_PIN),y)
 endif
 
 obj-$(CONFIG_CEC_CORE) += cec.o
+
+obj-y += i2c/
