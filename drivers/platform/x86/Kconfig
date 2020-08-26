@@ -1221,7 +1221,7 @@ config ACPI_CHROMEOS
 	depends on CHROME_PLATFORMS
 	select NVRAM
 	select CHROMEOS
-	---help---
+	help
 	  This driver provides the firmware interface for the services exported
 	  through the CHROMEOS interfaces when using ChromeOS ACPI firmware.
 
