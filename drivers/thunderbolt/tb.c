@@ -140,6 +140,29 @@ static void tb_discover_tunnels(struct tb_switch *sw)
 	}
 }
 
+static int tb_port_configure_xdomain(struct tb_port *port)
+{
+	/*
+	 * XDomain paths currently only support single lane so we must
+	 * disable the other lane according to USB4 spec.
+	 */
+	tb_port_disable(port->dual_link_port);
+
+	if (tb_switch_is_usb4(port->sw))
+		return usb4_port_configure_xdomain(port);
+	return tb_lc_configure_xdomain(port);
+}
+
+static void tb_port_unconfigure_xdomain(struct tb_port *port)
+{
+	if (tb_switch_is_usb4(port->sw))
+		usb4_port_unconfigure_xdomain(port);
+	else
+		tb_lc_unconfigure_xdomain(port);
+
+	tb_port_enable(port->dual_link_port);
+}
+
 static void tb_scan_xdomain(struct tb_port *port)
 {
 	struct tb_switch *sw = port->sw;
@@ -158,6 +181,7 @@ static void tb_scan_xdomain(struct tb_port *port)
 			      NULL);
 	if (xd) {
 		tb_port_at(route, sw)->xdomain = xd;
+		tb_port_configure_xdomain(port);
 		tb_xdomain_add(xd);
 	}
 }
@@ -566,6 +590,7 @@ static void tb_scan_port(struct tb_port *port)
 	 */
 	if (port->xdomain) {
 		tb_xdomain_remove(port->xdomain);
+		tb_port_unconfigure_xdomain(port);
 		port->xdomain = NULL;
 	}
 
@@ -592,8 +617,9 @@ static void tb_scan_port(struct tb_port *port)
 	}
 
 	/* Enable lane bonding if supported */
-	if (tb_switch_lane_bonding_enable(sw))
-		tb_sw_warn(sw, "failed to enable lane bonding\n");
+	tb_switch_lane_bonding_enable(sw);
+	/* Set the link configured */
+	tb_switch_configure_link(sw);
 
 	if (tb_enable_tmu(sw))
 		tb_sw_warn(sw, "failed to enable TMU\n");
@@ -682,6 +708,7 @@ static void tb_free_unplugged_children(struct tb_switch *sw)
 		if (port->remote->sw->is_unplugged) {
 			tb_retimer_remove_all(port);
 			tb_remove_dp_resources(port->remote->sw);
+			tb_switch_unconfigure_link(port->remote->sw);
 			tb_switch_lane_bonding_disable(port->remote->sw);
 			tb_switch_remove(port->remote->sw);
 			port->remote = NULL;
@@ -911,6 +938,29 @@ static void tb_dp_resource_available(struct tb *tb, struct tb_port *port)
 	tb_tunnel_dp(tb);
 }
 
+static void tb_disconnect_and_release_dp(struct tb *tb)
+{
+	struct tb_cm *tcm = tb_priv(tb);
+	struct tb_tunnel *tunnel, *n;
+
+	/*
+	 * Tear down all DP tunnels and release their resources. They
+	 * will be re-established after resume based on plug events.
+	 */
+	list_for_each_entry_safe_reverse(tunnel, n, &tcm->tunnel_list, list) {
+		if (tb_tunnel_is_dp(tunnel))
+			tb_deactivate_and_free_tunnel(tunnel);
+	}
+
+	while (!list_empty(&tcm->dp_resources)) {
+		struct tb_port *port;
+
+		port = list_first_entry(&tcm->dp_resources,
+					struct tb_port, list);
+		list_del_init(&port->list);
+	}
+}
+
 static int tb_tunnel_pci(struct tb *tb, struct tb_switch *sw)
 {
 	struct tb_port *up, *down, *port;
@@ -1022,6 +1072,7 @@ static void tb_handle_hotplug(struct work_struct *work)
 	struct tb_cm *tcm = tb_priv(tb);
 	struct tb_switch *sw;
 	struct tb_port *port;
+
 	mutex_lock(&tb->lock);
 	if (!tcm->hotplug_active)
 		goto out; /* during init, suspend or shutdown */
@@ -1054,6 +1105,7 @@ static void tb_handle_hotplug(struct work_struct *work)
 			tb_free_invalid_tunnels(tb);
 			tb_remove_dp_resources(port->remote->sw);
 			tb_switch_tmu_disable(port->remote->sw);
+			tb_switch_unconfigure_link(port->remote->sw);
 			tb_switch_lane_bonding_disable(port->remote->sw);
 			tb_switch_remove(port->remote->sw);
 			port->remote = NULL;
@@ -1077,6 +1129,7 @@ static void tb_handle_hotplug(struct work_struct *work)
 			port->xdomain = NULL;
 			__tb_disconnect_xdomain_paths(tb, xd);
 			tb_xdomain_put(xd);
+			tb_port_unconfigure_xdomain(port);
 		} else if (tb_port_is_dpout(port) || tb_port_is_dpin(port)) {
 			tb_dp_resource_unavailable(tb, port);
 		} else {
@@ -1227,6 +1280,7 @@ static int tb_suspend_noirq(struct tb *tb)
 	struct tb_cm *tcm = tb_priv(tb);
 
 	tb_dbg(tb, "suspending...\n");
+	tb_disconnect_and_release_dp(tb);
 	tb_switch_suspend(tb->root_switch);
 	tcm->hotplug_active = false; /* signal tb_handle_hotplug to quit */
 	tb_dbg(tb, "suspend finished\n");
@@ -1242,13 +1296,17 @@ static void tb_restore_children(struct tb_switch *sw)
 		tb_sw_warn(sw, "failed to restore TMU configuration\n");
 
 	tb_switch_for_each_port(sw, port) {
-		if (!tb_port_has_remote(port))
+		if (!tb_port_has_remote(port) && !port->xdomain)
 			continue;
 
-		if (tb_switch_lane_bonding_enable(port->remote->sw))
-			dev_warn(&sw->dev, "failed to restore lane bonding\n");
+		if (port->remote) {
+			tb_switch_lane_bonding_enable(port->remote->sw);
+			tb_switch_configure_link(port->remote->sw);
 
-		tb_restore_children(port->remote->sw);
+			tb_restore_children(port->remote->sw);
+		} else if (port->xdomain) {
+			tb_port_configure_xdomain(port);
+		}
 	}
 }
 
@@ -1260,7 +1318,7 @@ static int tb_resume_noirq(struct tb *tb)
 	tb_dbg(tb, "resuming...\n");
 
 	/* remove any pci devices the firmware might have setup */
-	tb_switch_reset(tb, 0);
+	tb_switch_reset(tb->root_switch);
 
 	tb_switch_resume(tb->root_switch);
 	tb_free_invalid_tunnels(tb);
@@ -1294,6 +1352,7 @@ static int tb_free_unplugged_xdomains(struct tb_switch *sw)
 		if (port->xdomain && port->xdomain->is_unplugged) {
 			tb_retimer_remove_all(port);
 			tb_xdomain_remove(port->xdomain);
+			tb_port_unconfigure_xdomain(port);
 			port->xdomain = NULL;
 			ret++;
 		} else if (port->remote) {
