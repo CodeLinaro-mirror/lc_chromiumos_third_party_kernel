@@ -385,7 +385,7 @@ static int intel_dp_aux_setup_backlight(struct intel_connector *connector,
 	if (!panel->backlight.max)
 		return -ENODEV;
 
-		panel->backlight.min = 0;
+	panel->backlight.min = 0;
 	panel->backlight.level = intel_dp_aux_get_backlight(connector);
 	panel->backlight.enabled = panel->backlight.level != 0;
 
