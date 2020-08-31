@@ -107,9 +107,8 @@ chromiumos_super_block_lookup(struct super_block *sb)
 }
 
 static int chromiumos_handle_fsnotify_event(struct fsnotify_group *group,
-					    struct inode *inode,
 					    u32 mask, const void *data,
-					    int data_type,
+					    int data_type, struct inode *dir,
 					    const struct qstr *file_name,
 					    u32 cookie,
 					    struct fsnotify_iter_info *iter_info)
