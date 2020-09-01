@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause)
 // Copyright(c) 2015-17 Intel Corporation.
 
 #include <linux/acpi.h>
@@ -58,6 +58,12 @@ int sdw_bus_master_add(struct sdw_bus *bus, struct device *parent,
 
 	if (!bus->ops) {
 		dev_err(bus->dev, "SoundWire Bus ops are not set\n");
+		return -EINVAL;
+	}
+
+	if (!bus->compute_params) {
+		dev_err(bus->dev,
+			"Bandwidth allocation not configured, compute_params no set\n");
 		return -EINVAL;
 	}
 
@@ -1050,6 +1056,12 @@ int sdw_configure_dpn_intr(struct sdw_slave *slave,
 	u32 addr;
 	int ret;
 	u8 val = 0;
+
+	if (slave->bus->params.s_data_mode != SDW_PORT_DATA_MODE_NORMAL) {
+		dev_dbg(&slave->dev, "TEST FAIL interrupt %s\n",
+			enable ? "on" : "off");
+		mask |= SDW_DPN_INT_TEST_FAIL;
+	}
 
 	addr = SDW_DPN_INTMASK(port);
 
