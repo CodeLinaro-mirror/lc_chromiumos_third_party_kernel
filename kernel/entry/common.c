@@ -105,6 +105,9 @@ static __always_inline void exit_to_user_mode(void)
 	instrumentation_end();
 
 	user_enter_irqoff();
+#ifdef CONFIG_SCHED_CORE
+	sched_core_user_enter();
+#endif
 	arch_exit_to_user_mode();
 	lockdep_hardirqs_on(CALLER_ADDR0);
 }
