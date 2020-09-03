@@ -2004,7 +2004,7 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 			.pmd_entry = reclaim_pte_range,
 		};
 
-		down_read(&mm->mmap_sem);
+		down_read(&mm->mmap_lock);
 		for (vma = mm->mmap; vma; vma = vma->vm_next) {
 			if (is_vm_hugetlb_page(vma))
 				continue;
@@ -2034,7 +2034,7 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 					&reclaim_walk, NULL);
 		}
 		flush_tlb_mm(mm);
-		up_read(&mm->mmap_sem);
+		up_read(&mm->mmap_lock);
 		mmput(mm);
 	}
 	put_task_struct(task);
