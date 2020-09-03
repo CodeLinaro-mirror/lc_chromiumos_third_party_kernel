@@ -2342,6 +2342,7 @@ enum motionsensor_type {
 	MOTIONSENSE_TYPE_ACTIVITY = 5,
 	MOTIONSENSE_TYPE_BARO = 6,
 	MOTIONSENSE_TYPE_SYNC = 7,
+	MOTIONSENSE_TYPE_LIGHT_RGB = 8,
 	MOTIONSENSE_TYPE_MAX,
 };
 
@@ -2375,6 +2376,7 @@ enum motionsensor_chip {
 	MOTIONSENSE_CHIP_LSM6DS3 = 17,
 	MOTIONSENSE_CHIP_LSM6DSO = 18,
 	MOTIONSENSE_CHIP_LNG2DM = 19,
+	MOTIONSENSE_CHIP_TCS3400 = 20,
 	MOTIONSENSE_CHIP_MAX,
 };
 
@@ -2517,13 +2519,19 @@ struct ec_params_motion_sense {
 
 		/*
 		 * Used for MOTIONSENSE_CMD_INFO, MOTIONSENSE_CMD_DATA
-		 * and MOTIONSENSE_CMD_PERFORM_CALIB.
 		 */
 		struct __ec_todo_unpacked {
 			uint8_t sensor_num;
-		} info, info_3, data, fifo_flush, perform_calib,
-				list_activities;
+		} info, info_3, data, fifo_flush, list_activities;
 
+		/*
+		 * Used for MOTIONSENSE_CMD_PERFORM_CALIB:
+		 * Allow entering/exiting the calibration mode.
+		 */
+		struct __ec_todo_unpacked {
+			uint8_t sensor_num;
+			uint8_t enable;
+		} perform_calib;
 		/*
 		 * Used for MOTIONSENSE_CMD_EC_RATE, MOTIONSENSE_CMD_SENSOR_ODR
 		 * and MOTIONSENSE_CMD_SENSOR_RANGE.
@@ -4598,6 +4606,7 @@ enum ec_codec_i2s_rx_subcmd {
 	EC_CODEC_I2S_RX_SET_SAMPLE_DEPTH = 0x2,
 	EC_CODEC_I2S_RX_SET_DAIFMT = 0x3,
 	EC_CODEC_I2S_RX_SET_BCLK = 0x4,
+	EC_CODEC_I2S_RX_RESET = 0x5,
 	EC_CODEC_I2S_RX_SUBCMD_COUNT,
 };
 
@@ -4909,13 +4918,20 @@ struct ec_response_usb_pd_control_v1 {
 	char state[32];
 } __ec_align1;
 
-/* Values representing usbc PD CC state */
-#define USBC_PD_CC_NONE		0 /* No accessory connected */
-#define USBC_PD_CC_NO_UFP	1 /* No UFP accessory connected */
-#define USBC_PD_CC_AUDIO_ACC	2 /* Audio accessory connected */
-#define USBC_PD_CC_DEBUG_ACC	3 /* Debug accessory connected */
-#define USBC_PD_CC_UFP_ATTACHED	4 /* UFP attached to usbc */
-#define USBC_PD_CC_DFP_ATTACHED	5 /* DPF attached to usbc */
+/* Possible port partner connections based on CC line states */
+enum pd_cc_states {
+	PD_CC_NONE,           /* No port partner attached */
+
+	/* From DFP perspective */
+	PD_CC_UFP_NONE,       /* No UFP accessory connected */
+	PD_CC_UFP_AUDIO_ACC,  /* UFP Audio accessory connected */
+	PD_CC_UFP_DEBUG_ACC,  /* UFP Debug accessory connected */
+	PD_CC_UFP_ATTACHED,   /* Plain UFP attached */
+
+	/* From UFP perspective */
+	PD_CC_DFP_ATTACHED,   /* Plain DFP attached */
+	PD_CC_DFP_DEBUG_ACC,  /* DFP debug accessory connected */
+};
 
 /* Active/Passive Cable */
 #define USB_PD_CTRL_ACTIVE_CABLE        BIT(0)
@@ -5219,14 +5235,14 @@ struct ec_params_usb_pd_mux_info {
 
 /* Flags representing mux state */
 #define USB_PD_MUX_NONE               0      /* Open switch */
-#define USB_PD_MUX_USB_ENABLED        BIT(0) /* USB connected */
-#define USB_PD_MUX_DP_ENABLED         BIT(1) /* DP connected */
-#define USB_PD_MUX_POLARITY_INVERTED  BIT(2) /* CC line Polarity inverted */
-#define USB_PD_MUX_HPD_IRQ            BIT(3) /* HPD IRQ is asserted */
-#define USB_PD_MUX_HPD_LVL            BIT(4) /* HPD level is asserted */
-#define USB_PD_MUX_SAFE_MODE          BIT(5) /* DP is in safe mode */
-#define USB_PD_MUX_TBT_COMPAT_ENABLED BIT(6) /* TBT compat enabled */
-#define USB_PD_MUX_USB4_ENABLED       BIT(7) /* USB4 enabled */
+#define USB_PD_MUX_USB_ENABLED		BIT(0) /* USB connected */
+#define USB_PD_MUX_DP_ENABLED		BIT(1) /* DP connected */
+#define USB_PD_MUX_POLARITY_INVERTED	BIT(2) /* CC line Polarity inverted */
+#define USB_PD_MUX_HPD_IRQ		BIT(3) /* HPD IRQ is asserted */
+#define USB_PD_MUX_HPD_LVL		BIT(4) /* HPD level is asserted */
+#define USB_PD_MUX_SAFE_MODE		BIT(5) /* TCSS safe mode */
+#define USB_PD_MUX_TBT_COMPAT_ENABLED	BIT(6) /* TBT Compat Enabled */
+#define USB_PD_MUX_USB4_ENABLED		BIT(7) /* USB4 enabled */
 
 struct ec_response_usb_pd_mux_info {
 	uint8_t flags; /* USB_PD_MUX_*-encoded USB mux state */
@@ -5445,6 +5461,54 @@ struct ec_response_rollback_info {
 /* Issue AP reset */
 #define EC_CMD_AP_RESET 0x0125
 
+/*****************************************************************************/
+/* Locate peripheral chips
+ *
+ * Return values:
+ * EC_RES_UNAVAILABLE: The chip type is supported but not found on system.
+ * EC_RES_INVALID_PARAM: The chip type was unrecognized.
+ * EC_RES_OVERFLOW: The index number exceeded the number of chip instances.
+ */
+#define EC_CMD_LOCATE_CHIP 0x0126
+
+enum ec_chip_type {
+	EC_CHIP_TYPE_CBI_EEPROM = 0,
+	EC_CHIP_TYPE_TCPC = 1,
+	EC_CHIP_TYPE_COUNT,
+	EC_CHIP_TYPE_MAX = 0xFF,
+};
+
+enum ec_bus_type {
+	EC_BUS_TYPE_I2C = 0,
+	EC_BUS_TYPE_EMBEDDED = 1,
+	EC_BUS_TYPE_COUNT,
+	EC_BUS_TYPE_MAX = 0xFF,
+};
+
+struct ec_i2c_info {
+	uint16_t port;		/* Physical port for device */
+	uint16_t addr_flags;	/* 7-bit (or 10-bit) address */
+};
+
+struct ec_params_locate_chip {
+	uint8_t type;		/* enum ec_chip_type */
+	uint8_t index;		/* Specifies one instance of chip type */
+	/* Used for type specific parameters in future */
+	union {
+		uint16_t reserved;
+	};
+} __ec_align2;
+
+
+struct ec_response_locate_chip {
+	uint8_t bus_type;	/* enum ec_bus_type */
+	uint8_t reserved;	/* Aligning the following union to 2 bytes */
+	union {
+		struct ec_i2c_info i2c_info;
+	};
+} __ec_align2;
+
+/*****************************************************************************/
 /*****************************************************************************/
 /* Voltage regulator controls */
 
