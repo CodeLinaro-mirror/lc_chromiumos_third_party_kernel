@@ -4426,8 +4426,11 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 	struct ieee80211_sta *sta = control->sta;
 	struct ieee80211_txq *txq = NULL;
 	struct ieee80211_hdr *hdr = (void *)skb->data;
+	struct ath10k_vif *arvif = (void *)vif->drv_priv;
 	enum ath10k_hw_txrx_mode txmode;
 	enum ath10k_mac_tx_path txpath;
+	struct ieee80211_mgmt *mgmt;
+	u64 adjusted_tsf;
 	bool is_htt;
 	bool is_mgmt;
 	bool is_presp;
@@ -4466,6 +4469,16 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 			ieee80211_free_txskb(ar->hw, skb);
 			return;
 		}
+
+		if (is_presp) {
+			mgmt = (struct ieee80211_mgmt *)skb->data;
+			adjusted_tsf =
+			cpu_to_le64(0ULL -
+				    arvif->tbttoffset_list[arvif->vdev_id]);
+			memcpy(&mgmt->u.probe_resp.timestamp,
+			       &adjusted_tsf, sizeof(adjusted_tsf));
+		}
+
 		spin_unlock_bh(&ar->htt.tx_lock);
 	}
 
