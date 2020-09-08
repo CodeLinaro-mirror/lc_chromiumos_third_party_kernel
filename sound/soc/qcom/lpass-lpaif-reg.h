@@ -9,7 +9,8 @@
 /* LPAIF I2S */
 
 #define LPAIF_I2SCTL_REG_ADDR(v, addr, port) \
-	(v->i2sctrl_reg_base + (addr) + v->i2sctrl_reg_stride * (port))
+	(v->intf.i2s_intf.i2sctrl_reg_base + (addr) + \
+	v->intf.i2s_intf.i2sctrl_reg_stride * (port))
 
 #define LPAIF_I2SCTL_REG(v, port)	LPAIF_I2SCTL_REG_ADDR(v, 0x0, (port))
 

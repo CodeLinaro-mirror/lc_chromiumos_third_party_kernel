@@ -49,27 +49,27 @@
 
 
 #define LPASS_HDMI_TX_CTL_ADDR(v) \
-		(v->hdmi_tx_ctl_addr)
+		(v->intf.hdmi_intf.hdmi_tx_ctl_addr)
 
 #define LPASS_HDMI_TX_LEGACY_ADDR(v) \
-		(v->hdmi_legacy_addr)
+		(v->intf.hdmi_intf.hdmi_legacy_addr)
 #define LPASS_HDMI_TX_VBIT_CTL_ADDR(v) \
-		(v->hdmi_vbit_addr)
+		(v->intf.hdmi_intf.hdmi_vbit_addr)
 #define LPASS_HDMI_TX_CH_LSB_ADDR(v, port) \
-		(v->hdmi_ch_lsb_addr + \
-		v->ch_stride * (port))
+		(v->intf.hdmi_intf.hdmi_ch_lsb_addr + \
+		v->intf.hdmi_intf.ch_stride * (port))
 #define LPASS_HDMI_TX_CH_MSB_ADDR(v, port) \
-		(v->hdmi_ch_msb_addr + \
-		v->ch_stride * (port))
+		(v->intf.hdmi_intf.hdmi_ch_msb_addr + \
+		v->intf.hdmi_intf.ch_stride * (port))
 #define LPASS_HDMI_TX_DMA_ADDR(v, port) \
-		(v->hdmi_dmactl_addr + \
-		v->hdmi_dma_stride * (port))
+		(v->intf.hdmi_intf.hdmi_dmactl_addr + \
+		v->intf.hdmi_intf.hdmi_dma_stride * (port))
 #define LPASS_HDMI_TX_PARITY_ADDR(v) \
-		(v->hdmi_parity_addr)
+		(v->intf.hdmi_intf.hdmi_parity_addr)
 #define LPASS_HDMI_TX_DP_ADDR(v) \
-		(v->hdmi_DP_addr)
+		(v->intf.hdmi_intf.hdmi_DP_addr)
 #define LPASS_HDMI_TX_SSTREAM_ADDR(v) \
-		(v->hdmi_sstream_addr)
+		(v->intf.hdmi_intf.hdmi_sstream_addr)
 
 struct lpass_sstream_ctl {
 	struct regmap_field *sstream_en;

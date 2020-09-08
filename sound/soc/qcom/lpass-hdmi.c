@@ -25,6 +25,7 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 {
 	struct lpass_data *drvdata = dev_get_drvdata(dev);
 	struct lpass_variant *v = drvdata->variant;
+	struct lpass_hdmi_rsrc *hdmi_rsrc = &v->intf.hdmi_intf;
 	unsigned int i;
 	struct lpass_hdmi_tx_ctl *tx_ctl;
 	struct lpass_hdmitx_legacy *legacy;
@@ -43,9 +44,9 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 
 	tx_ctl = drvdata->tx_ctl;
 	tx_ctl->soft_reset = devm_regmap_field_alloc(dev, map,
-				v->soft_reset);
+				hdmi_rsrc->soft_reset);
 	tx_ctl->force_reset = devm_regmap_field_alloc(dev, map,
-				v->force_reset);
+				hdmi_rsrc->force_reset);
 	if (IS_ERR(tx_ctl->soft_reset) || IS_ERR(tx_ctl->force_reset))
 		return -EINVAL;
 
@@ -56,7 +57,7 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 
 	legacy = drvdata->legacy;
 	legacy->legacy_en = devm_regmap_field_alloc(dev, map,
-				v->legacy_en);
+				hdmi_rsrc->legacy_en);
 	if (IS_ERR(legacy->legacy_en))
 		return -EINVAL;
 
@@ -67,9 +68,9 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 
 	vbit_ctl = drvdata->vbit_ctl;
 	vbit_ctl->replace_vbit = devm_regmap_field_alloc(dev, map,
-					v->replace_vbit);
+					hdmi_rsrc->replace_vbit);
 	vbit_ctl->vbit_stream = devm_regmap_field_alloc(dev, map,
-					v->vbit_stream);
+					hdmi_rsrc->vbit_stream);
 	if (IS_ERR(vbit_ctl->replace_vbit) || IS_ERR(vbit_ctl->vbit_stream))
 		return -EINVAL;
 
@@ -80,7 +81,7 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 		return -ENOMEM;
 
 	tx_parity = drvdata->tx_parity;
-	tx_parity->calc_en = devm_regmap_field_alloc(dev, map, v->calc_en);
+	tx_parity->calc_en = devm_regmap_field_alloc(dev, map, hdmi_rsrc->calc_en);
 
 	if (IS_ERR(tx_parity->calc_en))
 		return -EINVAL;
@@ -92,19 +93,19 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 		return -ENOMEM;
 
 	meta_ctl = drvdata->meta_ctl;
-	meta_ctl->mute = devm_regmap_field_alloc(dev, map, v->mute);
+	meta_ctl->mute = devm_regmap_field_alloc(dev, map, hdmi_rsrc->mute);
 	meta_ctl->as_sdp_cc = devm_regmap_field_alloc(dev, map,
-						v->as_sdp_cc);
+						hdmi_rsrc->as_sdp_cc);
 	meta_ctl->as_sdp_ct = devm_regmap_field_alloc(dev, map,
-						v->as_sdp_ct);
+						hdmi_rsrc->as_sdp_ct);
 	meta_ctl->aif_db4 = devm_regmap_field_alloc(dev, map,
-						v->aif_db4);
+						hdmi_rsrc->aif_db4);
 	meta_ctl->frequency = devm_regmap_field_alloc(dev, map,
-						v->frequency);
+						hdmi_rsrc->frequency);
 	meta_ctl->mst_index = devm_regmap_field_alloc(dev, map,
-						v->mst_index);
+						hdmi_rsrc->mst_index);
 	meta_ctl->dptx_index = devm_regmap_field_alloc(dev, map,
-						v->dptx_index);
+						hdmi_rsrc->dptx_index);
 
 	if (IS_ERR(meta_ctl->mute) || IS_ERR(meta_ctl->as_sdp_cc) ||
 		IS_ERR(meta_ctl->as_sdp_ct) || IS_ERR(meta_ctl->aif_db4) ||
@@ -119,23 +120,23 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 
 	sstream_ctl = drvdata->sstream_ctl;
 	sstream_ctl->sstream_en = devm_regmap_field_alloc(dev, map,
-						v->sstream_en);
+						hdmi_rsrc->sstream_en);
 	sstream_ctl->dma_sel = devm_regmap_field_alloc(dev, map,
-						v->dma_sel);
+						hdmi_rsrc->dma_sel);
 	sstream_ctl->auto_bbit_en = devm_regmap_field_alloc(dev, map,
-						v->auto_bbit_en);
+						hdmi_rsrc->auto_bbit_en);
 	sstream_ctl->layout = devm_regmap_field_alloc(dev, map,
-						v->layout);
+						hdmi_rsrc->layout);
 	sstream_ctl->layout_sp = devm_regmap_field_alloc(dev, map,
-						v->layout_sp);
+						hdmi_rsrc->layout_sp);
 	sstream_ctl->dp_audio = devm_regmap_field_alloc(dev, map,
-						v->dp_audio);
+						hdmi_rsrc->dp_audio);
 	sstream_ctl->set_sp_on_en = devm_regmap_field_alloc(dev, map,
-						v->set_sp_on_en);
+						hdmi_rsrc->set_sp_on_en);
 	sstream_ctl->dp_staffing_en = devm_regmap_field_alloc(dev, map,
-						v->dp_staffing_en);
+						hdmi_rsrc->dp_staffing_en);
 	sstream_ctl->dp_sp_b_hw_en = devm_regmap_field_alloc(dev, map,
-						v->dp_sp_b_hw_en);
+						hdmi_rsrc->dp_sp_b_hw_en);
 
 	if (IS_ERR(sstream_ctl->sstream_en) || IS_ERR(sstream_ctl->dma_sel) ||
 		IS_ERR(sstream_ctl->auto_bbit_en) ||
@@ -155,7 +156,7 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 		ch_msb = drvdata->ch_msb[i];
 
 		ch_msb->msb_bits = devm_regmap_field_alloc(dev, map,
-							v->msb_bits);
+							hdmi_rsrc->msb_bits);
 		if (IS_ERR(ch_msb->msb_bits))
 			return -EINVAL;
 
@@ -166,7 +167,7 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 
 		ch_lsb = drvdata->ch_lsb[i];
 		ch_lsb->lsb_bits = devm_regmap_field_alloc(dev, map,
-					v->lsb_bits);
+					hdmi_rsrc->lsb_bits);
 		if (IS_ERR(ch_lsb->lsb_bits))
 			return -EINVAL;
 
@@ -178,13 +179,13 @@ int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map)
 
 		hdmi_tx_dmactl = drvdata->hdmi_tx_dmactl[i];
 		hdmi_tx_dmactl->use_hw_chs = devm_regmap_field_alloc(dev, map,
-						v->use_hw_chs);
+						hdmi_rsrc->use_hw_chs);
 		hdmi_tx_dmactl->use_hw_usr = devm_regmap_field_alloc(dev, map,
-						v->use_hw_usr);
+						hdmi_rsrc->use_hw_usr);
 		hdmi_tx_dmactl->hw_chs_sel = devm_regmap_field_alloc(dev, map,
-						v->hw_chs_sel);
+						hdmi_rsrc->hw_chs_sel);
 		hdmi_tx_dmactl->hw_usr_sel = devm_regmap_field_alloc(dev, map,
-						v->hw_usr_sel);
+						hdmi_rsrc->hw_usr_sel);
 		if (IS_ERR(hdmi_tx_dmactl->use_hw_chs) ||
 			IS_ERR(hdmi_tx_dmactl->use_hw_usr) ||
 			IS_ERR(hdmi_tx_dmactl->hw_chs_sel) ||

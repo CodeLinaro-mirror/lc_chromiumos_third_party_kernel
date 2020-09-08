@@ -100,22 +100,7 @@ struct lpass_data {
 	struct lpass_dp_metadata_ctl *meta_ctl;
 	struct lpass_sstream_ctl *sstream_ctl;
 };
-
-/* Vairant data per each SOC */
-struct lpass_variant {
-	u32	i2sctrl_reg_base;
-	u32	i2sctrl_reg_stride;
-	u32	i2s_ports;
-	u32	irq_reg_base;
-	u32	irq_reg_stride;
-	u32	irq_ports;
-	u32	rdma_reg_base;
-	u32	rdma_reg_stride;
-	u32	rdma_channels;
-	u32	wrdma_reg_base;
-	u32	wrdma_reg_stride;
-	u32	wrdma_channels;
-
+struct lpass_hdmi_rsrc {
 	/* HDMI specific controls */
 	u32	hdmi_tx_ctl_addr;
 	u32	hdmi_legacy_addr;
@@ -128,36 +113,6 @@ struct lpass_variant {
 	u32	hdmi_dma_stride;
 	u32	hdmi_DP_addr;
 	u32	hdmi_sstream_addr;
-
-	/* I2SCTL Register fields */
-	struct reg_field loopback;
-	struct reg_field spken;
-	struct reg_field spkmode;
-	struct reg_field spkmono;
-	struct reg_field micen;
-	struct reg_field micmode;
-	struct reg_field micmono;
-	struct reg_field wssrc;
-	struct reg_field bitwidth;
-
-	/* RD_DMA Register fields */
-	struct reg_field rdma_bursten;
-	struct reg_field rdma_burst8;
-	struct reg_field rdma_burst16;
-	struct reg_field rdma_dynburst;
-	struct reg_field rdma_wpscnt;
-	struct reg_field rdma_intf;
-	struct reg_field rdma_fifowm;
-	struct reg_field rdma_enable;
-	struct reg_field rdma_dyncclk;
-
-	/* WR_DMA Register fields */
-	struct reg_field wrdma_bursten;
-	struct reg_field wrdma_wpscnt;
-	struct reg_field wrdma_intf;
-	struct reg_field wrdma_fifowm;
-	struct reg_field wrdma_enable;
-	struct reg_field wrdma_dyncclk;
 
 	/* HDMI SSTREAM CTRL fields  */
 	struct reg_field sstream_en;
@@ -204,6 +159,66 @@ struct lpass_variant {
 
 	/* HDMI CH MSB */
 	struct reg_field msb_bits;
+};
+
+struct lpass_i2s_rsrc {
+	u32	i2sctrl_reg_base;
+	u32	i2sctrl_reg_stride;
+	u32	i2s_ports;
+
+	/* I2SCTL Register fields */
+	struct reg_field loopback;
+	struct reg_field spken;
+	struct reg_field spkmode;
+	struct reg_field spkmono;
+	struct reg_field micen;
+	struct reg_field micmode;
+	struct reg_field micmono;
+	struct reg_field wssrc;
+	struct reg_field bitwidth;
+};
+
+union  audio_rsrc_interface {
+	struct lpass_hdmi_rsrc hdmi_intf;
+	struct lpass_i2s_rsrc i2s_intf;
+};
+
+/* Vairant data per each SOC */
+struct lpass_variant {
+	u32	irq_reg_base;
+	u32	irq_reg_stride;
+	u32	irq_ports;
+	u32	rdma_reg_base;
+	u32	rdma_reg_stride;
+	u32	rdma_channels;
+	u32	wrdma_reg_base;
+	u32	wrdma_reg_stride;
+	u32	wrdma_channels;
+
+	/* Interface differentiation variable */
+	int id;
+
+	/* Interface related rsrc */
+	union  audio_rsrc_interface intf;
+
+	/* RD_DMA Register fields */
+	struct reg_field rdma_bursten;
+	struct reg_field rdma_burst8;
+	struct reg_field rdma_burst16;
+	struct reg_field rdma_dynburst;
+	struct reg_field rdma_wpscnt;
+	struct reg_field rdma_intf;
+	struct reg_field rdma_fifowm;
+	struct reg_field rdma_enable;
+	struct reg_field rdma_dyncclk;
+
+	/* WR_DMA Register fields */
+	struct reg_field wrdma_bursten;
+	struct reg_field wrdma_wpscnt;
+	struct reg_field wrdma_intf;
+	struct reg_field wrdma_fifowm;
+	struct reg_field wrdma_enable;
+	struct reg_field wrdma_dyncclk;
 
 	/**
 	 * on SOCs like APQ8016 the channel control bits start

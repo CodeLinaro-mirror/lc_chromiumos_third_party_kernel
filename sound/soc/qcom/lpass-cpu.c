@@ -34,16 +34,17 @@ static int lpass_cpu_init_i2sctl_bitfields(struct device *dev,
 {
 	struct lpass_data *drvdata = dev_get_drvdata(dev);
 	struct lpass_variant *v = drvdata->variant;
+	struct lpass_i2s_rsrc *irsrc = &v->intf.i2s_intf;
 
-	i2sctl->loopback = devm_regmap_field_alloc(dev, map, v->loopback);
-	i2sctl->spken = devm_regmap_field_alloc(dev, map, v->spken);
-	i2sctl->spkmode = devm_regmap_field_alloc(dev, map, v->spkmode);
-	i2sctl->spkmono = devm_regmap_field_alloc(dev, map, v->spkmono);
-	i2sctl->micen = devm_regmap_field_alloc(dev, map, v->micen);
-	i2sctl->micmode = devm_regmap_field_alloc(dev, map, v->micmode);
-	i2sctl->micmono = devm_regmap_field_alloc(dev, map, v->micmono);
-	i2sctl->wssrc = devm_regmap_field_alloc(dev, map, v->wssrc);
-	i2sctl->bitwidth = devm_regmap_field_alloc(dev, map, v->bitwidth);
+	i2sctl->loopback = devm_regmap_field_alloc(dev, map, irsrc->loopback);
+	i2sctl->spken = devm_regmap_field_alloc(dev, map, irsrc->spken);
+	i2sctl->spkmode = devm_regmap_field_alloc(dev, map, irsrc->spkmode);
+	i2sctl->spkmono = devm_regmap_field_alloc(dev, map, irsrc->spkmono);
+	i2sctl->micen = devm_regmap_field_alloc(dev, map, irsrc->micen);
+	i2sctl->micmode = devm_regmap_field_alloc(dev, map, irsrc->micmode);
+	i2sctl->micmono = devm_regmap_field_alloc(dev, map, irsrc->micmono);
+	i2sctl->wssrc = devm_regmap_field_alloc(dev, map, irsrc->wssrc);
+	i2sctl->bitwidth = devm_regmap_field_alloc(dev, map, irsrc->bitwidth);
 
 	if (IS_ERR(i2sctl->loopback) || IS_ERR(i2sctl->spken) ||
 	    IS_ERR(i2sctl->spkmode) || IS_ERR(i2sctl->spkmono) ||
@@ -363,9 +364,10 @@ static bool lpass_cpu_regmap_writeable(struct device *dev, unsigned int reg)
 {
 	struct lpass_data *drvdata = dev_get_drvdata(dev);
 	struct lpass_variant *v = drvdata->variant;
+	struct lpass_i2s_rsrc *irsrc = &v->intf.i2s_intf;
 	int i;
 
-	for (i = 0; i < v->i2s_ports; ++i)
+	for (i = 0; i < irsrc->i2s_ports; ++i)
 		if (reg == LPAIF_I2SCTL_REG(v, i))
 			return true;
 
@@ -405,9 +407,10 @@ static bool lpass_cpu_regmap_readable(struct device *dev, unsigned int reg)
 {
 	struct lpass_data *drvdata = dev_get_drvdata(dev);
 	struct lpass_variant *v = drvdata->variant;
+	struct lpass_i2s_rsrc *irsrc = &v->intf.i2s_intf;
 	int i;
 
-	for (i = 0; i < v->i2s_ports; ++i)
+	for (i = 0; i < irsrc->i2s_ports; ++i)
 		if (reg == LPAIF_I2SCTL_REG(v, i))
 			return true;
 
