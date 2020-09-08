@@ -70,6 +70,29 @@
 #define LPAIF_IRQSTAT_REG(v, port)	LPAIF_IRQ_REG_ADDR(v, 0x4, (port))
 #define LPAIF_IRQCLEAR_REG(v, port)	LPAIF_IRQ_REG_ADDR(v, 0xC, (port))
 
+
+#define LPASS_HDMITX_APP_IRQ_REG_ADDR(v, addr)  \
+	((v->irq_reg_base) + (addr))
+
+#define LPASS_HDMITX_APP_IRQEN_REG(v)			LPASS_HDMITX_APP_IRQ_REG_ADDR(v, 0x4)
+#define LPASS_HDMITX_APP_IRQSTAT_REG(v)			LPASS_HDMITX_APP_IRQ_REG_ADDR(v, 0x8)
+#define LPASS_HDMITX_APP_IRQCLEAR_REG(v)		LPASS_HDMITX_APP_IRQ_REG_ADDR(v, 0xC)
+
+#define IRQ_EN(v, port)\
+		((v->dai_driver->id == HDMI) ? \
+		LPASS_HDMITX_APP_IRQEN_REG(v) : \
+		  LPAIF_IRQEN_REG(v, port))
+
+#define IRQ_STAT(v, port)\
+		((v->dai_driver->id == HDMI) ? \
+		LPASS_HDMITX_APP_IRQSTAT_REG(v) : \
+		  LPAIF_IRQSTAT_REG(v, port))
+
+#define IRQ_CLEAR(v, port)\
+		((v->dai_driver->id == HDMI) ? \
+		LPASS_HDMITX_APP_IRQCLEAR_REG(v) : \
+		  LPAIF_IRQCLEAR_REG(v, port))
+
 #define LPAIF_IRQ_BITSTRIDE		3
 
 #define LPAIF_IRQ_PER(chan)		(1 << (LPAIF_IRQ_BITSTRIDE * (chan)))
@@ -77,8 +100,22 @@
 #define LPAIF_IRQ_ERR(chan)		(4 << (LPAIF_IRQ_BITSTRIDE * (chan)))
 
 #define LPAIF_IRQ_ALL(chan)		(7 << (LPAIF_IRQ_BITSTRIDE * (chan)))
+#define LPAIF_IRQ_HDMI_REQ_ON_PRELOAD(chan)	(1 << (14 + chan))
+#define LPAIF_IRQ_HDMI_SDEEP_AUD_DIS(chan)	(1 << (24 + chan))
+#define LPAIF_IRQ_HDMI_METADONE		BIT(23)
 
 /* LPAIF DMA */
+#define LPAIF_HDMI_RDMA_REG_ADDR(v, addr, chan) \
+	(v->rdma_reg_base + (addr) + v->rdma_reg_stride * (chan))
+
+#define LPAIF_HDMI_RDMACTL_AUDINTF(id)	(id << LPAIF_RDMACTL_AUDINTF_SHIFT)
+
+#define LPAIF_HDMI_RDMACTL_REG(v, chan)		LPAIF_HDMI_RDMA_REG_ADDR(v, 0x00, (chan))
+#define LPAIF_HDMI_RDMABASE_REG(v, chan)	LPAIF_HDMI_RDMA_REG_ADDR(v, 0x04, (chan))
+#define	LPAIF_HDMI_RDMABUFF_REG(v, chan)	LPAIF_HDMI_RDMA_REG_ADDR(v, 0x08, (chan))
+#define LPAIF_HDMI_RDMACURR_REG(v, chan)	LPAIF_HDMI_RDMA_REG_ADDR(v, 0x0C, (chan))
+#define	LPAIF_HDMI_RDMAPER_REG(v, chan)		LPAIF_HDMI_RDMA_REG_ADDR(v, 0x10, (chan))
+#define	LPAIF_HDMI_RDMAPERCNT_REG(v, chan)	LPAIF_HDMI_RDMA_REG_ADDR(v, 0x14, (chan))
 
 #define LPAIF_RDMA_REG_ADDR(v, addr, chan) \
 	(v->rdma_reg_base + (addr) + v->rdma_reg_stride * (chan))
@@ -103,10 +140,15 @@
 #define	LPAIF_WRDMAPER_REG(v, chan)	LPAIF_WRDMA_REG_ADDR(v, 0x10, (chan))
 #define	LPAIF_WRDMAPERCNT_REG(v, chan)	LPAIF_WRDMA_REG_ADDR(v, 0x14, (chan))
 
+#define LPAIF_INTFDMA_REG(v, chan, reg)  \
+		((v->dai_driver->id ==  HDMI) ? \
+		LPAIF_HDMI_RDMA##reg##_REG(v, chan) : \
+		 LPAIF_RDMA##reg##_REG(v, chan))
+
 #define __LPAIF_DMA_REG(v, chan, dir, reg)  \
-	(dir ==  SNDRV_PCM_STREAM_PLAYBACK) ? \
-		LPAIF_RDMA##reg##_REG(v, chan) : \
-		LPAIF_WRDMA##reg##_REG(v, chan)
+	((dir ==  SNDRV_PCM_STREAM_PLAYBACK) ? \
+		(LPAIF_INTFDMA_REG(v, chan, reg)) : \
+		LPAIF_WRDMA##reg##_REG(v, chan))
 
 #define LPAIF_DMACTL_REG(v, chan, dir) __LPAIF_DMA_REG(v, chan, dir, CTL)
 #define LPAIF_DMABASE_REG(v, chan, dir) __LPAIF_DMA_REG(v, chan, dir, BASE)

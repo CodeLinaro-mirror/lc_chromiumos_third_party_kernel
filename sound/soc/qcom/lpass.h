@@ -12,10 +12,14 @@
 #include <linux/compiler.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+#include <dt-bindings/sound/sc7180-lpass.h>
 
 #define LPASS_AHBIX_CLOCK_FREQUENCY		131072000
 #define LPASS_MAX_MI2S_PORTS			(8)
 #define LPASS_MAX_DMA_CHANNELS			(8)
+#define LPASS_MAX_HDMI_DMA_CHANNELS		(4)
+
+
 
 struct lpaif_i2sctl {
 	struct regmap_field *loopback;
@@ -32,6 +36,9 @@ struct lpaif_i2sctl {
 
 struct lpaif_dmactl {
 	struct regmap_field *bursten;
+	struct regmap_field *burst8;
+	struct regmap_field *burst16;
+	struct regmap_field *dynburst;
 	struct regmap_field *wpscnt;
 	struct regmap_field *intf;
 	struct regmap_field *fifowm;
@@ -81,6 +88,17 @@ struct lpass_data {
 	struct lpaif_i2sctl *i2sctl;
 	struct lpaif_dmactl *rd_dmactl;
 	struct lpaif_dmactl *wr_dmactl;
+
+	/* Regmap fields of HDMI_CTRL registers*/
+	struct lpass_hdmi_tx_ctl *tx_ctl;
+	struct lpass_hdmitx_legacy *legacy;
+	struct lpass_vbit_ctrl *vbit_ctl;
+	struct lpass_hdmi_tx_ch_msb *ch_msb[LPASS_MAX_HDMI_DMA_CHANNELS];
+	struct lpass_hdmi_tx_ch_lsb *ch_lsb[LPASS_MAX_HDMI_DMA_CHANNELS];
+	struct lpass_hdmi_tx_parity *tx_parity;
+	struct lpass_hdmitx_dmactl *hdmi_tx_dmactl[LPASS_MAX_HDMI_DMA_CHANNELS];
+	struct lpass_dp_metadata_ctl *meta_ctl;
+	struct lpass_sstream_ctl *sstream_ctl;
 };
 
 /* Vairant data per each SOC */
@@ -98,6 +116,19 @@ struct lpass_variant {
 	u32	wrdma_reg_stride;
 	u32	wrdma_channels;
 
+	/* HDMI specific controls */
+	u32	hdmi_tx_ctl_addr;
+	u32	hdmi_legacy_addr;
+	u32	hdmi_vbit_addr;
+	u32	hdmi_ch_lsb_addr;
+	u32	hdmi_ch_msb_addr;
+	u32	ch_stride;
+	u32	hdmi_parity_addr;
+	u32	hdmi_dmactl_addr;
+	u32	hdmi_dma_stride;
+	u32	hdmi_DP_addr;
+	u32	hdmi_sstream_addr;
+
 	/* I2SCTL Register fields */
 	struct reg_field loopback;
 	struct reg_field spken;
@@ -111,6 +142,9 @@ struct lpass_variant {
 
 	/* RD_DMA Register fields */
 	struct reg_field rdma_bursten;
+	struct reg_field rdma_burst8;
+	struct reg_field rdma_burst16;
+	struct reg_field rdma_dynburst;
 	struct reg_field rdma_wpscnt;
 	struct reg_field rdma_intf;
 	struct reg_field rdma_fifowm;
@@ -124,6 +158,52 @@ struct lpass_variant {
 	struct reg_field wrdma_fifowm;
 	struct reg_field wrdma_enable;
 	struct reg_field wrdma_dyncclk;
+
+	/* HDMI SSTREAM CTRL fields  */
+	struct reg_field sstream_en;
+	struct reg_field dma_sel;
+	struct reg_field auto_bbit_en;
+	struct reg_field layout;
+	struct reg_field layout_sp;
+	struct reg_field set_sp_on_en;
+	struct reg_field dp_audio;
+	struct reg_field dp_staffing_en;
+	struct reg_field dp_sp_b_hw_en;
+
+	/* HDMI DP METADATA CTL fields */
+	struct reg_field mute;
+	struct reg_field as_sdp_cc;
+	struct reg_field as_sdp_ct;
+	struct reg_field aif_db4;
+	struct reg_field frequency;
+	struct reg_field mst_index;
+	struct reg_field dptx_index;
+
+	/* HDMI TX CTRL fields */
+	struct reg_field soft_reset;
+	struct reg_field force_reset;
+
+	/* HDMI TX DMA CTRL */
+	struct reg_field use_hw_chs;
+	struct reg_field use_hw_usr;
+	struct reg_field hw_chs_sel;
+	struct reg_field hw_usr_sel;
+
+	/* HDMI VBIT CTRL */
+	struct reg_field replace_vbit;
+	struct reg_field vbit_stream;
+
+	/* HDMI TX LEGACY */
+	struct reg_field legacy_en;
+
+	/* HDMI TX PARITY */
+	struct reg_field calc_en;
+
+	/* HDMI CH LSB */
+	struct reg_field lsb_bits;
+
+	/* HDMI CH MSB */
+	struct reg_field msb_bits;
 
 	/**
 	 * on SOCs like APQ8016 the channel control bits start
@@ -154,5 +234,7 @@ int asoc_qcom_lpass_cpu_platform_remove(struct platform_device *pdev);
 int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev);
 int asoc_qcom_lpass_cpu_dai_probe(struct snd_soc_dai *dai);
 extern const struct snd_soc_dai_ops asoc_qcom_lpass_cpu_dai_ops;
-
+extern const struct snd_soc_dai_ops asoc_qcom_lpass_hdmi_dai_ops;
+extern struct regmap_config lpass_hdmi_regmap_config;
+extern int lpass_hdmi_init_bitfields(struct device *dev, struct regmap *map);
 #endif /* __LPASS_H__ */

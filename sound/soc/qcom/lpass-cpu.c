@@ -554,6 +554,7 @@ int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	const struct of_device_id *match;
 	int ret, i, dai_id;
+	unsigned int id;
 
 	dsp_of_node = of_parse_phandle(pdev->dev.of_node, "qcom,adsp", 0);
 	if (dsp_of_node) {
@@ -572,8 +573,10 @@ int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 
 	drvdata->variant = (struct lpass_variant *)match->data;
 	variant = drvdata->variant;
+	id = variant->dai_driver->id;
 
-	of_lpass_cpu_parse_dai_data(dev, drvdata);
+	if (id != HDMI)
+		of_lpass_cpu_parse_dai_data(dev, drvdata);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
@@ -584,18 +587,33 @@ int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 		return PTR_ERR((void const __force *)drvdata->lpaif);
 	}
 
-	lpass_cpu_regmap_config.max_register = LPAIF_WRDMAPER_REG(variant,
+	if (id != HDMI) {
+		lpass_cpu_regmap_config.max_register = LPAIF_WRDMAPER_REG(variant,
 						variant->wrdma_channels +
 						variant->wrdma_channel_start);
 
-	drvdata->lpaif_map = devm_regmap_init_mmio(dev, drvdata->lpaif,
-			&lpass_cpu_regmap_config);
-	if (IS_ERR(drvdata->lpaif_map)) {
-		dev_err(dev, "error initializing regmap: %ld\n",
+		drvdata->lpaif_map = devm_regmap_init_mmio(dev, drvdata->lpaif,
+								&lpass_cpu_regmap_config);
+		if (IS_ERR(drvdata->lpaif_map)) {
+			dev_err(dev, "error initializing regmap: %ld\n",
+				PTR_ERR(drvdata->lpaif_map));
+			return PTR_ERR(drvdata->lpaif_map);
+		}
+	} else {
+#ifdef CONFIG_SND_SOC_LPASS_SC7180
+		lpass_hdmi_regmap_config.max_register = LPAIF_HDMI_RDMAPER_REG(variant,
+					variant->rdma_channels);
+		drvdata->lpaif_map = devm_regmap_init_mmio(dev, drvdata->lpaif,
+					&lpass_hdmi_regmap_config);
+		if (IS_ERR(drvdata->lpaif_map)) {
+			dev_err(dev, "error initializing regmap: %ld\n",
 			PTR_ERR(drvdata->lpaif_map));
-		return PTR_ERR(drvdata->lpaif_map);
+			return PTR_ERR(drvdata->lpaif_map);
+		}
+#else
+		return -EINVAL;
+#endif
 	}
-
 	if (variant->init) {
 		ret = variant->init(pdev);
 		if (ret) {
@@ -606,6 +624,9 @@ int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 
 	for (i = 0; i < variant->num_dai; i++) {
 		dai_id = variant->dai_driver[i].id;
+		if (dai_id == HDMI)
+			continue;
+
 		drvdata->mi2s_osr_clk[dai_id] = devm_clk_get(dev,
 					     variant->dai_osr_clk_names[i]);
 		if (IS_ERR(drvdata->mi2s_osr_clk[dai_id])) {
@@ -629,18 +650,27 @@ int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* Allocation for i2sctl regmap fields */
-	drvdata->i2sctl = devm_kzalloc(&pdev->dev, sizeof(struct lpaif_i2sctl),
-					GFP_KERNEL);
+	if (id != HDMI) {
+		/* Allocation for i2sctl regmap fields */
+		drvdata->i2sctl = devm_kzalloc(&pdev->dev, sizeof(struct lpaif_i2sctl),
+						GFP_KERNEL);
 
-	/* Initialize bitfields for dai I2SCTL register */
-	ret = lpass_cpu_init_i2sctl_bitfields(dev, drvdata->i2sctl,
-						drvdata->lpaif_map);
-	if (ret) {
-		dev_err(dev, "error init i2sctl field: %d\n", ret);
-		return ret;
+		/* Initialize bitfields for dai I2SCTL register */
+		ret = lpass_cpu_init_i2sctl_bitfields(dev, drvdata->i2sctl,
+							drvdata->lpaif_map);
+		if (ret)
+			dev_err(dev, "error init i2sctl field: %d\n", ret);
+	} else {
+#ifdef CONFIG_SND_SOC_LPASS_SC7180
+		ret = lpass_hdmi_init_bitfields(dev, drvdata->lpaif_map);
+		if (ret) {
+			dev_err(dev, "%s error  hdmi init failed\n", __func__);
+			return ret;
+		}
+#else
+		return -EINVAL;
+#endif
 	}
-
 	ret = devm_snd_soc_register_component(dev,
 					      &lpass_cpu_comp_driver,
 					      variant->dai_driver,

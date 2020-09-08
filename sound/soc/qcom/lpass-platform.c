@@ -23,7 +23,7 @@ struct lpass_pcm_data {
 	int i2s_port;
 };
 
-#define LPASS_PLATFORM_BUFFER_SIZE	(16 * 1024)
+#define LPASS_PLATFORM_BUFFER_SIZE	(24 *  2 * 1024)
 #define LPASS_PLATFORM_PERIODS		2
 
 static const struct snd_pcm_hardware lpass_platform_pcm_hardware = {
@@ -56,44 +56,73 @@ static int lpass_platform_alloc_dmactl_fields(struct device *dev,
 	struct lpass_data *drvdata = dev_get_drvdata(dev);
 	struct lpass_variant *v = drvdata->variant;
 	struct lpaif_dmactl *rd_dmactl, *wr_dmactl;
+	unsigned int dai_id = v->dai_driver->id;
+
 
 	drvdata->rd_dmactl = devm_kzalloc(dev, sizeof(struct lpaif_dmactl),
 					  GFP_KERNEL);
 	if (drvdata->rd_dmactl == NULL)
 		return -ENOMEM;
 
-	drvdata->wr_dmactl = devm_kzalloc(dev, sizeof(struct lpaif_dmactl),
-					  GFP_KERNEL);
-	if (drvdata->wr_dmactl == NULL)
-		return -ENOMEM;
-
 	rd_dmactl = drvdata->rd_dmactl;
-	wr_dmactl = drvdata->wr_dmactl;
 
 	rd_dmactl->bursten = devm_regmap_field_alloc(dev, map, v->rdma_bursten);
 	rd_dmactl->wpscnt = devm_regmap_field_alloc(dev, map, v->rdma_wpscnt);
 	rd_dmactl->fifowm = devm_regmap_field_alloc(dev, map, v->rdma_fifowm);
-	rd_dmactl->intf = devm_regmap_field_alloc(dev, map, v->rdma_intf);
 	rd_dmactl->enable = devm_regmap_field_alloc(dev, map, v->rdma_enable);
 	rd_dmactl->dyncclk = devm_regmap_field_alloc(dev, map, v->rdma_dyncclk);
 
 	if (IS_ERR(rd_dmactl->bursten) || IS_ERR(rd_dmactl->wpscnt) ||
-	    IS_ERR(rd_dmactl->fifowm) || IS_ERR(rd_dmactl->intf) ||
-	    IS_ERR(rd_dmactl->enable) || IS_ERR(rd_dmactl->dyncclk))
+	    IS_ERR(rd_dmactl->fifowm) || IS_ERR(rd_dmactl->dyncclk) ||
+	    IS_ERR(rd_dmactl->enable))
 		return -EINVAL;
 
-	wr_dmactl->bursten = devm_regmap_field_alloc(dev, map, v->wrdma_bursten);
-	wr_dmactl->wpscnt = devm_regmap_field_alloc(dev, map, v->wrdma_wpscnt);
-	wr_dmactl->fifowm = devm_regmap_field_alloc(dev, map, v->wrdma_fifowm);
-	wr_dmactl->intf = devm_regmap_field_alloc(dev, map, v->wrdma_intf);
-	wr_dmactl->enable = devm_regmap_field_alloc(dev, map, v->wrdma_enable);
-	wr_dmactl->dyncclk = devm_regmap_field_alloc(dev, map, v->wrdma_dyncclk);
+	switch (dai_id) {
+	case HDMI:
+		rd_dmactl->burst8 = devm_regmap_field_alloc(dev, map, v->rdma_burst8);
+		rd_dmactl->burst16 = devm_regmap_field_alloc(dev, map, v->rdma_burst16);
+		rd_dmactl->dynburst = devm_regmap_field_alloc(dev, map, v->rdma_dynburst);
 
-	if (IS_ERR(wr_dmactl->bursten) || IS_ERR(wr_dmactl->wpscnt) ||
-	    IS_ERR(wr_dmactl->fifowm) || IS_ERR(wr_dmactl->intf) ||
-	    IS_ERR(wr_dmactl->enable) || IS_ERR(wr_dmactl->dyncclk))
-		return -EINVAL;
+		if (IS_ERR(rd_dmactl->burst8) || IS_ERR(rd_dmactl->burst16) ||
+			IS_ERR(rd_dmactl->dynburst))
+			return -EINVAL;
+		break;
+	case MI2S_PRIMARY:
+	case MI2S_SECONDARY:
+		rd_dmactl->intf = devm_regmap_field_alloc(dev, map, v->rdma_intf);
+		if (IS_ERR(rd_dmactl->intf))
+			return -EINVAL;
 
+		drvdata->wr_dmactl = devm_kzalloc(dev,
+				sizeof(struct lpaif_dmactl), GFP_KERNEL);
+		if (drvdata->wr_dmactl == NULL)
+			return -ENOMEM;
+
+		wr_dmactl = drvdata->wr_dmactl;
+
+		wr_dmactl->bursten = devm_regmap_field_alloc(dev, map,
+							v->wrdma_bursten);
+		wr_dmactl->wpscnt = devm_regmap_field_alloc(dev, map,
+							v->wrdma_wpscnt);
+		wr_dmactl->fifowm = devm_regmap_field_alloc(dev, map,
+							v->wrdma_fifowm);
+		wr_dmactl->intf = devm_regmap_field_alloc(dev, map,
+							v->wrdma_intf);
+		wr_dmactl->enable = devm_regmap_field_alloc(dev, map,
+							v->wrdma_enable);
+		wr_dmactl->dyncclk = devm_regmap_field_alloc(dev, map,
+							v->wrdma_dyncclk);
+
+		if (IS_ERR(wr_dmactl->bursten) || IS_ERR(wr_dmactl->wpscnt) ||
+			IS_ERR(wr_dmactl->fifowm) || IS_ERR(wr_dmactl->intf) ||
+			IS_ERR(wr_dmactl->enable) || IS_ERR(wr_dmactl->dyncclk))
+			return -EINVAL;
+		break;
+	default:
+		dev_err(dev, "%s: alloc dma channels failed for %d interface\n",
+				__func__, dai_id);
+		break;
+	}
 	return 0;
 }
 
@@ -106,7 +135,7 @@ static int lpass_platform_pcmops_open(struct snd_soc_component *component,
 	struct lpass_data *drvdata = snd_soc_component_get_drvdata(component);
 	struct lpass_variant *v = drvdata->variant;
 	int ret, dma_ch, dir = substream->stream;
-	struct lpass_pcm_data *data;
+	struct lpass_pcm_data *data = NULL;
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
@@ -174,6 +203,7 @@ static int lpass_platform_pcmops_hw_params(struct snd_soc_component *component,
 					   struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *soc_runtime = asoc_substream_to_rtd(substream);
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(soc_runtime, 0);
 	struct lpass_data *drvdata = snd_soc_component_get_drvdata(component);
 	struct snd_pcm_runtime *rt = substream->runtime;
 	struct lpass_pcm_data *pcm_data = rt->private_data;
@@ -184,7 +214,9 @@ static int lpass_platform_pcmops_hw_params(struct snd_soc_component *component,
 	struct lpaif_dmactl *dmactl;
 	int id, dir = substream->stream;
 	int bitwidth;
-	int ret, dma_port = pcm_data->i2s_port + v->dmactl_audif_start;
+	int ret;
+	int dma_port = pcm_data->i2s_port + v->dmactl_audif_start;
+	unsigned int dai_id = cpu_dai->driver->id;
 
 	if (dir ==  SNDRV_PCM_STREAM_PLAYBACK) {
 		dmactl = drvdata->rd_dmactl;
@@ -207,18 +239,48 @@ static int lpass_platform_pcmops_hw_params(struct snd_soc_component *component,
 		return ret;
 	}
 
-	regmap_fields_write(dmactl->fifowm, id, LPAIF_DMACTL_FIFOWM_8);
+	ret = regmap_fields_write(dmactl->fifowm, id, LPAIF_DMACTL_FIFOWM_8);
 	if (ret) {
 		dev_err(soc_runtime->dev, "error updating fifowm field: %d\n", ret);
 		return ret;
 	}
 
-	regmap_fields_write(dmactl->intf, id, LPAIF_DMACTL_AUDINTF(dma_port));
-	if (ret) {
-		dev_err(soc_runtime->dev, "error updating audintf field: %d\n", ret);
-		return ret;
-	}
+	switch (dai_id) {
+	case HDMI:
+		ret = regmap_fields_write(dmactl->burst8, id,
+							LPAIF_DMACTL_BURSTEN_INCR4);
+		if (ret) {
+			dev_err(soc_runtime->dev, "error updating burst8en field: %d\n", ret);
+			return ret;
+		}
+		ret = regmap_fields_write(dmactl->burst16, id,
+							LPAIF_DMACTL_BURSTEN_INCR4);
+		if (ret) {
+			dev_err(soc_runtime->dev, "error updating burst16en field: %d\n", ret);
+			return ret;
+		}
+		ret = regmap_fields_write(dmactl->dynburst, id,
+							LPAIF_DMACTL_BURSTEN_INCR4);
+		if (ret) {
+			dev_err(soc_runtime->dev, "error updating dynbursten field: %d\n", ret);
+			return ret;
+		}
+		break;
+	case MI2S_PRIMARY:
+	case MI2S_SECONDARY:
+		ret = regmap_fields_write(dmactl->intf, id,
+						LPAIF_DMACTL_AUDINTF(dma_port));
+		if (ret) {
+			dev_err(soc_runtime->dev, "error updating audio interface field: %d\n",
+					ret);
+			return ret;
+		}
 
+		break;
+	default:
+		dev_err(soc_runtime->dev, "%s: invalid  interface: %d\n", __func__, dai_id);
+		break;
+	}
 	switch (bitwidth) {
 	case 16:
 		switch (channels) {
@@ -249,16 +311,24 @@ static int lpass_platform_pcmops_hw_params(struct snd_soc_component *component,
 			regval = LPAIF_DMACTL_WPSCNT_ONE;
 			break;
 		case 2:
-			regval = LPAIF_DMACTL_WPSCNT_TWO;
+			regval = (dai_id == HDMI ?
+			LPAIF_DMACTL_WPSCNT_ONE :
+			LPAIF_DMACTL_WPSCNT_TWO);
 			break;
 		case 4:
-			regval = LPAIF_DMACTL_WPSCNT_FOUR;
+			regval = (dai_id == HDMI ?
+			LPAIF_DMACTL_WPSCNT_TWO :
+			LPAIF_DMACTL_WPSCNT_FOUR);
 			break;
 		case 6:
-			regval = LPAIF_DMACTL_WPSCNT_SIX;
+			regval = (dai_id == HDMI ?
+			LPAIF_DMACTL_WPSCNT_THREE :
+			LPAIF_DMACTL_WPSCNT_SIX);
 			break;
 		case 8:
-			regval = LPAIF_DMACTL_WPSCNT_EIGHT;
+			regval = (dai_id == HDMI ?
+			LPAIF_DMACTL_WPSCNT_FOUR :
+			LPAIF_DMACTL_WPSCNT_EIGHT);
 			break;
 		default:
 			dev_err(soc_runtime->dev,
@@ -268,7 +338,8 @@ static int lpass_platform_pcmops_hw_params(struct snd_soc_component *component,
 		}
 		break;
 	default:
-		dev_err(soc_runtime->dev, "invalid PCM config given: bw=%d, ch=%u\n",
+		dev_err(soc_runtime->dev,
+			"invalid PCM config given: bw=%d,ch=%u\n",
 			bitwidth, channels);
 		return -EINVAL;
 	}
@@ -366,6 +437,7 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 					 int cmd)
 {
 	struct snd_soc_pcm_runtime *soc_runtime = asoc_substream_to_rtd(substream);
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(soc_runtime, 0);
 	struct lpass_data *drvdata = snd_soc_component_get_drvdata(component);
 	struct snd_pcm_runtime *rt = substream->runtime;
 	struct lpass_pcm_data *pcm_data = rt->private_data;
@@ -373,6 +445,9 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 	struct lpaif_dmactl *dmactl;
 	int ret, ch, id;
 	int dir = substream->stream;
+	unsigned int reg_irqclr = 0, val_irqclr = 0;
+	unsigned int  reg_irqen = 0, val_irqen = 0, val_mask = 0;
+	unsigned int dai_id = cpu_dai->driver->id;
 
 	ch = pcm_data->dma_ch;
 	if (dir ==  SNDRV_PCM_STREAM_PLAYBACK) {
@@ -387,31 +462,65 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		/* clear status before enabling interrupts */
-		ret = regmap_write(drvdata->lpaif_map,
-				LPAIF_IRQCLEAR_REG(v, LPAIF_IRQ_PORT_HOST),
-				LPAIF_IRQ_ALL(ch));
-		if (ret) {
-			dev_err(soc_runtime->dev,
-				"error writing to irqclear reg: %d\n", ret);
-			return ret;
-		}
-
-		ret = regmap_update_bits(drvdata->lpaif_map,
-				LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST),
-				LPAIF_IRQ_ALL(ch),
-				LPAIF_IRQ_ALL(ch));
-		if (ret) {
-			dev_err(soc_runtime->dev,
-				"error writing to irqen reg: %d\n", ret);
-			return ret;
-		}
-
 		ret = regmap_fields_write(dmactl->enable, id,
-					 LPAIF_DMACTL_ENABLE_ON);
+						 LPAIF_DMACTL_ENABLE_ON);
 		if (ret) {
 			dev_err(soc_runtime->dev,
 				"error writing to rdmactl reg: %d\n", ret);
+			return ret;
+		}
+		switch (dai_id) {
+		case HDMI:
+			ret = regmap_fields_write(dmactl->dyncclk, id,
+					 LPAIF_DMACTL_DYNCLK_ON);
+			if (ret) {
+				dev_err(soc_runtime->dev,
+					"error writing to rdmactl reg: %d\n", ret);
+				return ret;
+			}
+			reg_irqclr = LPASS_HDMITX_APP_IRQCLEAR_REG(v);
+			val_irqclr = (LPAIF_IRQ_ALL(ch) |
+					LPAIF_IRQ_HDMI_REQ_ON_PRELOAD(ch) |
+					LPAIF_IRQ_HDMI_METADONE |
+					LPAIF_IRQ_HDMI_SDEEP_AUD_DIS(ch));
+
+			reg_irqen = LPASS_HDMITX_APP_IRQEN_REG(v);
+			val_mask = (LPAIF_IRQ_ALL(ch) |
+					LPAIF_IRQ_HDMI_REQ_ON_PRELOAD(ch) |
+					LPAIF_IRQ_HDMI_METADONE |
+					LPAIF_IRQ_HDMI_SDEEP_AUD_DIS(ch));
+			val_irqen = (LPAIF_IRQ_ALL(ch) |
+					LPAIF_IRQ_HDMI_REQ_ON_PRELOAD(ch) |
+					LPAIF_IRQ_HDMI_METADONE |
+					LPAIF_IRQ_HDMI_SDEEP_AUD_DIS(ch));
+			break;
+		case MI2S_PRIMARY:
+		case MI2S_SECONDARY:
+			 reg_irqclr = LPAIF_IRQCLEAR_REG(v,
+					LPAIF_IRQ_PORT_HOST);
+			 val_irqclr = LPAIF_IRQ_ALL(ch);
+
+
+			reg_irqen = LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST);
+			val_mask = LPAIF_IRQ_ALL(ch);
+			val_irqen = LPAIF_IRQ_ALL(ch);
+			break;
+		default:
+			dev_err(soc_runtime->dev, "%s: invalid  %d interface\n", __func__, dai_id);
+			return -EINVAL;
+		}
+
+		ret = regmap_write(drvdata->lpaif_map, reg_irqclr, val_irqclr);
+		if (ret) {
+			dev_err(soc_runtime->dev,
+			"error writing to irqclear reg: %d\n", ret);
+			return ret;
+		}
+		ret = regmap_update_bits(drvdata->lpaif_map,
+		reg_irqen, val_mask, val_irqen);
+		if (ret) {
+			dev_err(soc_runtime->dev,
+			"error writing to irqen reg: %d\n", ret);
 			return ret;
 		}
 		break;
@@ -425,10 +534,37 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 				"error writing to rdmactl reg: %d\n", ret);
 			return ret;
 		}
+		switch (dai_id) {
+		case HDMI:
+			ret = regmap_fields_write(dmactl->dyncclk, id,
+					 LPAIF_DMACTL_DYNCLK_OFF);
+			if (ret) {
+				dev_err(soc_runtime->dev,
+					"error writing to rdmactl reg: %d\n", ret);
+				return ret;
+			}
+
+			reg_irqen = LPASS_HDMITX_APP_IRQEN_REG(v);
+			val_mask = (LPAIF_IRQ_ALL(ch) |
+					LPAIF_IRQ_HDMI_REQ_ON_PRELOAD(ch) |
+					LPAIF_IRQ_HDMI_METADONE |
+					LPAIF_IRQ_HDMI_SDEEP_AUD_DIS(ch));
+			val_irqen = 0;
+			break;
+		case MI2S_PRIMARY:
+		case MI2S_SECONDARY:
+			reg_irqen = LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST);
+			val_mask = LPAIF_IRQ_ALL(ch);
+			val_irqen = 0;
+			break;
+		default:
+			dev_err(soc_runtime->dev, "%s: invalid %d interface\n", __func__, dai_id);
+			return -EINVAL;
+		}
 
 		ret = regmap_update_bits(drvdata->lpaif_map,
-				LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST),
-				LPAIF_IRQ_ALL(ch), 0);
+				reg_irqen,
+				val_mask, val_irqen);
 		if (ret) {
 			dev_err(soc_runtime->dev,
 				"error writing to irqen reg: %d\n", ret);
@@ -489,14 +625,32 @@ static irqreturn_t lpass_dma_interrupt_handler(
 			int chan, u32 interrupts)
 {
 	struct snd_soc_pcm_runtime *soc_runtime = asoc_substream_to_rtd(substream);
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(soc_runtime, 0);
 	struct lpass_variant *v = drvdata->variant;
 	irqreturn_t ret = IRQ_NONE;
 	int rv;
+	unsigned int reg = 0, val = 0;
+	unsigned int dai_id = cpu_dai->driver->id;
 
 	if (interrupts & LPAIF_IRQ_PER(chan)) {
-		rv = regmap_write(drvdata->lpaif_map,
-				LPAIF_IRQCLEAR_REG(v, LPAIF_IRQ_PORT_HOST),
-				LPAIF_IRQ_PER(chan));
+		switch (dai_id) {
+		case HDMI:
+			reg = LPASS_HDMITX_APP_IRQCLEAR_REG(v);
+			val = (LPAIF_IRQ_HDMI_REQ_ON_PRELOAD(chan) |
+			LPAIF_IRQ_HDMI_METADONE |
+			LPAIF_IRQ_HDMI_SDEEP_AUD_DIS(chan));
+			break;
+		case MI2S_PRIMARY:
+		case MI2S_SECONDARY:
+			reg = LPAIF_IRQCLEAR_REG(v, LPAIF_IRQ_PORT_HOST);
+			val = 0;
+			break;
+		default:
+			dev_err(soc_runtime->dev, "%s: invalid  %d interface\n", __func__, dai_id);
+			return -EINVAL;
+		}
+		rv = regmap_write(drvdata->lpaif_map, reg,
+				LPAIF_IRQ_PER(chan) | val);
 		if (rv) {
 			dev_err(soc_runtime->dev,
 				"error writing to irqclear reg: %d\n", rv);
@@ -507,9 +661,8 @@ static irqreturn_t lpass_dma_interrupt_handler(
 	}
 
 	if (interrupts & LPAIF_IRQ_XRUN(chan)) {
-		rv = regmap_write(drvdata->lpaif_map,
-				LPAIF_IRQCLEAR_REG(v, LPAIF_IRQ_PORT_HOST),
-				LPAIF_IRQ_XRUN(chan));
+		rv = regmap_write(drvdata->lpaif_map, reg,
+				LPAIF_IRQ_XRUN(chan) | val);
 		if (rv) {
 			dev_err(soc_runtime->dev,
 				"error writing to irqclear reg: %d\n", rv);
@@ -521,9 +674,8 @@ static irqreturn_t lpass_dma_interrupt_handler(
 	}
 
 	if (interrupts & LPAIF_IRQ_ERR(chan)) {
-		rv = regmap_write(drvdata->lpaif_map,
-				LPAIF_IRQCLEAR_REG(v, LPAIF_IRQ_PORT_HOST),
-				LPAIF_IRQ_ERR(chan));
+		rv = regmap_write(drvdata->lpaif_map, reg,
+				LPAIF_IRQ_ERR(chan) | val);
 		if (rv) {
 			dev_err(soc_runtime->dev,
 				"error writing to irqclear reg: %d\n", rv);
@@ -531,6 +683,16 @@ static irqreturn_t lpass_dma_interrupt_handler(
 		}
 		dev_err(soc_runtime->dev, "bus access error\n");
 		snd_pcm_stop(substream, SNDRV_PCM_STATE_DISCONNECTED);
+		ret = IRQ_HANDLED;
+	}
+
+	if (interrupts & val) {
+		rv = regmap_write(drvdata->lpaif_map, reg, val);
+		if (rv) {
+			dev_err(soc_runtime->dev,
+			"error writing to irqclear reg: %d\n", rv);
+			return IRQ_NONE;
+		}
 		ret = IRQ_HANDLED;
 	}
 
@@ -543,9 +705,11 @@ static irqreturn_t lpass_platform_lpaif_irq(int irq, void *data)
 	struct lpass_variant *v = drvdata->variant;
 	unsigned int irqs;
 	int rv, chan;
+	unsigned int val;
+	unsigned int dai_id = v->dai_driver->id;
 
 	rv = regmap_read(drvdata->lpaif_map,
-			LPAIF_IRQSTAT_REG(v, LPAIF_IRQ_PORT_HOST), &irqs);
+			IRQ_STAT(v, LPAIF_IRQ_PORT_HOST), &irqs);
 	if (rv) {
 		pr_err("error reading from irqstat reg: %d\n", rv);
 		return IRQ_NONE;
@@ -553,7 +717,22 @@ static irqreturn_t lpass_platform_lpaif_irq(int irq, void *data)
 
 	/* Handle per channel interrupts */
 	for (chan = 0; chan < LPASS_MAX_DMA_CHANNELS; chan++) {
-		if (irqs & LPAIF_IRQ_ALL(chan) && drvdata->substream[chan]) {
+		switch (dai_id) {
+		case HDMI:
+			val = LPAIF_IRQ_HDMI_REQ_ON_PRELOAD(chan) |
+				LPAIF_IRQ_HDMI_METADONE |
+				LPAIF_IRQ_HDMI_SDEEP_AUD_DIS(chan);
+			break;
+		case MI2S_PRIMARY:
+		case MI2S_SECONDARY:
+			val = 0;
+			break;
+		default:
+			pr_err("%s: invalid  %d interface\n", __func__, dai_id);
+			return -EINVAL;
+		}
+		if (irqs & (LPAIF_IRQ_ALL(chan) | val)
+			&& drvdata->substream[chan]) {
 			rv = lpass_dma_interrupt_handler(
 						drvdata->substream[chan],
 						drvdata, chan, irqs);
@@ -644,15 +823,14 @@ int asoc_qcom_lpass_platform_register(struct platform_device *pdev)
 
 	/* ensure audio hardware is disabled */
 	ret = regmap_write(drvdata->lpaif_map,
-			LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST), 0);
+			IRQ_EN(v, LPAIF_IRQ_PORT_HOST), 0);
 	if (ret) {
 		dev_err(&pdev->dev, "error writing to irqen reg: %d\n", ret);
 		return ret;
 	}
 
 	ret = devm_request_irq(&pdev->dev, drvdata->lpaif_irq,
-			lpass_platform_lpaif_irq, IRQF_TRIGGER_RISING,
-			"lpass-irq-lpaif", drvdata);
+		lpass_platform_lpaif_irq, 0, pdev->name, drvdata);
 	if (ret) {
 		dev_err(&pdev->dev, "irq request failed: %d\n", ret);
 		return ret;
