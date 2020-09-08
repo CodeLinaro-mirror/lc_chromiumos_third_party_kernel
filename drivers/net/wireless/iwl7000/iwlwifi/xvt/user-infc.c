@@ -164,6 +164,16 @@ void iwl_xvt_send_user_rx_notif(struct iwl_xvt *xvt,
 					IWL_TM_USER_CMD_NOTIF_IQ_CALIB,
 					data, size, GFP_ATOMIC);
 		break;
+	case WIDE_ID(XVT_GROUP, DTS_MEASUREMENT_TRIGGER_NOTIF):
+		iwl_xvt_user_send_notif(xvt,
+					IWL_TM_USER_CMD_NOTIF_DTS_MEASUREMENTS_XVT,
+					data, size, GFP_ATOMIC);
+		break;
+	case WIDE_ID(XVT_GROUP, MPAPD_EXEC_DONE_NOTIF):
+		iwl_xvt_user_send_notif(xvt,
+					IWL_TM_USER_CMD_NOTIF_MPAPD_EXEC_DONE,
+					data, size, GFP_ATOMIC);
+		break;
 	case WIDE_ID(XVT_GROUP, RUN_TIME_CALIB_DONE_NOTIF):
 		iwl_xvt_user_send_notif(xvt,
 					IWL_TM_USER_CMD_NOTIF_RUN_TIME_CALIB_DONE,
@@ -438,7 +448,8 @@ static int iwl_xvt_send_phy_cfg_cmd(struct iwl_xvt *xvt, u32 ucode_type)
 		calib_cmd_cfg->calib_control.flow_trigger = 0;
 	}
 	cmd_size = iwl_fw_lookup_cmd_ver(xvt->fw, IWL_ALWAYS_LONG_GROUP,
-					 PHY_CONFIGURATION_CMD) == 3 ?
+					 PHY_CONFIGURATION_CMD,
+					 IWL_FW_CMD_VER_UNKNOWN) == 3 ?
 					    sizeof(struct iwl_phy_cfg_cmd_v3) :
 					    sizeof(struct iwl_phy_cfg_cmd_v1);
 
@@ -1090,7 +1101,7 @@ static struct sk_buff *iwl_xvt_set_skb(struct iwl_xvt *xvt,
 	/* copy MAC header into skb */
 	memcpy(skb_put(skb, header_size), hdr, header_size);
 	/* copy frame payload into skb */
-	memcpy(skb_put(skb, payload_length), payload, payload_length);
+	memcpy(skb_put(skb, payload_length), payload->payload, payload_length);
 
 	return skb;
 }
@@ -1201,7 +1212,7 @@ static int iwl_xvt_transmit_packet(struct iwl_xvt *xvt,
 	if (time_remain <= 0) {
 		/* This should really not happen */
 		WARN_ON_ONCE(queue_data->txq_full);
-		IWL_ERR(xvt, "Error while sending Tx\n");
+		IWL_ERR(xvt, "Error while sending Tx - queue full\n");
 		*status = XVT_TX_DRIVER_QUEUE_FULL;
 		err = -EIO;
 		goto on_err;
@@ -1348,27 +1359,30 @@ static int iwl_xvt_start_tx_handler(void *data)
 							      frame_index,
 							      frag_num,
 							      &status);
-				sent_packets++;
 				if (err) {
 					IWL_ERR(xvt, "stop due to err %d\n",
 						err);
 					goto on_exit;
 				}
 
+				sent_packets++;
 				++frag_idx;
 			}
 		}
 	}
-	time_remain = wait_event_interruptible_timeout(
-			xvt->tx_done_wq,
-			xvt->num_of_tx_resp == sent_packets,
-			5 * HZ * CPTCFG_IWL_TIMEOUT_FACTOR);
-	if (time_remain <= 0) {
-		IWL_ERR(xvt, "Not all Tx messages were sent\n");
-		status = XVT_TX_DRIVER_TIMEOUT;
-	}
 
 on_exit:
+	if (sent_packets > 0 && !xvt->fw_error) {
+		time_remain = wait_event_interruptible_timeout(xvt->tx_done_wq,
+					xvt->num_of_tx_resp == sent_packets,
+					5 * HZ * CPTCFG_IWL_TIMEOUT_FACTOR);
+		if (time_remain <= 0) {
+			IWL_ERR(xvt, "Not all Tx messages were sent\n");
+			if (status == 0)
+				status = XVT_TX_DRIVER_TIMEOUT;
+		}
+	}
+
 	err = iwl_xvt_send_tx_done_notif(xvt, status);
 
 	xvt->is_enhanced_tx = false;

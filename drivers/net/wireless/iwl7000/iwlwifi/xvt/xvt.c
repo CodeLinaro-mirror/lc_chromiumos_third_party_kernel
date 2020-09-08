@@ -78,7 +78,7 @@
 
 #define DRV_DESCRIPTION	"Intel(R) xVT driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
-MODULE_AUTHOR(DRV_COPYRIGHT " " DRV_AUTHOR);
+MODULE_AUTHOR(DRV_AUTHOR);
 MODULE_LICENSE("GPL");
 
 #define TX_QUEUE_CFG_TID (6)
@@ -105,7 +105,7 @@ module_exit(iwl_xvt_exit);
  * A warning will be triggered on violation.
  */
 static const struct iwl_hcmd_names iwl_xvt_cmd_names[] = {
-	HCMD_NAME(MVM_ALIVE),
+	HCMD_NAME(UCODE_ALIVE_NTFY),
 	HCMD_NAME(INIT_COMPLETE_NOTIF),
 	HCMD_NAME(TX_CMD),
 	HCMD_NAME(SCD_QUEUE_CFG),
@@ -183,6 +183,8 @@ static const struct iwl_hcmd_names iwl_xvt_system_names[] = {
 };
 
 static const struct iwl_hcmd_names iwl_xvt_xvt_names[] = {
+	HCMD_NAME(DTS_MEASUREMENT_TRIGGER_NOTIF),
+	HCMD_NAME(MPAPD_EXEC_DONE_NOTIF),
 	HCMD_NAME(RUN_TIME_CALIB_DONE_NOTIF),
 	HCMD_NAME(IQ_CALIB_CONFIG_NOTIF),
 };
@@ -261,7 +263,6 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	trans_cfg.bc_table_dword =
 		trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210;
 	trans_cfg.scd_set_active = true;
-	trans->wide_cmd_header = true;
 
 	switch (iwlwifi_mod_params.amsdu_size) {
 	case IWL_AMSDU_DEF:
@@ -341,6 +342,7 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	return op_mode;
 
 out_free:
+	iwl_fw_runtime_free(&xvt->fwrt);
 	kfree(op_mode);
 
 	return NULL;
@@ -368,6 +370,9 @@ static void iwl_xvt_stop(struct iwl_op_mode *op_mode)
 		buffer = &xvt->reorder_bufs[i];
 		iwl_xvt_destroy_reorder_buffer(xvt, buffer);
 	}
+
+	iwl_fw_flush_dumps(&xvt->fwrt);
+	iwl_fw_runtime_free(&xvt->fwrt);
 
 	iwl_phy_db_free(xvt->phy_db);
 	xvt->phy_db = NULL;
@@ -652,7 +657,7 @@ static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode)
 	p_table = kmemdup(&table_v2, sizeof(table_v2), GFP_ATOMIC);
 	table_size = sizeof(table_v2);
 
-	if (xvt->support_umac_log ||
+	if (xvt->trans->dbg.umac_error_event_table ||
 	    (xvt->trans->dbg.error_event_table_tlv_status &
 	     IWL_ERROR_EVENT_TABLE_UMAC)) {
 		iwl_xvt_get_umac_error_log(xvt, &table_umac);
@@ -812,14 +817,42 @@ void iwl_xvt_txq_disable(struct iwl_xvt *xvt)
 #ifdef CONFIG_ACPI
 static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 {
-	u16 cmd_wide_id =  WIDE_ID(PHY_OPS_GROUP, GEO_TX_POWER_LIMIT);
-	union geo_tx_power_profiles_cmd cmd;
+	union iwl_geo_tx_power_profiles_cmd cmd;
 	u16 len;
+	u32 n_bands;
 	int ret;
+	u8 cmd_ver = iwl_fw_lookup_cmd_ver(xvt->fw, PHY_OPS_GROUP,
+					   GEO_TX_POWER_LIMIT,
+					   IWL_FW_CMD_VER_UNKNOWN);
 
-	cmd.geo_cmd.ops = cpu_to_le32(IWL_PER_CHAIN_OFFSET_SET_TABLES);
+	BUILD_BUG_ON(offsetof(struct iwl_geo_tx_power_profiles_cmd_v1, ops) !=
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v2, ops) ||
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v2, ops) !=
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v3, ops));
+	/* the ops field is at the same spot for all versions, so set in v1 */
+	cmd.v1.ops = cpu_to_le32(IWL_PER_CHAIN_OFFSET_SET_TABLES);
 
-	ret = iwl_sar_geo_init(&xvt->fwrt, cmd.geo_cmd.table);
+	if (cmd_ver == 3) {
+		len = sizeof(cmd.v3);
+		n_bands = ARRAY_SIZE(cmd.v3.table[0]);
+		cmd.v3.table_revision = cpu_to_le32(xvt->fwrt.geo_rev);
+	} else if (fw_has_api(&xvt->fwrt.fw->ucode_capa,
+			      IWL_UCODE_TLV_API_SAR_TABLE_VER)) {
+		len =  sizeof(cmd.v2);
+		n_bands = ARRAY_SIZE(cmd.v2.table[0]);
+		cmd.v2.table_revision = cpu_to_le32(xvt->fwrt.geo_rev);
+	} else {
+		len = sizeof(cmd.v1);
+		n_bands = ARRAY_SIZE(cmd.v1.table[0]);
+	}
+
+	BUILD_BUG_ON(offsetof(struct iwl_geo_tx_power_profiles_cmd_v1, table) !=
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v2, table) ||
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v2, table) !=
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v3, table));
+	/* the table is at the same position for all versions, so set use v1 */
+	ret = iwl_sar_geo_init(&xvt->fwrt, &cmd.v1.table[0][0], n_bands);
+
 	/*
 	 * It is a valid scenario to not support SAR, or miss wgds table,
 	 * but in that case there is no need to send the command.
@@ -827,16 +860,9 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 	if (ret)
 		return 0;
 
-	cmd.geo_cmd.table_revision = cpu_to_le32(xvt->fwrt.geo_rev);
-
-	if (!fw_has_api(&xvt->fwrt.fw->ucode_capa,
-			IWL_UCODE_TLV_API_SAR_TABLE_VER)) {
-		len = sizeof(struct iwl_geo_tx_power_profiles_cmd_v1);
-	} else {
-		len =  sizeof(cmd.geo_cmd);
-	}
-
-	return iwl_xvt_send_cmd_pdu(xvt, cmd_wide_id, 0, len, &cmd);
+	return iwl_xvt_send_cmd_pdu(xvt,
+				    WIDE_ID(PHY_OPS_GROUP, GEO_TX_POWER_LIMIT),
+				    0, len, &cmd);
 }
 #else /* CONFIG_ACPI */
 static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
@@ -845,28 +871,42 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 }
 #endif /* CONFIG_ACPI */
 
-static int
-iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b)
+int iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b)
 {
-	union {
-		struct iwl_dev_tx_power_cmd v5;
-		struct iwl_dev_tx_power_cmd_v4 v4;
-	} cmd = {
-		.v5.v3.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS),
+	struct iwl_dev_tx_power_cmd cmd = {
+		.common.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS),
 	};
+	__le16 *per_chain;
 	u16 len = 0;
-
-	if (fw_has_api(&xvt->fw->ucode_capa,
-		       IWL_UCODE_TLV_API_REDUCE_TX_POWER))
+	u32 n_subbands;
+	u8 cmd_ver = iwl_fw_lookup_cmd_ver(xvt->fw, LONG_GROUP,
+					   REDUCE_TX_POWER_CMD,
+					   IWL_FW_CMD_VER_UNKNOWN);
+	if (cmd_ver == 6) {
+		len = sizeof(cmd.v6);
+		n_subbands = IWL_NUM_SUB_BANDS_V2;
+		per_chain = cmd.v6.per_chain[0][0];
+	} else if (fw_has_api(&xvt->fw->ucode_capa,
+			      IWL_UCODE_TLV_API_REDUCE_TX_POWER)) {
 		len = sizeof(cmd.v5);
-	else if (fw_has_capa(&xvt->fw->ucode_capa,
-			     IWL_UCODE_TLV_CAPA_TX_POWER_ACK))
-		len = sizeof(struct iwl_dev_tx_power_cmd_v4);
-	else
-		len = sizeof(cmd.v4.v3);
+		n_subbands = IWL_NUM_SUB_BANDS;
+		per_chain = cmd.v5.per_chain[0][0];
+	} else if (fw_has_capa(&xvt->fw->ucode_capa,
+			       IWL_UCODE_TLV_CAPA_TX_POWER_ACK)) {
+		len = sizeof(cmd.v4);
+		n_subbands = IWL_NUM_SUB_BANDS;
+		per_chain = cmd.v4.per_chain[0][0];
+	} else {
+		len = sizeof(cmd.v3);
+		n_subbands = IWL_NUM_SUB_BANDS;
+		per_chain = cmd.v3.per_chain[0][0];
+	}
 
-	if (iwl_sar_select_profile(&xvt->fwrt, cmd.v5.v3.per_chain_restriction,
-				   prof_a, prof_b))
+	/* all structs have the same common part, add it */
+	len += sizeof(cmd.common);
+
+	if (iwl_sar_select_profile(&xvt->fwrt, per_chain, ACPI_SAR_NUM_TABLES,
+				   n_subbands, prof_a, prof_b))
 		return -ENOENT;
 
 	IWL_DEBUG_RADIO(xvt, "Sending REDUCE_TX_POWER_CMD per chain\n");

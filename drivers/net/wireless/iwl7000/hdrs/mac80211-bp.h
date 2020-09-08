@@ -1161,6 +1161,8 @@ struct backport_sinfo {
 	u32 fcs_err_count;
 
 	u32 airtime_link_metric;
+
+	u64 assoc_at;
 };
 
 /* these are constants in nl80211.h, so it's
@@ -1421,8 +1423,6 @@ static inline bool ieee80211_has_nan_iftype(unsigned int iftype)
 struct cfg80211_nan_conf {
 	u8 master_pref;
 	u8 bands;
-	u8 cdw_2g;
-	u8 cdw_5g;
 };
 
 enum nl80211_nan_function_type {
@@ -1511,14 +1511,6 @@ bool ieee80211_has_nan_iftype(unsigned int iftype)
 	return iftype & BIT(NL80211_IFTYPE_NAN);
 }
 #endif /* CFG80211_VERSION < KERNEL_VERSION(4,9,0) */
-
-#if CFG80211_VERSION < KERNEL_VERSION(99,0,0)
-#define nan_conf_cdw_2g(conf) 1
-#define nan_conf_cdw_5g(conf) 1
-#else
-#define nan_conf_cdw_2g(conf) ((conf)->cdw_2g)
-#define nan_conf_cdw_5g(conf) ((conf)->cdw_5g)
-#endif
 
 #if CFG80211_VERSION < KERNEL_VERSION(4,20,0)
 #define beacon_ftm_len(beacon, m) 0
@@ -1832,6 +1824,7 @@ void iwl7000_cqm_rssi_notify(struct net_device *dev,
 
 #if CFG80211_VERSION < KERNEL_VERSION(4,19,0)
 #define IEEE80211_HE_PPE_THRES_MAX_LEN		25
+#define RATE_INFO_FLAGS_HE_MCS BIT(4)
 
 /**
  * enum nl80211_he_gi - HE guard interval
@@ -1929,13 +1922,76 @@ ieee80211_get_he_6ghz_sta_cap(const struct ieee80211_supported_band *sband)
 }
 #endif /* < 5.8.0 */
 
+#if CFG80211_VERSION < KERNEL_VERSION(5,4,0)
+#define RATE_INFO_FLAGS_DMG	BIT(3)
+#define RATE_INFO_FLAGS_EDMG	BIT(5)
+/* yes, it really has that number upstream */
+#define NL80211_STA_INFO_ASSOC_AT_BOOTTIME 42
+
+struct ieee80211_he_obss_pd {
+	bool enable;
+	u8 min_offset;
+	u8 max_offset;
+};
+
+static inline const struct ieee80211_sta_he_cap *
+ieee80211_get_he_iftype_cap(const struct ieee80211_supported_band *sband,
+			    u8 iftype)
+{
+	return NULL;
+}
+
+static inline bool regulatory_pre_cac_allowed(struct wiphy *wiphy)
+{
+	return false;
+}
+
+static inline void
+cfg80211_tx_mgmt_expired(struct wireless_dev *wdev, u64 cookie,
+			 struct ieee80211_channel *chan, gfp_t gfp)
+{
+}
+
+#define cfg80211_iftype_allowed iwl7000_cfg80211_iftype_allowed
+static inline bool
+cfg80211_iftype_allowed(struct wiphy *wiphy, enum nl80211_iftype iftype,
+			bool is_4addr, u8 check_swif)
+
+{
+	bool is_vlan = iftype == NL80211_IFTYPE_AP_VLAN;
+
+	switch (check_swif) {
+	case 0:
+		if (is_vlan && is_4addr)
+			return wiphy->flags & WIPHY_FLAG_4ADDR_AP;
+		return wiphy->interface_modes & BIT(iftype);
+	case 1:
+		if (!(wiphy->software_iftypes & BIT(iftype)) && is_vlan)
+			return wiphy->flags & WIPHY_FLAG_4ADDR_AP;
+		return wiphy->software_iftypes & BIT(iftype);
+	default:
+		break;
+	}
+
+	return false;
+}
+#endif /* < 5.4.0 */
+
+#if CFG80211_VERSION < KERNEL_VERSION(5,5,0)
+#define NL80211_EXT_FEATURE_AQL -1
+
+#define IEEE80211_DEFAULT_AQL_TXQ_LIMIT_L	5000
+#define IEEE80211_DEFAULT_AQL_TXQ_LIMIT_H	12000
+#define IEEE80211_AQL_THRESHOLD			24000
+#endif
+
 #ifndef SHASH_DESC_ON_STACK
 #define SHASH_DESC_ON_STACK(shash, ctx)				 \
 	char __##shash##_desc[sizeof(struct shash_desc) +	 \
 	       crypto_shash_descsize(ctx)] CRYPTO_MINALIGN_ATTR; \
 	struct shash_desc *shash = (struct shash_desc *)__##shash##_desc
 
-#endif
+#endif /* < 5.5.0 */
 
 #if LINUX_VERSION_IS_LESS(4,11,0)
 static inline void *backport_idr_remove(struct idr *idr, int id)
@@ -2062,10 +2118,29 @@ static inline void set_rate_info_bw(struct rate_info *ri, int bw)
 		break;
 	}
 }
+
+static inline int get_rate_info_bw(struct rate_info *ri)
+{
+	if (ri->flags & RATE_INFO_FLAGS_40_MHZ_WIDTH)
+		return RATE_INFO_BW_40;
+
+	if (ri->flags & RATE_INFO_FLAGS_80_MHZ_WIDTH)
+		return RATE_INFO_BW_80;
+
+	if (ri->flags & RATE_INFO_FLAGS_160_MHZ_WIDTH)
+		return RATE_INFO_BW_160;
+
+	return RATE_INFO_BW_20;
+}
 #else
 static inline void set_rate_info_bw(struct rate_info *ri, int bw)
 {
 	ri->bw = bw;
+}
+
+static inline int get_rate_info_bw(struct rate_info *ri)
+{
+	return ri->bw;
 }
 #endif /* CFG80211_VERSION < KERNEL_VERSION(4,0,0) */
 
@@ -2748,9 +2823,12 @@ static inline void cfg80211_bss_iter(struct wiphy *wiphy,
 	 * leave it empty for now.
 	 */
 }
+#define NL80211_EXT_FEATURE_SAE_OFFLOAD -1
 #endif /* CFG80211_VERSION < KERNEL_VERSION(5,3,0) */
 
 #if CFG80211_VERSION < KERNEL_VERSION(5,4,0)
+#define NL80211_BAND_6GHZ 3
+
 static inline bool nl80211_is_6ghz(enum nl80211_band band)
 {
 	return false;
@@ -2779,6 +2857,138 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 			      unsigned int max_vht_nss);
 #endif
 
+#if CFG80211_VERSION < KERNEL_VERSION(5,8,0)
+#define NL80211_EXT_FEATURE_BEACON_PROTECTION_CLIENT -1
+#endif
+
 #if CFG80211_VERSION < KERNEL_VERSION(99,99,0)
 #define NL80211_EXT_FEATURE_PROTECTED_TWT -1
 #endif
+
+static inline size_t cfg80211_rekey_get_kek_len(struct cfg80211_gtk_rekey_data *data)
+{
+#if CFG80211_VERSION < KERNEL_VERSION(5,8,0)
+	return NL80211_KEK_LEN;
+#else
+	return data->kek_len;
+#endif
+}
+
+static inline size_t cfg80211_rekey_get_kck_len(struct cfg80211_gtk_rekey_data *data)
+{
+#if CFG80211_VERSION < KERNEL_VERSION(5,8,0)
+	return NL80211_KCK_LEN;
+#else
+	return data->kck_len;
+#endif
+}
+
+static inline size_t cfg80211_rekey_akm(struct cfg80211_gtk_rekey_data *data)
+{
+#if CFG80211_VERSION < KERNEL_VERSION(5,8,0)
+	/* we dont really use this */
+	return 0;
+#else
+	return data->akm;
+#endif
+}
+
+#if CFG80211_VERSION < KERNEL_VERSION(5,7,0)
+/**
+ * struct cfg80211_he_bss_color - AP settings for BSS coloring
+ *
+ * @color: the current color.
+ * @disabled: is the feature disabled.
+ * @partial: define the AID equation.
+ */
+struct cfg80211_he_bss_color {
+	u8 color;
+	bool disabled;
+	bool partial;
+};
+
+/**
+ * struct ieee80211_he_bss_color - AP settings for BSS coloring
+ *
+ * @color: the current color.
+ * @disabled: is the feature disabled.
+ * @partial: define the AID equation.
+ */
+struct ieee80211_he_bss_color {
+	u8 color;
+	bool disabled;
+	bool partial;
+};
+
+/**
+ * enum nl80211_tid_config - TID config state
+ * @NL80211_TID_CONFIG_ENABLE: Enable config for the TID
+ * @NL80211_TID_CONFIG_DISABLE: Disable config for the TID
+ */
+enum nl80211_tid_config {
+	NL80211_TID_CONFIG_ENABLE,
+	NL80211_TID_CONFIG_DISABLE,
+};
+
+/**
+ * struct cfg80211_tid_cfg - TID specific configuration
+ * @config_override: Flag to notify driver to reset TID configuration
+ *	of the peer.
+ * @tids: bitmap of TIDs to modify
+ * @mask: bitmap of attributes indicating which parameter changed,
+ *	similar to &nl80211_tid_config_supp.
+ * @noack: noack configuration value for the TID
+ * @retry_long: retry count value
+ * @retry_short: retry count value
+ * @ampdu: Enable/Disable aggregation
+ * @rtscts: Enable/Disable RTS/CTS
+ */
+struct cfg80211_tid_cfg {
+	bool config_override;
+	u8 tids;
+	u32 mask;
+	enum nl80211_tid_config noack;
+	u8 retry_long, retry_short;
+	enum nl80211_tid_config ampdu;
+	enum nl80211_tid_config rtscts;
+};
+
+/**
+ * struct cfg80211_tid_config - TID configuration
+ * @peer: Station's MAC address
+ * @n_tid_conf: Number of TID specific configurations to be applied
+ * @tid_conf: Configuration change info
+ */
+struct cfg80211_tid_config {
+	const u8 *peer;
+	u32 n_tid_conf;
+	struct cfg80211_tid_cfg tid_conf[];
+};
+
+#define NL80211_EXT_FEATURE_CONTROL_PORT_NO_PREAUTH -1
+#define NL80211_EXT_FEATURE_DEL_IBSS_STA -1
+
+static inline bool
+cfg80211_crypto_control_port_no_preauth(struct cfg80211_crypto_settings *crypto)
+{
+	return false;
+}
+
+static inline unsigned long
+cfg80211_wiphy_tx_queue_len(struct wiphy *wiphy)
+{
+	return 0;
+}
+#else /* < 5.7 */
+static inline bool
+cfg80211_crypto_control_port_no_preauth(struct cfg80211_crypto_settings *crypto)
+{
+	return crypto->control_port_no_preauth;
+}
+
+static inline unsigned long
+cfg80211_wiphy_tx_queue_len(struct wiphy *wiphy)
+{
+	return wiphy->tx_queue_len;
+}
+#endif /* < 5.7 */

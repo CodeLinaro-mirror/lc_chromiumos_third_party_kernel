@@ -519,6 +519,8 @@ int ieee80211_do_open(struct wireless_dev *wdev, bool coming_up)
 			master->control_port_no_encrypt;
 		sdata->control_port_over_nl80211 =
 			master->control_port_over_nl80211;
+		sdata->control_port_no_preauth =
+			master->control_port_no_preauth;
 		sdata->vif.cab_queue = master->vif.cab_queue;
 		memcpy(sdata->vif.hw_queue, master->vif.hw_queue,
 		       sizeof(sdata->vif.hw_queue));
@@ -1206,20 +1208,7 @@ bp_ieee80211_get_stats64(struct net_device *dev,
 }
 #endif
 
-#if LINUX_VERSION_IS_LESS(4,10,0) && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
-static int __change_mtu(struct net_device *ndev, int new_mtu){
-	if (new_mtu < 256 || new_mtu > IEEE80211_MAX_DATA_LEN)
-		return -EINVAL;
-	ndev->mtu = new_mtu;
-	return 0;
-}
-#endif
-
 static const struct net_device_ops ieee80211_dataif_ops = {
-#if LINUX_VERSION_IS_LESS(4,10,0) && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
-	.ndo_change_mtu = __change_mtu,
-#endif
-
 	.ndo_open		= ieee80211_open,
 	.ndo_stop		= ieee80211_stop,
 	.ndo_uninit		= ieee80211_uninit,
@@ -1278,10 +1267,6 @@ static u16 ieee80211_monitor_select_queue(struct net_device *dev,
 }
 
 static const struct net_device_ops ieee80211_monitorif_ops = {
-#if LINUX_VERSION_IS_LESS(4,10,0) && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
-	.ndo_change_mtu = __change_mtu,
-#endif
-
 	.ndo_open		= ieee80211_open,
 	.ndo_stop		= ieee80211_stop,
 	.ndo_uninit		= ieee80211_uninit,
@@ -1296,6 +1281,77 @@ static const struct net_device_ops ieee80211_monitorif_ops = {
 #endif
 
 };
+
+static const struct net_device_ops ieee80211_dataif_8023_ops = {
+	.ndo_open		= ieee80211_open,
+	.ndo_stop		= ieee80211_stop,
+	.ndo_uninit		= ieee80211_uninit,
+	.ndo_start_xmit		= ieee80211_subif_start_xmit_8023,
+	.ndo_set_rx_mode	= ieee80211_set_multicast_list,
+	.ndo_set_mac_address	= ieee80211_change_mac,
+	.ndo_select_queue	= ieee80211_netdev_select_queue,
+#if LINUX_VERSION_IS_GEQ(4,11,0) || RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6)
+	.ndo_get_stats64	= ieee80211_get_stats64,
+#else
+	.ndo_get_stats64 = bp_ieee80211_get_stats64,
+#endif
+
+};
+
+static void __ieee80211_set_hw_80211_encap(struct ieee80211_sub_if_data *sdata,
+					   bool enable)
+{
+	sdata->dev->netdev_ops = enable ? &ieee80211_dataif_8023_ops :
+					  &ieee80211_dataif_ops;
+	sdata->hw_80211_encap = enable;
+}
+
+bool ieee80211_set_hw_80211_encap(struct ieee80211_vif *vif, bool enable)
+{
+	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
+	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_sub_if_data *iter;
+	struct ieee80211_key *key;
+
+	mutex_lock(&local->iflist_mtx);
+	list_for_each_entry(iter, &local->interfaces, list) {
+		struct ieee80211_sub_if_data *disable = NULL;
+
+		if (vif->type == NL80211_IFTYPE_MONITOR) {
+			disable = iter;
+			__ieee80211_set_hw_80211_encap(iter, false);
+		} else if (iter->vif.type == NL80211_IFTYPE_MONITOR) {
+			disable = sdata;
+			enable = false;
+		}
+		if (disable)
+			sdata_dbg(disable,
+				  "disable hw 80211 encap due to mon co-exist\n");
+	}
+	mutex_unlock(&local->iflist_mtx);
+
+	if (enable == sdata->hw_80211_encap)
+		return enable;
+
+	if (!sdata->dev)
+		return false;
+
+	if (!ieee80211_hw_check(&local->hw, SUPPORTS_TX_FRAG) &&
+	    (local->hw.wiphy->frag_threshold != (u32)-1))
+		enable = false;
+
+	mutex_lock(&sdata->local->key_mtx);
+	list_for_each_entry(key, &sdata->key_list, list) {
+		if (key->conf.cipher == WLAN_CIPHER_SUITE_TKIP)
+			enable = false;
+	}
+	mutex_unlock(&sdata->local->key_mtx);
+
+	__ieee80211_set_hw_80211_encap(sdata, enable);
+
+	return enable;
+}
+EXPORT_SYMBOL(ieee80211_set_hw_80211_encap);
 
 static void ieee80211_if_free(struct net_device *dev)
 {
@@ -1505,10 +1561,14 @@ static void ieee80211_setup_sdata(struct ieee80211_sub_if_data *sdata,
 
 	sdata->control_port_protocol = cpu_to_be16(ETH_P_PAE);
 	sdata->control_port_no_encrypt = false;
+	sdata->control_port_over_nl80211 = false;
+	sdata->control_port_no_preauth = false;
 	sdata->encrypt_headroom = IEEE80211_ENCRYPT_HEADROOM;
 	sdata->vif.bss_conf.idle = true;
+	sdata->vif.bss_conf.txpower = INT_MIN; /* unset */
 
 	sdata->noack_map = 0;
+	sdata->hw_80211_encap = false;
 
 	/* only monitor/p2p-device differ */
 	if (sdata->dev) {
@@ -1889,6 +1949,10 @@ struct vif_params *params)
 					if_setup, txqs, 1);
 		if (!ndev)
 			return -ENOMEM;
+
+		if (!local->ops->wake_tx_queue && cfg80211_wiphy_tx_queue_len(local->hw.wiphy))
+			ndev->tx_queue_len = cfg80211_wiphy_tx_queue_len(local->hw.wiphy);
+
 		dev_net_set(ndev, wiphy_net(local->hw.wiphy));
 
 		netdev_assign_tstats(ndev,
@@ -1999,7 +2063,7 @@ struct vif_params *params)
 		ndev->min_mtu = 256;
 #endif
 #if LINUX_VERSION_IS_GEQ(4,10,0)
-		ndev->max_mtu = IEEE80211_MAX_DATA_LEN;
+		ndev->max_mtu = local->hw.max_mtu;
 #endif
 
 		ret = register_netdevice(ndev);

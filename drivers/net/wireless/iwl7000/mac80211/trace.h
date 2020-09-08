@@ -408,20 +408,20 @@ TRACE_EVENT(drv_bss_info_changed,
 		__field(u32, basic_rates)
 		__array(int, mcast_rate, NUM_NL80211_BANDS)
 		__field(u16, ht_operation_mode)
-		__field(s32, cqm_rssi_thold);
-		__field(s32, cqm_rssi_hyst);
-		__field(u32, channel_width);
-		__field(u32, channel_cfreq1);
+		__field(s32, cqm_rssi_thold)
+		__field(s32, cqm_rssi_hyst)
+		__field(u32, channel_width)
+		__field(u32, channel_cfreq1)
 		__dynamic_array(u32, arp_addr_list,
 				info->arp_addr_cnt > IEEE80211_BSS_ARP_ADDR_LIST_LEN ?
 					IEEE80211_BSS_ARP_ADDR_LIST_LEN :
-					info->arp_addr_cnt);
-		__field(int, arp_addr_cnt);
-		__field(bool, qos);
-		__field(bool, idle);
-		__field(bool, ps);
-		__dynamic_array(u8, ssid, info->ssid_len);
-		__field(bool, hidden_ssid);
+					info->arp_addr_cnt)
+		__field(int, arp_addr_cnt)
+		__field(bool, qos)
+		__field(bool, idle)
+		__field(bool, ps)
+		__dynamic_array(u8, ssid, info->ssid_len)
+		__field(bool, hidden_ssid)
 		__field(int, txpower)
 		__field(u8, p2p_oppps_ctwindow)
 	),
@@ -1672,8 +1672,8 @@ TRACE_EVENT(drv_start_ap,
 		VIF_ENTRY
 		__field(u8, dtimper)
 		__field(u16, bcnint)
-		__dynamic_array(u8, ssid, info->ssid_len);
-		__field(bool, hidden_ssid);
+		__dynamic_array(u8, ssid, info->ssid_len)
+		__field(bool, hidden_ssid)
 	),
 
 	TP_fast_assign(
@@ -1739,7 +1739,7 @@ TRACE_EVENT(drv_join_ibss,
 		VIF_ENTRY
 		__field(u8, dtimper)
 		__field(u16, bcnint)
-		__dynamic_array(u8, ssid, info->ssid_len);
+		__dynamic_array(u8, ssid, info->ssid_len)
 	),
 
 	TP_fast_assign(
@@ -1791,8 +1791,6 @@ TRACE_EVENT(drv_start_nan,
 		VIF_ENTRY
 		__field(u8, master_pref)
 		__field(u8, bands)
-		__field(u8, cdw_2g)
-		__field(u8, cdw_5g)
 	),
 
 	TP_fast_assign(
@@ -1800,16 +1798,13 @@ TRACE_EVENT(drv_start_nan,
 		VIF_ASSIGN;
 		__entry->master_pref = conf->master_pref;
 		__entry->bands = conf->bands;
-		__entry->cdw_2g = nan_conf_cdw_2g(conf);
-		__entry->cdw_5g = nan_conf_cdw_5g(conf);
 	),
 
 	TP_printk(
 		LOCAL_PR_FMT  VIF_PR_FMT
-		", master preference: %u, bands: 0x%0x, cdw_2g: %u, cdw_5g: %u",
+		", master preference: %u, bands: 0x%0x",
 		LOCAL_PR_ARG, VIF_PR_ARG, __entry->master_pref,
-		__entry->bands,
-		__entry->cdw_2g, __entry->cdw_5g
+		__entry->bands
 	)
 );
 
@@ -1847,8 +1842,6 @@ TRACE_EVENT(drv_nan_change_conf,
 		VIF_ENTRY
 		__field(u8, master_pref)
 		__field(u8, bands)
-		__field(u8, cdw_2g)
-		__field(u8, cdw_5g)
 		__field(u32, changes)
 	),
 
@@ -1857,18 +1850,14 @@ TRACE_EVENT(drv_nan_change_conf,
 		VIF_ASSIGN;
 		__entry->master_pref = conf->master_pref;
 		__entry->bands = conf->bands;
-		__entry->cdw_2g = nan_conf_cdw_2g(conf);
-		__entry->cdw_5g = nan_conf_cdw_5g(conf);
 		__entry->changes = changes;
 	),
 
 	TP_printk(
 		LOCAL_PR_FMT  VIF_PR_FMT
-		", master preference: %u, bands: 0x%0x, cdw_2g: %u, cdw_5g: %u, "
-		"changes: 0x%x",
+		", master preference: %u, bands: 0x%0x, changes: 0x%x",
 		LOCAL_PR_ARG, VIF_PR_ARG, __entry->master_pref,
-		__entry->bands, __entry->cdw_2g, __entry->cdw_5g,
-		__entry->changes
+		__entry->bands, __entry->changes
 	)
 );
 

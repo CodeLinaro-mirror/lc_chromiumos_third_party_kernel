@@ -69,6 +69,7 @@
 #include "fw/api/power.h"
 
 #define XVT_UCODE_ALIVE_TIMEOUT	(HZ * CPTCFG_IWL_TIMEOUT_FACTOR)
+#define XVT_UCODE_PNVM_TIMEOUT	(HZ / 10 * CPTCFG_IWL_TIMEOUT_FACTOR)
 
 struct iwl_xvt_alive_data {
 	bool valid;
@@ -100,15 +101,14 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 		container_of(notif_wait, struct iwl_xvt, notif_wait);
 	struct iwl_xvt_alive_data *alive_data = data;
 	struct xvt_alive_resp_ver2 *palive2;
-	struct mvm_alive_resp_v3 *palive3;
-	struct mvm_alive_resp *palive4;
+	struct iwl_alive_ntf_v3 *palive3;
+	struct iwl_alive_ntf_v4 *palive4;
+	struct iwl_alive_ntf_v5 *palive5;
 	struct iwl_lmac_alive *lmac1, *lmac2;
 	struct iwl_umac_alive *umac;
 	u32 rx_packet_payload_size = iwl_rx_packet_payload_len(pkt);
 	u16 status, flags;
 	u32 lmac_error_event_table, umac_error_event_table;
-
-	xvt->support_umac_log = false;
 
 	if (rx_packet_payload_size == sizeof(*palive2)) {
 
@@ -124,8 +124,6 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 				  palive2->ucode_minor);
 		umac_error_event_table =
 			le32_to_cpu(palive2->error_info_addr);
-		if (umac_error_event_table)
-			xvt->support_umac_log = true;
 
 		IWL_DEBUG_FW(xvt,
 			     "Alive VER2 ucode status 0x%04x revision 0x%01X "
@@ -158,7 +156,30 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 			xvt->trans->dbg.lmac_error_event_table[1] =
 				le32_to_cpu(lmac2_err_ptr);
 
-			IWL_DEBUG_FW(xvt, "Alive VER4 CDB\n");
+			IWL_DEBUG_FW(xvt, "Alive VER4\n");
+		} else if (iwl_fw_lookup_notif_ver(xvt->fw, LEGACY_GROUP,
+						   UCODE_ALIVE_NTFY, 0) == 5) {
+			__le32 lmac2_err_ptr;
+
+			palive5 = (void *)pkt->data;
+			status = le16_to_cpu(palive5->status);
+			flags = le16_to_cpu(palive5->flags);
+			lmac1 = &palive5->lmac_data[0];
+			lmac2 = &palive5->lmac_data[1];
+			umac = &palive5->umac_data;
+			lmac2_err_ptr = lmac2->dbg_ptrs.error_event_table_ptr;
+			xvt->trans->dbg.lmac_error_event_table[1] =
+				le32_to_cpu(lmac2_err_ptr);
+
+			xvt->trans->sku_id[0] = le32_to_cpu(palive5->sku_id.data[0]);
+			xvt->trans->sku_id[1] = le32_to_cpu(palive5->sku_id.data[1]);
+			xvt->trans->sku_id[2] = le32_to_cpu(palive5->sku_id.data[2]);
+
+			IWL_DEBUG_FW(xvt,
+				     "Alive VER5 - Got sku_id: 0x0%x 0x0%x 0x0%x\n",
+				     xvt->trans->sku_id[0],
+				     xvt->trans->sku_id[1],
+				     xvt->trans->sku_id[2]);
 		} else {
 			IWL_ERR(xvt, "unrecognized alive notificatio\n");
 			return false;
@@ -173,8 +194,6 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 				  le32_to_cpu(lmac1->ucode_minor));
 		umac_error_event_table =
 			le32_to_cpu(umac->dbg_ptrs.error_info_addr);
-		if (umac_error_event_table)
-			xvt->support_umac_log = true;
 
 		IWL_DEBUG_FW(xvt,
 			     "status 0x%04x rev 0x%01X 0x%01X flags 0x%01X\n",
@@ -186,11 +205,54 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	}
 
 	iwl_fw_lmac1_set_alive_err_table(xvt->trans, lmac_error_event_table);
-	if (xvt->support_umac_log)
+	if (umac_error_event_table)
 		iwl_fw_umac_set_alive_err_table(xvt->trans,
 						umac_error_event_table);
 
 	return true;
+}
+
+static bool iwl_pnvm_complete_fn(struct iwl_notif_wait_data *notif_wait,
+				 struct iwl_rx_packet *pkt, void *data)
+{
+	struct iwl_xvt *xvt =
+		container_of(notif_wait, struct iwl_xvt, notif_wait);
+	struct iwl_pnvm_init_complete_ntfy *pnvm_ntf = (void *)pkt->data;
+
+	IWL_DEBUG_FW(xvt,
+		     "PNVM complete notification received with status %d\n",
+		     le32_to_cpu(pnvm_ntf->status));
+
+	return true;
+}
+
+static int iwl_xvt_load_pnvm(struct iwl_xvt *xvt)
+{
+	struct iwl_notification_wait pnvm_wait;
+	static const u16 ntf_cmds[] = { WIDE_ID(REGULATORY_AND_NVM_GROUP,
+						PNVM_INIT_COMPLETE_NTFY) };
+
+	/* if the SKU_ID is empty, there's nothing to do */
+	if (!xvt->trans->sku_id[0] &&
+	    !xvt->trans->sku_id[1] &&
+	    !xvt->trans->sku_id[2])
+		return 0;
+
+	/*
+	 * TODO: phase 2: load the pnvm file, find the right section,
+	 * load it and set the right DMA pointer.
+	 */
+
+	iwl_init_notification_wait(&xvt->notif_wait, &pnvm_wait,
+				   ntf_cmds, ARRAY_SIZE(ntf_cmds),
+				   iwl_pnvm_complete_fn, NULL);
+
+	/* kick the doorbell */
+	iwl_write_umac_prph(xvt->trans, UREG_DOORBELL_TO_ISR6,
+			    UREG_DOORBELL_TO_ISR6_PNVM);
+
+	return iwl_wait_notification(&xvt->notif_wait, &pnvm_wait,
+				     XVT_UCODE_PNVM_TIMEOUT);
 }
 
 static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
@@ -201,7 +263,7 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 	const struct fw_img *fw;
 	int ret;
 	enum iwl_ucode_type old_type = xvt->fwrt.cur_fw_img;
-	static const u16 alive_cmd[] = { MVM_ALIVE };
+	static const u16 alive_cmd[] = { UCODE_ALIVE_NTFY };
 	struct iwl_scd_txq_cfg_cmd cmd = {
 				.scd_queue = IWL_XVT_DEFAULT_TX_QUEUE,
 				.action = SCD_CFG_ENABLE_QUEUE,
@@ -252,6 +314,13 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 
 	/* fresh firmware was loaded */
 	xvt->fw_error = false;
+
+	ret = iwl_xvt_load_pnvm(xvt);
+	if (ret) {
+		IWL_ERR(xvt, "Timeout waiting for PNVM load!\n");
+		iwl_fw_set_current_image(&xvt->fwrt, old_type);
+		return ret;
+	}
 
 	iwl_trans_fw_alive(xvt->trans, alive_data.scd_base_addr);
 
