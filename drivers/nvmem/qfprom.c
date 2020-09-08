@@ -171,6 +171,14 @@ err_clk_prepared:
 	return ret;
 }
 
+static int qfprom_check_reg(struct qfprom_priv *priv, unsigned int reg)
+{
+	if (((reg >= 0x128) && (reg < 0x148)) ||
+	    ((reg >= 0x220) && (reg < 0x228)))
+		return 0;
+
+	return 1;
+}
 /**
  * qfprom_efuse_reg_write() - Write to fuses.
  * @context: Our driver data.
@@ -228,8 +236,10 @@ static int qfprom_reg_write(void *context, unsigned int reg, void *_val,
 		goto exit_enabled_fuse_blowing;
 	}
 
-	for (i = 0; i < words; i++)
-		writel(value[i], priv->qfpraw + reg + (i * 4));
+	for (i = 0; i < words; i++) {
+		if (qfprom_check_reg(priv, reg + (i * 4)))
+			writel(value[i], priv->qfpraw + reg + (i * 4));
+	}
 
 	ret = readl_relaxed_poll_timeout(
 		priv->qfpconf + QFPROM_BLOW_STATUS_OFFSET,
@@ -257,8 +267,14 @@ static int qfprom_reg_read(void *context,
 	if (read_raw_data && priv->qfpraw)
 		base = priv->qfpraw;
 
-	while (words--)
-		*val++ = readb(base + reg + i++);
+	while (words--) {
+		if (qfprom_check_reg(priv, reg + i))
+			*val++ = readb(base + reg + i);
+		else
+			*val++ = 0;
+
+		i++;
+	}
 
 	return 0;
 }
