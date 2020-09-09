@@ -1483,6 +1483,17 @@ static void ieee80211_setup_sdata(struct ieee80211_sub_if_data *sdata,
 		break;
 	}
 
+	/* Set the default multicast and broadcast RX limit for AP interface*/
+	if (type == NL80211_IFTYPE_AP) {
+		sdata->mc_rx_limit_rate = 2000; // 2Mbps
+		sdata->bc_rx_limit_rate = 2000; // 2Mbps
+	} else {
+		sdata->mc_rx_limit_rate = 0;
+		sdata->bc_rx_limit_rate = 0;
+	}
+	/* set the default burst size as 5 times of Frame length */
+	sdata->burst_size = IEEE80211_MAX_FRAME_LEN * 5;
+
 	ieee80211_debugfs_add_netdev(sdata);
 }
 
@@ -1864,12 +1875,6 @@ int ieee80211_if_add(struct ieee80211_local *local, const char *name,
 	sdata->user_power_level = local->user_power_level;
 
 	sdata->encrypt_headroom = IEEE80211_ENCRYPT_HEADROOM;
-
-	/* multicast and broadcast RX limit logic is disabled by default */
-	sdata->mc_rx_limit_rate = 0;
-	sdata->bc_rx_limit_rate = 0;
-	/* set the default burst size as 5 times of Frame length */
-	sdata->burst_size = IEEE80211_MAX_FRAME_LEN * 5;
 
 	/* setup type-dependent data */
 	ieee80211_setup_sdata(sdata, type);
