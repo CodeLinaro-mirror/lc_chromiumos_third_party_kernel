@@ -272,15 +272,57 @@ intel_dp_aux_hdr_setup_backlight(struct intel_connector *connector, enum pipe pi
 /* VESA backlight callbacks */
 static u32 intel_dp_aux_vesa_get_backlight(struct intel_connector *connector, enum pipe unused)
 {
-	return connector->panel.backlight.level;
+	struct drm_i915_private *dev_priv = to_i915(connector->base.dev);
+	struct intel_dp *intel_dp = intel_attached_dp(connector);
+	u8 read_val = 0x0;
+	u16 level;
+
+	level = connector->panel.backlight.level;
+	if (dev_priv->quirks & QUIRK_SHIFT_EDP_BACKLIGHT_BRIGHTNESS) {
+		if (!drm_dp_dpcd_readb(&intel_dp->aux, DP_EDP_PWMGEN_BIT_COUNT,
+						&read_val)) {
+			DRM_DEBUG_KMS("Failed to read DPCD register 0x%x\n",
+					DP_EDP_PWMGEN_BIT_COUNT);
+			return 0;
+		}
+		// Only bits 4:0 are used, 7:5 are reserved.
+		read_val = read_val & 0x1F;
+		if (read_val > 16) {
+			DRM_DEBUG_KMS("Invalid DP_EDP_PWNGEN_BIT_COUNT 0x%X, expected at most 16\n",
+						read_val);
+			return 0;
+		}
+		level >>= 16 - read_val;
+	}	
+
+	return level;
 }
 
 static void
 intel_dp_aux_vesa_set_backlight(const struct drm_connector_state *conn_state, u32 level)
 {
 	struct intel_connector *connector = to_intel_connector(conn_state->connector);
+	struct drm_i915_private *dev_priv = to_i915(connector->base.dev);	
 	struct intel_panel *panel = &connector->panel;
 	struct intel_dp *intel_dp = enc_to_intel_dp(connector->encoder);
+	u8 val = 0x0;
+
+	if (dev_priv->quirks & QUIRK_SHIFT_EDP_BACKLIGHT_BRIGHTNESS) {
+		if (!drm_dp_dpcd_readb(&intel_dp->aux, DP_EDP_PWMGEN_BIT_COUNT,
+						&val)) {
+			DRM_DEBUG_KMS("Failed to write aux backlight level: Failed to read DPCD register 0x%x\n",
+					  DP_EDP_PWMGEN_BIT_COUNT);
+			return;
+		}
+		// Only bits 4:0 are used, 7:5 are reserved.
+		val = val & 0x1F;
+		if (val > 16) {
+			DRM_DEBUG_KMS("Failed to write aux backlight level: Invalid DP_EDP_PWNGEN_BIT_COUNT 0x%X, expected at most 16\n",
+						val);
+			return;
+		}
+		level <<= (16 - val) & 0xFFFF;
+	}
 
 	drm_edp_backlight_set_level(&intel_dp->aux, &panel->backlight.edp.vesa.info, level);
 }
