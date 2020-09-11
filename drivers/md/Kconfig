@@ -289,7 +289,7 @@ config DM_CRYPT
 config DM_VERITY_CHROMEOS
 	tristate "Support Chrome OS specific verity error behavior"
 	depends on DM_VERITY
-	---help---
+	help
 	  Enables Chrome OS platform-specific error behavior.  In particular,
 	  it will modify the partition preceding the verified block device
 	  when non-transient error occurs (followed by a panic).
