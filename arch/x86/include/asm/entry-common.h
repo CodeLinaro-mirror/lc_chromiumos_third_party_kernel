@@ -72,6 +72,9 @@ static inline void arch_exit_to_user_mode_prepare(struct pt_regs *regs,
 	 */
 	current_thread_info()->status &= ~(TS_COMPAT | TS_I386_REGS_POKED);
 #endif
+#ifdef CONFIG_SCHED_CORE
+	sched_core_user_enter();
+#endif
 }
 #define arch_exit_to_user_mode_prepare arch_exit_to_user_mode_prepare
 

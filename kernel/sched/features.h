@@ -90,3 +90,7 @@ SCHED_FEAT(WA_BIAS, true)
  */
 SCHED_FEAT(UTIL_EST, true)
 SCHED_FEAT(UTIL_EST_FASTUP, true)
+
+/* Test feat to mitigate IRQ pausing */
+SCHED_FEAT(CORE_PRCTL,     true)
+SCHED_FEAT(CORE_IRQ_PAUSE, true)
