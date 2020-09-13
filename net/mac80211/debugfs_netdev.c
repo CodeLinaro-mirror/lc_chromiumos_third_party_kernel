@@ -14,6 +14,7 @@
 #include <linux/interrupt.h>
 #include <linux/netdevice.h>
 #include <linux/rtnetlink.h>
+#include <linux/sched/signal.h>
 #include <linux/slab.h>
 #include <linux/notifier.h>
 #include <net/mac80211.h>
@@ -60,7 +61,9 @@ static ssize_t ieee80211_if_write(
 	buf[count] = '\0';
 
 	ret = -ENODEV;
-	rtnl_lock();
+
+	if (!rtnl_trylock())
+		return restart_syscall();
 	ret = (*write)(sdata, buf, count);
 	rtnl_unlock();
 
