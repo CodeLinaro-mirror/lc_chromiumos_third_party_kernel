@@ -1080,6 +1080,9 @@ struct ath10k {
 	struct work_struct svc_rdy_work;
 	struct sk_buff *svc_rdy_skb;
 
+	struct work_struct tbttoffset_update_work;
+	u32 tbttoffset_vdev_map;
+
 	struct work_struct offchan_tx_work;
 	struct sk_buff_head offchan_tx_queue;
 	struct completion offchan_tx_completed;
