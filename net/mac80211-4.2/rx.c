@@ -2240,7 +2240,6 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 		struct mesh_path *mppath;
 		char *proxied_addr;
 		char *mpp_addr;
-		bool mpp_table_updated = 0;
 
 		if (is_multicast_ether_addr(hdr->addr1)) {
 			mpp_addr = hdr->addr3;
@@ -2259,11 +2258,12 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 		if (!mppath) {
 			mpp_path_add(sdata, proxied_addr, mpp_addr);
 			rcu_read_unlock();
-			mpath_dbg(sdata, "MESH MPPU add mpp %pM dest %pM  \n",
-					  mpp_addr, proxied_addr);
-			mpp_table_updated = 1;
+			mpath_dbg(sdata, "MESH MPPU add mpp %pM dest %pM\n",
+				  mpp_addr, proxied_addr);
 		} else {
 			u8 old_mpp[ETH_ALEN];
+			bool mpp_table_updated = 0;
+
 			spin_lock_bh(&mppath->state_lock);
 			if (!ether_addr_equal(mppath->mpp, mpp_addr)) {
 				memcpy(old_mpp, mppath->mpp, ETH_ALEN);
@@ -2277,9 +2277,6 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 				mpath_dbg(sdata, "MESH MPPU mpp changed from %pM to %pM for dest %pM \n",
 						  old_mpp,mpp_addr, proxied_addr);
 			}
-		}
-		if (mpp_table_updated) {
-			mpp_path_table_debug_dump(sdata);
 		}
 	}
 
