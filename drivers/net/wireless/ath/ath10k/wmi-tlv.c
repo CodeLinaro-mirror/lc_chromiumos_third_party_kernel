@@ -1281,6 +1281,49 @@ static int ath10k_wmi_tlv_op_pull_swba_ev(struct ath10k *ar,
 	return 0;
 }
 
+static int
+ath10k_wmi_tlv_op_pull_tbtt_offset_ev(struct ath10k *ar,
+				      struct sk_buff *skb,
+				      struct wmi_tbtt_offset_ev_arg *arg)
+{
+	struct wmi_tbtt_offset_event ev;
+	const void *tbttoffset_list;
+	const void *vdev_map;
+	const void **tb;
+	u32 map;
+	size_t i;
+	int ret;
+
+	tb = ath10k_wmi_tlv_parse_alloc(ar, skb->data, skb->len, GFP_ATOMIC);
+	if (IS_ERR(tb)) {
+		ret = PTR_ERR(tb);
+		ath10k_warn(ar, "failed to parse tlv: %d\n", ret);
+		return ret;
+	}
+
+	vdev_map = tb[WMI_TLV_TAG_STRUCT_TBTT_OFFSET_EVENT];
+	tbttoffset_list = tb[WMI_TLV_TAG_ARRAY_UINT32];
+
+	if (!vdev_map || !tbttoffset_list) {
+		kfree(tb);
+		return -EPROTO;
+	}
+
+	memcpy((void *)&ev.vdev_map, vdev_map, sizeof(ev.vdev_map));
+	memcpy((void *)&ev.tbttoffset_list, tbttoffset_list,
+	       sizeof(ev.tbttoffset_list));
+	arg->vdev_map = ev.vdev_map;
+
+	for (i = 0, map = __le32_to_cpu(ev.vdev_map); map; map >>= 1, i++) {
+		if (!(map & BIT(0)))
+			continue;
+		arg->tbttoffset_list[i] = ev.tbttoffset_list[i];
+	}
+
+	kfree(tb);
+	return 0;
+}
+
 static int ath10k_wmi_tlv_op_pull_phyerr_ev_hdr(struct ath10k *ar,
 						struct sk_buff *skb,
 						struct wmi_phyerr_hdr_arg *arg)
@@ -4660,6 +4703,7 @@ static const struct wmi_ops wmi_tlv_ops = {
 	.pull_vdev_start = ath10k_wmi_tlv_op_pull_vdev_start_ev,
 	.pull_peer_kick = ath10k_wmi_tlv_op_pull_peer_kick_ev,
 	.pull_swba = ath10k_wmi_tlv_op_pull_swba_ev,
+	.pull_tbtt_offset = ath10k_wmi_tlv_op_pull_tbtt_offset_ev,
 	.pull_phyerr_hdr = ath10k_wmi_tlv_op_pull_phyerr_ev_hdr,
 	.pull_phyerr = ath10k_wmi_op_pull_phyerr_ev,
 	.pull_svc_rdy = ath10k_wmi_tlv_op_pull_svc_rdy_ev,

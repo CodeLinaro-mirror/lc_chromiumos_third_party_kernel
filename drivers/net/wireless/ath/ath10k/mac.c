@@ -1631,6 +1631,8 @@ static int ath10k_mac_setup_bcn_tmpl(struct ath10k_vif *arvif)
 	struct ieee80211_hw *hw = ar->hw;
 	struct ieee80211_vif *vif = arvif->vif;
 	struct ieee80211_mutable_offsets offs = {};
+	struct ieee80211_mgmt *mgmt;
+	u64 adjusted_tsf;
 	struct sk_buff *bcn;
 	int ret;
 
@@ -1661,6 +1663,11 @@ static int ath10k_mac_setup_bcn_tmpl(struct ath10k_vif *arvif)
 	ath10k_mac_remove_vendor_ie(bcn, WLAN_OUI_WFA, WLAN_OUI_TYPE_WFA_P2P,
 				    offsetof(struct ieee80211_mgmt,
 					     u.beacon.variable));
+	adjusted_tsf = cpu_to_le64(0ULL -
+				   arvif->tbttoffset_list[arvif->vdev_id]);
+	mgmt = (void *)bcn->data;
+	memcpy(&mgmt->u.beacon.timestamp,
+	       &adjusted_tsf, sizeof(adjusted_tsf));
 
 	ret = ath10k_wmi_bcn_tmpl(ar, arvif->vdev_id, offs.tim_offset, bcn, 0,
 				  0, NULL, 0);
@@ -4432,8 +4439,9 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 	struct ieee80211_mgmt *mgmt;
 	u64 adjusted_tsf;
 	bool is_htt;
-	bool is_mgmt;
-	bool is_presp;
+	bool is_htt_mgmt;
+	bool is_wmi_mgmt;
+	bool is_presp = false;
 	int ret;
 	u16 airtime;
 
@@ -4445,11 +4453,23 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 	txpath = ath10k_mac_tx_h_get_txpath(ar, skb, txmode);
 	is_htt = (txpath == ATH10K_MAC_TX_HTT ||
 		  txpath == ATH10K_MAC_TX_HTT_MGMT);
-	is_mgmt = (txpath == ATH10K_MAC_TX_HTT_MGMT);
+	is_htt_mgmt = (txpath == ATH10K_MAC_TX_HTT_MGMT);
+	is_wmi_mgmt = (txpath == ATH10K_MAC_TX_WMI_MGMT);
+
+	if (is_htt_mgmt || is_wmi_mgmt) {
+		is_presp = ieee80211_is_probe_resp(hdr->frame_control);
+		if (is_presp) {
+			mgmt = (struct ieee80211_mgmt *)skb->data;
+			adjusted_tsf =
+			cpu_to_le64(0ULL -
+				    arvif->tbttoffset_list[arvif->vdev_id]);
+			memcpy(&mgmt->u.probe_resp.timestamp,
+			       &adjusted_tsf, sizeof(adjusted_tsf));
+		}
+	}
 
 	if (is_htt) {
 		spin_lock_bh(&ar->htt.tx_lock);
-		is_presp = ieee80211_is_probe_resp(hdr->frame_control);
 
 		ret = ath10k_htt_tx_inc_pending(htt);
 		if (ret) {
@@ -4460,7 +4480,8 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 			return;
 		}
 
-		ret = ath10k_htt_tx_mgmt_inc_pending(htt, is_mgmt, is_presp);
+		ret = ath10k_htt_tx_mgmt_inc_pending(htt,
+						     is_htt_mgmt, is_presp);
 		if (ret) {
 			ath10k_dbg(ar, ATH10K_DBG_MAC, "failed to increase tx mgmt pending count: %d, dropping\n",
 				   ret);
@@ -4468,15 +4489,6 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 			spin_unlock_bh(&ar->htt.tx_lock);
 			ieee80211_free_txskb(ar->hw, skb);
 			return;
-		}
-
-		if (is_presp) {
-			mgmt = (struct ieee80211_mgmt *)skb->data;
-			adjusted_tsf =
-			cpu_to_le64(0ULL -
-				    arvif->tbttoffset_list[arvif->vdev_id]);
-			memcpy(&mgmt->u.probe_resp.timestamp,
-			       &adjusted_tsf, sizeof(adjusted_tsf));
 		}
 
 		spin_unlock_bh(&ar->htt.tx_lock);
@@ -4488,7 +4500,7 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 		if (is_htt) {
 			spin_lock_bh(&ar->htt.tx_lock);
 			ath10k_htt_tx_dec_pending(htt);
-			if (is_mgmt)
+			if (is_htt_mgmt)
 				ath10k_htt_tx_mgmt_dec_pending(htt);
 			spin_unlock_bh(&ar->htt.tx_lock);
 		}
