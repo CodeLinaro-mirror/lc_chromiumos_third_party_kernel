@@ -4034,13 +4034,9 @@ void ath10k_wmi_event_tbttoffset_update(struct ath10k *ar, struct sk_buff *skb)
 	u32 map;
 	int i = -1;
 	int ret, vdev_id = 0;
-	u64 adjusted_tsf;
 	u64 tx_delay = 0;
 	struct ath10k_vif *arvif;
-	struct sk_buff *bcn;
-	struct ieee80211_mutable_offsets offs = {};
 	struct ieee80211_chanctx_conf *conf = NULL;
-	struct ieee80211_mgmt *mgmt;
 
 	ret = ath10k_wmi_pull_tbtt_offset(ar, skb, &arg);
 	if (ret) {
@@ -4093,14 +4089,61 @@ void ath10k_wmi_event_tbttoffset_update(struct ath10k *ar, struct sk_buff *skb)
 			tx_delay = 56;
 		}
 		arvif->tbttoffset_list[vdev_id] -= tx_delay;
+	}
+
+	if (test_bit(WMI_SERVICE_BEACON_OFFLOAD, ar->wmi.svc_map)) {
+		ar->tbttoffset_vdev_map = __le32_to_cpu(arg.vdev_map);
+		queue_work(ar->workqueue, &ar->tbttoffset_update_work);
+	}
+}
+
+static void ath10k_wmi_tbttoffset_update_work(struct work_struct *work)
+{
+	u32 map;
+	int i = -1;
+	int ret, vdev_id = 0;
+	u64 adjusted_tsf;
+	struct ath10k_vif *arvif;
+	struct sk_buff *bcn;
+	struct ieee80211_mutable_offsets offs = {};
+	struct ieee80211_mgmt *mgmt;
+	struct ath10k *ar = container_of(work, struct ath10k,
+					 tbttoffset_update_work);
+
+	map = ar->tbttoffset_vdev_map;
+	ath10k_dbg(ar, ATH10K_DBG_MGMT, "mgmt tbtt offset vdev_map 0x%x\n",
+		   map);
+
+	mutex_lock(&ar->conf_mutex);
+	for (; map; map >>= 1, vdev_id++) {
+		if (!(map & 0x1))
+			continue;
+
+		i++;
+
+		if (i >= WMI_MAX_AP_VDEV) {
+			ath10k_warn(ar, "tbtt offset has corrupted vdev map\n");
+			break;
+		}
+
+		arvif = ath10k_get_arvif(ar, vdev_id);
+		if (!arvif) {
+			ath10k_warn(ar, "no vif for vdev_id %d found\n",
+				    vdev_id);
+			continue;
+		}
+
+		/* mac80211 would have already asked us to stop beaconing and
+		 * bring the vdev down, so continue in that case
+		 */
+		if (!arvif->is_up)
+			continue;
+
 		/* Make the TSF offset negative so beacons in the same
 		 * staggered batch have the same TSF.
 		 */
 		adjusted_tsf = cpu_to_le64(0ULL -
 					      arvif->tbttoffset_list[vdev_id]);
-
-		if (!test_bit(WMI_SERVICE_BEACON_OFFLOAD, ar->wmi.svc_map))
-			continue;
 
 		if (arvif->vdev_type != WMI_VDEV_TYPE_AP &&
 		    arvif->vdev_type != WMI_VDEV_TYPE_IBSS)
@@ -4145,6 +4188,7 @@ void ath10k_wmi_event_tbttoffset_update(struct ath10k *ar, struct sk_buff *skb)
 			continue;
 		}
 	}
+	mutex_unlock(&ar->conf_mutex);
 	return;
 }
 
@@ -9617,6 +9661,8 @@ int ath10k_wmi_attach(struct ath10k *ar)
 	init_completion(&ar->wmi.radar_confirm);
 
 	INIT_WORK(&ar->svc_rdy_work, ath10k_wmi_event_service_ready_work);
+	INIT_WORK(&ar->tbttoffset_update_work,
+		  ath10k_wmi_tbttoffset_update_work);
 	INIT_WORK(&ar->radar_confirmation_work,
 		  ath10k_radar_confirmation_work);
 
@@ -9673,6 +9719,7 @@ void ath10k_wmi_detach(struct ath10k *ar)
 	}
 
 	cancel_work_sync(&ar->svc_rdy_work);
+	cancel_work_sync(&ar->tbttoffset_update_work);
 
 	if (ar->svc_rdy_skb)
 		dev_kfree_skb(ar->svc_rdy_skb);
