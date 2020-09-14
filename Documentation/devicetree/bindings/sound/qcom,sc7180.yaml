@@ -15,8 +15,7 @@ description:
 
 properties:
   compatible:
-    contains:
-      const: qcom,sc7180-sndcard
+    const: qcom,sc7180-sndcard-rt5682-m98357-1mic
 
   audio-routing:
     $ref: /schemas/types.yaml#/definitions/non-unique-string-array
@@ -29,10 +28,6 @@ properties:
     $ref: /schemas/types.yaml#/definitions/string
     description: User specified audio sound card name
 
-  aux-dev:
-    $ref: /schemas/types.yaml#/definitions/phandle
-    description: phandle of the codec for headset detection
-
   "#address-cells":
     const: 1
 
@@ -40,7 +35,7 @@ properties:
     const: 0
 
 patternProperties:
-  "^dai-link(@[0-9]+)?$":
+  "^dai-link(@[0-9])?$":
     description:
       Each subnode represents a dai link. Subnodes of each dai links would be
       cpu/codec dais.
@@ -55,8 +50,6 @@ patternProperties:
 
       reg:
         description: dai link address.
-        $ref: /schemas/types.yaml#/definitions/uint32
-        maxItems: 1
 
       cpu:
         description: Holds subnode which indicates cpu dai.
@@ -89,14 +82,12 @@ examples:
 
   - |
     sound {
-        compatible = "qcom,sc7180-sndcard";
+        compatible = "qcom,sc7180-sndcard-rt5682-m98357-1mic";
         model = "sc7180-snd-card";
 
         audio-routing =
                     "Headphone Jack", "HPOL",
                     "Headphone Jack", "HPOR";
-
-        aux-dev = <&alc5682>;
 
         #address-cells = <1>;
         #size-cells = <0>;
@@ -122,6 +113,18 @@ examples:
 
             codec {
                 sound-dai = <&max98357a>;
+            };
+        };
+
+        dai-link@2 {
+            link-name = "MultiMedia2";
+            reg = <2>;
+            cpu {
+                sound-dai = <&lpass_hdmi 0>;
+            };
+
+            codec {
+                sound-dai = <&msm_dp>;
             };
         };
     };
