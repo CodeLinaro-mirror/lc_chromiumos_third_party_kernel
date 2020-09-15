@@ -19,10 +19,18 @@ int __init init_mount(const char *dev_name, const char *dir_name,
 	struct path path;
 	int ret;
 
-	ret = kern_path(dir_name, LOOKUP_FOLLOW, &path);
+	ret = nameidata_set_temporary(dir_name);
 	if (ret)
 		return ret;
+
+	ret = kern_path(dir_name, LOOKUP_FOLLOW, &path);
+	if (ret) {
+		nameidata_restore_temporary();
+		return ret;
+	}
+
 	ret = path_mount(dev_name, &path, type_page, flags, data_page);
+	nameidata_restore_temporary();
 	path_put(&path);
 	return ret;
 }
