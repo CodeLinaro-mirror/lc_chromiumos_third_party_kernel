@@ -46,6 +46,7 @@ static const struct x86_cpu_id intel_pmc_core_platform_ids[] = {
 	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_L,		&pmc_core_device),
 	X86_MATCH_INTEL_FAM6_MODEL(COMETLAKE,		&pmc_core_device),
 	X86_MATCH_INTEL_FAM6_MODEL(COMETLAKE_L,		&pmc_core_device),
+	X86_MATCH_INTEL_FAM6_MODEL(ATOM_TREMONT_L,		&pmc_core_device),
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, intel_pmc_core_platform_ids);
