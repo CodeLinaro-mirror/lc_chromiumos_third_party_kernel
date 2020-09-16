@@ -1427,6 +1427,10 @@ static uint64_t si_get_pcie_replay_count(struct amdgpu_device *adev)
 	return (nak_r + nak_g);
 }
 
+static void si_pre_asic_init(struct amdgpu_device *adev)
+{
+}
+
 static int si_uvd_send_upll_ctlreq(struct amdgpu_device *adev,
 				   unsigned cg_upll_func_cntl)
 {
@@ -1800,6 +1804,7 @@ static const struct amdgpu_asic_funcs si_asic_funcs =
 	.need_reset_on_init = &si_need_reset_on_init,
 	.get_pcie_replay_count = &si_get_pcie_replay_count,
 	.supports_baco = &si_asic_supports_baco,
+	.pre_asic_init = &si_pre_asic_init,
 };
 
 static uint32_t si_get_rev_id(struct amdgpu_device *adev)
