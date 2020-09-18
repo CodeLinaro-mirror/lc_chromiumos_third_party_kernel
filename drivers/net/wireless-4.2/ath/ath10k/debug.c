@@ -1313,7 +1313,7 @@ static ssize_t ath10k_write_htt_max_amsdu_ampdu(struct file *file,
 {
 	struct ath10k *ar = file->private_data;
 	int res;
-	char buf[64];
+	char buf[64] = {0};
 	unsigned int amsdu, ampdu;
 
 	simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, user_buf, count);
