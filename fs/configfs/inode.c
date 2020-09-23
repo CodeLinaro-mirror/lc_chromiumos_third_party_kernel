@@ -44,7 +44,6 @@ static struct iattr *configfs_alloc_iattr(struct configfs_dirent *sd_parent,
 					  struct configfs_dirent *sd, unsigned int s_time_gran)
 {
 	struct iattr *sd_iattr;
-	struct timespec64 ts;
 
 	sd_iattr = kzalloc(sizeof(struct iattr), GFP_KERNEL);
 	if (!sd_iattr)
@@ -58,9 +57,8 @@ static struct iattr *configfs_alloc_iattr(struct configfs_dirent *sd_parent,
 		sd_iattr->ia_uid = GLOBAL_ROOT_UID;
 		sd_iattr->ia_gid = GLOBAL_ROOT_GID;
 	}
-	ktime_get_coarse_real_ts64(&ts);
-	sd_iattr->ia_atime = sd_iattr->ia_mtime =
-			sd_iattr->ia_ctime = timespec64_trunc(ts, s_time_gran);
+	ktime_get_coarse_real_ts64(&sd_iattr->ia_ctime);
+	sd_iattr->ia_atime = sd_iattr->ia_mtime = sd_iattr->ia_ctime;
 	return sd_iattr;
 }
 
