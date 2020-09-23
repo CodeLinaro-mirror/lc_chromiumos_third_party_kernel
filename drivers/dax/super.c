@@ -322,6 +322,7 @@ long dax_direct_access(struct dax_device *dax_dev, pgoff_t pgoff, long nr_pages,
 }
 EXPORT_SYMBOL_GPL(dax_direct_access);
 
+#if IS_ENABLED(CONFIG_FS_DAX)
 bool dax_supported(struct dax_device *dax_dev, struct block_device *bdev,
 		int blocksize, sector_t start, sector_t len)
 {
@@ -334,6 +335,7 @@ bool dax_supported(struct dax_device *dax_dev, struct block_device *bdev,
 	return dax_dev->ops->dax_supported(dax_dev, bdev, blocksize, start, len);
 }
 EXPORT_SYMBOL_GPL(dax_supported);
+#endif
 
 size_t dax_copy_from_iter(struct dax_device *dax_dev, pgoff_t pgoff, void *addr,
 		size_t bytes, struct iov_iter *i)
