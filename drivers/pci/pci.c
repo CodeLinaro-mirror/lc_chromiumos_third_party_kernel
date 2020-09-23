@@ -786,6 +786,7 @@ void pci_request_acs(void)
 {
 	pci_acs_enable = 1;
 }
+EXPORT_SYMBOL_GPL(pci_request_acs);
 
 static const char *disable_acs_redir_param;
 
@@ -875,6 +876,10 @@ static void pci_std_enable_acs(struct pci_dev *dev)
 
 	/* Upstream Forwarding */
 	ctrl |= (cap & PCI_ACS_UF);
+
+	/* Enable Translation Blocking for external devices */
+	if (dev->external_facing || dev->untrusted)
+		ctrl |= (cap & PCI_ACS_TB);
 
 	pci_write_config_word(dev, pos + PCI_ACS_CTRL, ctrl);
 }
