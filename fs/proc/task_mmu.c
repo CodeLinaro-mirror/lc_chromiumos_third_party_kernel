@@ -859,7 +859,7 @@ static int totmaps_proc_show(struct seq_file *m, void *data)
 	if (!mm || IS_ERR(mm))
 		return -EINVAL;
 
-	down_read(&mm->mmap_sem);
+	down_read(&mm->mmap_lock);
 	hold_task_mempolicy(priv);
 
 	for (vma = mm->mmap; vma != priv->tail_vma; vma = vma->vm_next) {
@@ -900,7 +900,7 @@ static int totmaps_proc_show(struct seq_file *m, void *data)
 		   mss_sum->swap >> 10);
 
 	release_task_mempolicy(priv);
-	up_read(&mm->mmap_sem);
+	up_read(&mm->mmap_lock);
 	mmput(mm);
 
 	return 0;
@@ -2013,7 +2013,7 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 			.pmd_entry = reclaim_pte_range,
 		};
 
-		down_read(&mm->mmap_sem);
+		down_read(&mm->mmap_lock);
 		for (vma = mm->mmap; vma; vma = vma->vm_next) {
 			if (is_vm_hugetlb_page(vma))
 				continue;
@@ -2043,7 +2043,7 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 					&reclaim_walk, NULL);
 		}
 		flush_tlb_mm(mm);
-		up_read(&mm->mmap_sem);
+		up_read(&mm->mmap_lock);
 		mmput(mm);
 	}
 	put_task_struct(task);
