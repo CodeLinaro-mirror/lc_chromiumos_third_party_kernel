@@ -25,8 +25,11 @@
 
 #include <linux/dma-mapping.h>
 #include <linux/moduleparam.h>
+#include <linux/dma-buf.h>
+#include <linux/uuid.h>
 
 #include "virtgpu_drv.h"
+#include <linux/virtio_dma_buf.h>
 
 static int virtio_gpu_virglrenderer_workaround = 1;
 module_param_named(virglhack, virtio_gpu_virglrenderer_workaround, int, 0400);
@@ -215,6 +218,9 @@ int virtio_gpu_object_create(struct virtio_gpu_device *vgdev,
 		goto err_free_gem;
 
 	bo->dumb = params->dumb;
+	bo->resource_v2 = params->resource_v2;
+	bo->guest_memory_type = params->guest_memory_type;
+	bo->caching_type = params->caching_type;
 
 	if (fence) {
 		ret = -ENOMEM;
@@ -231,7 +237,7 @@ int virtio_gpu_object_create(struct virtio_gpu_device *vgdev,
 	if (params->virgl) {
 		virtio_gpu_cmd_resource_create_3d(vgdev, bo, params,
 						  objs, fence);
-	} else {
+	} else if (params->dumb) {
 		virtio_gpu_cmd_create_resource(vgdev, bo, params,
 					       objs, fence);
 	}
@@ -254,4 +260,25 @@ err_put_id:
 err_free_gem:
 	drm_gem_shmem_free_object(&shmem_obj->base);
 	return ret;
+}
+
+int virtio_gpu_dma_buf_to_handle(struct dma_buf *dma_buf, bool no_wait,
+				 uint32_t *handle)
+{
+	struct virtio_gpu_object *qobj;
+	struct virtio_gpu_device *vgdev;
+	uuid_t uuid;
+
+	if (virtio_dma_buf_get_uuid(dma_buf, &uuid) != 0)
+		return -EINVAL;
+
+	qobj = gem_to_virtio_gpu_obj(dma_buf->priv);
+	vgdev = (struct virtio_gpu_device *)qobj->base.base.dev->dev_private;
+	if (!qobj->create_callback_done && !no_wait)
+		wait_event(vgdev->resp_wq, qobj->create_callback_done);
+	if (!qobj->create_callback_done)
+		return -ETIMEDOUT;
+
+	*handle = qobj->hw_res_handle;
+	return 0;
 }

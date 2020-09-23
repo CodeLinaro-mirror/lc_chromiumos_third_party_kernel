@@ -195,6 +195,8 @@ config DRM_VRAM_HELPER
 	help
 	  Helpers for VRAM memory management
 
+source "drivers/gpu/drm/ttm/Kconfig"
+
 config DRM_TTM_HELPER
 	tristate
 	depends on DRM
@@ -296,6 +298,8 @@ config DRM_VKMS
 
 	  If M is selected the module will be called vkms.
 
+source "drivers/gpu/drm/evdi/Kconfig"
+
 source "drivers/gpu/drm/exynos/Kconfig"
 
 source "drivers/gpu/drm/rockchip/Kconfig"
@@ -387,6 +391,8 @@ source "drivers/gpu/drm/mcde/Kconfig"
 source "drivers/gpu/drm/tidss/Kconfig"
 
 source "drivers/gpu/drm/xlnx/Kconfig"
+
+source "drivers/gpu/drm/img-rogue/Kconfig"
 
 # Keep legacy drivers last
 
