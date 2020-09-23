@@ -1956,7 +1956,7 @@ static int add_le_interleave_adv_monitor_scan(struct hci_request *req,
 	hci_dev_lock(hdev);
 
 	if (hci_dev_test_flag(hdev, HCI_LE_SCAN))
-		hci_req_add_le_scan_disable(req);
+		hci_req_add_le_scan_disable(req, false);
 	hci_req_add_le_passive_scan(req);
 
 	switch (hdev->adv_monitor_scan_state) {
