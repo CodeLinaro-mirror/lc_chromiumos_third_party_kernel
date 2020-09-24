@@ -1390,6 +1390,17 @@ char *FW_10_4_DBG_MSG_ARR[WLAN_10_4_MODULE_ID_MAX][MAX_DBG_MSGS] =
 },
 };
 
+#define MAX_FWLOG_PARSE        6
+
+char FWLOG_PARSE_ARG[MAX_FWLOG_PARSE][MAX_DBG_MSGS] = {
+	"RATECTRL_DBGID_ASSOC",
+	"WAL_DBGID_SECURITY_UCAST_KEY_SET",
+	"WAL_DBGID_STA_KICKOUT",
+	"WAL_DBGID_XCESS_FAILURES",
+	"WAL_DBGID_TX_BA_SETUP",
+	"AP_PS_DBGID_DETECT_OUT_OF_SYNC_STA",
+};
+
 static char * fw_dbglog_get_msg(u32 moduleid, u32 debugid,
 				u32 mod_id_max,
 				char *(*dbg_msg_arr)[][MAX_DBG_MSGS])
@@ -1417,7 +1428,9 @@ static void ath10k_fwlog_print(struct ath10k *ar, u32 mod_id, u16 vap_id,
 
 	int i;
 	u32 module_id_max;
+	bool parse_arg = false;
 	char *(*dbg_msg_arr)[][MAX_DBG_MSGS];
+	char *str;
 
 	if ((ar->running_fw->fw_file.wmi_op_version ==
 	     ATH10K_FW_WMI_OP_VERSION_10_4)) {
@@ -1428,20 +1441,37 @@ static void ath10k_fwlog_print(struct ath10k *ar, u32 mod_id, u16 vap_id,
 		dbg_msg_arr = &DBG_MSG_ARR;
 	}
 
+	str = fw_dbglog_get_msg(mod_id, dbg_id,
+				module_id_max, dbg_msg_arr);
+
+	for (i = 0; i < MAX_FWLOG_PARSE; i++) {
+		if (!strcmp(str, FWLOG_PARSE_ARG[i])) {
+			parse_arg = true;
+			break;
+		}
+	}
+
 	if (vap_id < FW_DBGLOG_VAPID_NUM_MAX)
 		printk(KERN_CONT FW_DBGLOG_PRINT_PREFIX "[%u] vap-%u %s ( ",
-		       timestamp,
-		       vap_id, fw_dbglog_get_msg(mod_id, dbg_id,
-						 module_id_max,
-						 dbg_msg_arr));
+		       timestamp, vap_id, str);
 	else
 		printk(KERN_CONT FW_DBGLOG_PRINT_PREFIX "[%u] %s ( ",
-		       timestamp,
-		       fw_dbglog_get_msg(mod_id, dbg_id,
-					 module_id_max, dbg_msg_arr));
+		       timestamp, str);
 
 	 for (i = 0; i < numargs; i++) {
 		printk(KERN_CONT "%#x", args[i]);
+		if (parse_arg && ((i + 1) < numargs)) {
+			u16 *parse;
+			int j = 0;
+
+			i++;
+			parse = (u16 *)(args + i);
+			if (!parse[j + 1])
+				printk("%04x", parse[j]);
+			else
+				printk("%04x, %#x", parse[j + 1], parse[j]);
+			parse_arg = false;
+		}
 		if ((i + 1) < numargs)
 			printk(KERN_CONT ", ");
 	}
