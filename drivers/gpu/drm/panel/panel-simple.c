@@ -1302,7 +1302,6 @@ static const struct drm_display_mode boe_nv116whm_t01_modes = {
 	.vsync_start = 768 + 4,
 	.vsync_end = 768 + 4 + 4,
 	.vtotal = 768 + 4 + 4 + 22,
-	.vrefresh = 60,
 };
 
 static const struct panel_desc boe_nv116whm_t01 = {
