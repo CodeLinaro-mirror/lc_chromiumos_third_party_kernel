@@ -7096,6 +7096,8 @@ static u32 get_supported_adv_flags(struct hci_dev *hdev)
 
 	if (ext_adv_capable(hdev)) {
 		flags |= MGMT_ADV_FLAG_SEC_1M;
+		flags |= MGMT_ADV_FLAG_HW_OFFLOAD;
+		flags |= MGMT_ADV_FLAG_CAN_SET_TX_POWER;
 
 		if (hdev->le_features[1] & HCI_LE_PHY_2M)
 			flags |= MGMT_ADV_FLAG_SEC_2M;
@@ -7137,7 +7139,7 @@ static int read_adv_features(struct sock *sk, struct hci_dev *hdev,
 	rp->supported_flags = cpu_to_le32(supported_flags);
 	rp->max_adv_data_len = HCI_MAX_AD_LENGTH;
 	rp->max_scan_rsp_len = HCI_MAX_AD_LENGTH;
-	rp->max_instances = HCI_MAX_ADV_INSTANCES;
+	rp->max_instances = hdev->le_num_of_adv_sets;
 	rp->num_instances = hdev->adv_instance_cnt;
 
 	instance = rp->instance;
@@ -7326,7 +7328,7 @@ static int add_advertising(struct sock *sk, struct hci_dev *hdev,
 		return mgmt_cmd_status(sk, hdev->id, MGMT_OP_ADD_ADVERTISING,
 				       status);
 
-	if (cp->instance < 1 || cp->instance > HCI_MAX_ADV_INSTANCES)
+	if (cp->instance < 1 || cp->instance > hdev->le_num_of_adv_sets)
 		return mgmt_cmd_status(sk, hdev->id, MGMT_OP_ADD_ADVERTISING,
 				       MGMT_STATUS_INVALID_PARAMS);
 
@@ -7572,7 +7574,7 @@ static int get_adv_size_info(struct sock *sk, struct hci_dev *hdev,
 		return mgmt_cmd_status(sk, hdev->id, MGMT_OP_GET_ADV_SIZE_INFO,
 				       MGMT_STATUS_REJECTED);
 
-	if (cp->instance < 1 || cp->instance > HCI_MAX_ADV_INSTANCES)
+	if (cp->instance < 1 || cp->instance > hdev->le_num_of_adv_sets)
 		return mgmt_cmd_status(sk, hdev->id, MGMT_OP_GET_ADV_SIZE_INFO,
 				       MGMT_STATUS_INVALID_PARAMS);
 

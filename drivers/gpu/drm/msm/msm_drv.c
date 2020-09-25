@@ -315,6 +315,7 @@ static int msm_drm_uninit(struct device *dev)
 	if (fbdev && priv->fbdev)
 		msm_fbdev_free(ddev);
 #endif
+	drm_atomic_helper_shutdown(ddev);
 	drm_mode_config_cleanup(ddev);
 
 	pm_runtime_get_sync(dev);
@@ -1399,6 +1400,13 @@ static int msm_pdev_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void msm_pdev_shutdown(struct platform_device *pdev)
+{
+	struct drm_device *drm = platform_get_drvdata(pdev);
+
+	drm_atomic_helper_shutdown(drm);
+}
+
 static const struct of_device_id dt_match[] = {
 	{ .compatible = "qcom,mdp4", .data = (void *)KMS_MDP4 },
 	{ .compatible = "qcom,mdss", .data = (void *)KMS_MDP5 },
@@ -1410,6 +1418,7 @@ MODULE_DEVICE_TABLE(of, dt_match);
 static struct platform_driver msm_platform_driver = {
 	.probe      = msm_pdev_probe,
 	.remove     = msm_pdev_remove,
+	.shutdown   = msm_pdev_shutdown,
 	.driver     = {
 		.name   = "msm",
 		.of_match_table = dt_match,
