@@ -227,15 +227,7 @@ static int venus_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_core_put;
 
-	if (!dev->dma_parms) {
-		dev->dma_parms = devm_kzalloc(dev, sizeof(*dev->dma_parms),
-					      GFP_KERNEL);
-		if (!dev->dma_parms) {
-			ret = -ENOMEM;
-			goto err_core_put;
-		}
-	}
-	dma_set_max_seg_size(dev, DMA_BIT_MASK(32));
+	dma_set_max_seg_size(dev, UINT_MAX);
 
 	INIT_LIST_HEAD(&core->instances);
 	mutex_init(&core->lock);
@@ -290,8 +282,10 @@ static int venus_probe(struct platform_device *pdev)
 		goto err_core_deinit;
 
 	ret = pm_runtime_put_sync(dev);
-	if (ret)
+	if (ret) {
+		pm_runtime_get_noresume(dev);
 		goto err_dev_unregister;
+	}
 
 	venus_dbgfs_init(core);
 
@@ -304,6 +298,7 @@ err_core_deinit:
 err_venus_shutdown:
 	venus_shutdown(core);
 err_runtime_disable:
+	pm_runtime_put_noidle(dev);
 	pm_runtime_set_suspended(dev);
 	pm_runtime_disable(dev);
 	hfi_destroy(core);
