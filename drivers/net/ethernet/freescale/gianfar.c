@@ -845,8 +845,10 @@ static int gfar_of_init(struct platform_device *ofdev, struct net_device **pdev)
 				continue;
 
 			err = gfar_parse_group(child, priv, model);
-			if (err)
+			if (err) {
+				of_node_put(child);
 				goto err_grp_init;
+			}
 		}
 	} else { /* SQ_SG_MODE */
 		err = gfar_parse_group(np, priv, model);
@@ -3179,7 +3181,7 @@ static int gfar_poll_rx_sq(struct napi_struct *napi, int budget)
 
 	if (work_done < budget) {
 		u32 imask;
-		napi_complete(napi);
+		napi_complete_done(napi, work_done);
 		/* Clear the halt bit in RSTAT */
 		gfar_write(&regs->rstat, gfargrp->rstat);
 
@@ -3268,7 +3270,7 @@ static int gfar_poll_rx(struct napi_struct *napi, int budget)
 
 	if (!num_act_queues) {
 		u32 imask;
-		napi_complete(napi);
+		napi_complete_done(napi, work_done);
 
 		/* Clear the halt bit in RSTAT */
 		gfar_write(&regs->rstat, gfargrp->rstat);

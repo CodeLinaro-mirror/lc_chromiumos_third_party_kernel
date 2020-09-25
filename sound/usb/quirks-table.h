@@ -3266,11 +3266,18 @@ AU0828_DEVICE(0x2040, 0x7270, "Hauppauge", "HVR-950Q"),
 	}
 },
 
+/*
+ * The original product_name is "USB Sound Device", however this name
+ * is also used by the CM106 based cards, so make it unique.
+ */
 {
-	/*
-	 * The original product_name is "USB Sound Device", however this name
-	 * is also used by the CM106 based cards, so make it unique.
-	 */
+	USB_DEVICE(0x0d8c, 0x0102),
+	.driver_info = (unsigned long) &(const struct snd_usb_audio_quirk) {
+		.product_name = "ICUSBAUDIO7D",
+		.ifnum = QUIRK_NO_INTERFACE
+	}
+},
+{
 	USB_DEVICE(0x0d8c, 0x0103),
 	.driver_info = (unsigned long) &(const struct snd_usb_audio_quirk) {
 		.product_name = "Audio Advantage MicroII",
@@ -3331,8 +3338,8 @@ AU0828_DEVICE(0x2040, 0x7270, "Hauppauge", "HVR-950Q"),
  * they pretend to be 96kHz mono as a workaround for stereo being broken
  * by that...
  *
- * They also have swapped L-R channels, but that's for userspace to deal
- * with.
+ * They also have an issue with initial stream alignment that causes the
+ * channels to be swapped and out of phase, which is dealt with in quirks.c.
  */
 {
 	.match_flags = USB_DEVICE_ID_MATCH_DEVICE |

@@ -332,6 +332,15 @@ int intel_dp_get_link_train_fallback_values(struct intel_dp *intel_dp,
 {
 	int index;
 
+	/*
+	 * TODO: Enable fallback on MST links once MST link compute can handle
+	 * the fallback params.
+	 */
+	if (intel_dp->is_mst) {
+		DRM_ERROR("Link Training Unsuccessful\n");
+		return -1;
+	}
+
 	index = intel_dp_rate_index(intel_dp->common_rates,
 				    intel_dp->num_common_rates,
 				    link_rate);
@@ -4551,7 +4560,16 @@ intel_dp_long_pulse(struct intel_connector *intel_connector)
 		      yesno(intel_dp_source_supports_hbr2(intel_dp)),
 		      yesno(drm_dp_tps3_supported(intel_dp->dpcd)));
 
-	if (intel_dp->reset_link_params) {
+	drm_dp_read_desc(&intel_dp->aux, &intel_dp->desc,
+			 drm_dp_is_branch(intel_dp->dpcd));
+
+	intel_dp_configure_mst(intel_dp);
+
+	/*
+	 * TODO: Reset link params when switching to MST mode, until MST
+	 * supports link training fallback params.
+	 */
+	if (intel_dp->reset_link_params || intel_dp->is_mst) {
 		/* Initial max link lane count */
 		intel_dp->max_link_lane_count = intel_dp_max_common_lane_count(intel_dp);
 
@@ -4562,11 +4580,6 @@ intel_dp_long_pulse(struct intel_connector *intel_connector)
 	}
 
 	intel_dp_print_rates(intel_dp);
-
-	drm_dp_read_desc(&intel_dp->aux, &intel_dp->desc,
-			 drm_dp_is_branch(intel_dp->dpcd));
-
-	intel_dp_configure_mst(intel_dp);
 
 	if (intel_dp->is_mst) {
 		/*

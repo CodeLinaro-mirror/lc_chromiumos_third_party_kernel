@@ -5927,7 +5927,8 @@ static void rtl8152_get_drvinfo(struct net_device *netdev,
 }
 
 static
-int rtl8152_get_settings(struct net_device *netdev, struct ethtool_cmd *cmd)
+int rtl8152_get_link_ksettings(struct net_device *netdev,
+			       struct ethtool_link_ksettings *cmd)
 {
 	struct r8152 *tp = netdev_priv(netdev);
 	int ret;
@@ -5941,7 +5942,7 @@ int rtl8152_get_settings(struct net_device *netdev, struct ethtool_cmd *cmd)
 
 	mutex_lock(&tp->control);
 
-	ret = mii_ethtool_gset(&tp->mii, cmd);
+	mii_ethtool_get_link_ksettings(&tp->mii, cmd);
 
 	mutex_unlock(&tp->control);
 
@@ -5951,7 +5952,8 @@ out:
 	return ret;
 }
 
-static int rtl8152_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
+static int rtl8152_set_link_ksettings(struct net_device *dev,
+				      const struct ethtool_link_ksettings *cmd)
 {
 	struct r8152 *tp = netdev_priv(dev);
 	u32 advertising = 0;
@@ -5961,32 +5963,38 @@ static int rtl8152_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	if (ret < 0)
 		goto out;
 
-	if (cmd->advertising & ADVERTISED_10baseT_Half)
+	if (test_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT,
+		     cmd->link_modes.advertising))
 		advertising |= RTL_ADVERTISED_10_HALF;
 
-	if (cmd->advertising & ADVERTISED_10baseT_Full)
+	if (test_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+		     cmd->link_modes.advertising))
 		advertising |= RTL_ADVERTISED_10_FULL;
 
-	if (cmd->advertising & ADVERTISED_100baseT_Half)
+	if (test_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT,
+		     cmd->link_modes.advertising))
 		advertising |= RTL_ADVERTISED_100_HALF;
 
-	if (cmd->advertising & ADVERTISED_100baseT_Full)
+	if (test_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+		     cmd->link_modes.advertising))
 		advertising |= RTL_ADVERTISED_100_FULL;
 
-	if (cmd->advertising & ADVERTISED_1000baseT_Half)
+	if (test_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
+		     cmd->link_modes.advertising))
 		advertising |= RTL_ADVERTISED_1000_HALF;
 
-	if (cmd->advertising & ADVERTISED_1000baseT_Full)
+	if (test_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+		     cmd->link_modes.advertising))
 		advertising |= RTL_ADVERTISED_1000_FULL;
 
 	mutex_lock(&tp->control);
 
-	ret = rtl8152_set_speed(tp, cmd->autoneg, cmd->speed, cmd->duplex,
-				advertising);
+	ret = rtl8152_set_speed(tp, cmd->base.autoneg, cmd->base.speed,
+				cmd->base.duplex, advertising);
 	if (!ret) {
-		tp->autoneg = cmd->autoneg;
-		tp->speed = cmd->speed;
-		tp->duplex = cmd->duplex;
+		tp->autoneg = cmd->base.autoneg;
+		tp->speed = cmd->base.speed;
+		tp->duplex = cmd->base.duplex;
 		tp->advertising = advertising;
 	}
 
@@ -6347,8 +6355,6 @@ static int rtl8152_set_ringparam(struct net_device *netdev,
 
 static const struct ethtool_ops ops = {
 	.get_drvinfo = rtl8152_get_drvinfo,
-	.get_settings = rtl8152_get_settings,
-	.set_settings = rtl8152_set_settings,
 	.get_link = ethtool_op_get_link,
 	.nway_reset = rtl8152_nway_reset,
 	.get_msglevel = rtl8152_get_msglevel,
@@ -6367,6 +6373,8 @@ static const struct ethtool_ops ops = {
 	.set_tunable = rtl8152_set_tunable,
 	.get_ringparam = rtl8152_get_ringparam,
 	.set_ringparam = rtl8152_set_ringparam,
+	.get_link_ksettings = rtl8152_get_link_ksettings,
+	.set_link_ksettings = rtl8152_set_link_ksettings,
 };
 
 static int rtltool_ioctl(struct r8152 *tp, struct ifreq *ifr)
