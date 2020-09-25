@@ -2548,7 +2548,7 @@ int ksys_prctl(int option, unsigned long arg2, unsigned long arg3,
 		error = (current->flags & PR_IO_FLUSHER) == PR_IO_FLUSHER;
 		break;
 	case PR_SET_CORE_SCHED:
-		error = task_set_core_sched(arg2, NULL);
+		error = task_set_core_sched(arg2, NULL, 0);
 		break;
 	default:
 		error = -EINVAL;
