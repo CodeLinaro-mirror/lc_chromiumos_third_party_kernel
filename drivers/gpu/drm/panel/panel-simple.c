@@ -1259,7 +1259,6 @@ static const struct drm_display_mode boe_nv110wtm_n61_modes[] = {
 		.vsync_start = 1440 + 3,
 		.vsync_end = 1440 + 3 + 6,
 		.vtotal = 1440 + 3 + 6 + 51,
-		.vrefresh = 60,
 	},
 	{
 		.clock = 142800,
@@ -1271,7 +1270,6 @@ static const struct drm_display_mode boe_nv110wtm_n61_modes[] = {
 		.vsync_start = 1440 + 3,
 		.vsync_end = 1440 + 3 + 6,
 		.vtotal = 1440 + 3 + 6 + 51,
-		.vrefresh = 40,
 	},
 };
 
