@@ -157,6 +157,9 @@ int ufshcd_hba_init_crypto_capabilities(struct ufs_hba *hba)
 	int err = 0;
 	enum blk_crypto_mode_num blk_mode_num;
 
+	if (hba->quirks & UFSHCD_QUIRK_BROKEN_CRYPTO_CAPS)
+		return 0;
+
 	/*
 	 * Don't use crypto if either the hardware doesn't advertise the
 	 * standard crypto capability bit *or* if the vendor specific driver
