@@ -121,6 +121,10 @@ bool ufshcd_crypto_enable(struct ufs_hba *hba)
 
 	/* Reset might clear all keys, so reprogram all the keys. */
 	blk_ksm_reprogram_all_keys(&hba->ksm);
+
+	if (hba->quirks & UFSHCD_QUIRK_BROKEN_CRYPTO_ENABLE)
+		return false;
+
 	return true;
 }
 
