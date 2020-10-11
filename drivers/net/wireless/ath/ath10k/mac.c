@@ -1687,6 +1687,8 @@ static int ath10k_mac_setup_prb_tmpl(struct ath10k_vif *arvif)
 	struct ath10k *ar = arvif->ar;
 	struct ieee80211_hw *hw = ar->hw;
 	struct ieee80211_vif *vif = arvif->vif;
+	struct ieee80211_mgmt *mgmt;
+	u64 adjusted_tsf;
 	struct sk_buff *prb;
 	int ret;
 
@@ -1705,6 +1707,12 @@ static int ath10k_mac_setup_prb_tmpl(struct ath10k_vif *arvif)
 		ath10k_warn(ar, "failed to get probe resp template from mac80211\n");
 		return -EPERM;
 	}
+
+	adjusted_tsf = cpu_to_le64(0ULL -
+				   arvif->tbttoffset_list[arvif->vdev_id]);
+	mgmt = (void *)prb->data;
+	memcpy(&mgmt->u.probe_resp.timestamp,
+	       &adjusted_tsf, sizeof(adjusted_tsf));
 
 	ret = ath10k_wmi_prb_tmpl(ar, arvif->vdev_id, prb);
 	kfree_skb(prb);
