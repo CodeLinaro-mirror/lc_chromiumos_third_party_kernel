@@ -1064,6 +1064,8 @@ static const struct cnl_ddi_buf_trans *
 tgl_get_combo_buf_trans(struct intel_encoder *encoder, int type, int rate,
 			int *n_entries)
 {
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+
 	if (type == INTEL_OUTPUT_HDMI || type == INTEL_OUTPUT_EDP) {
 		return icl_get_combo_buf_trans(encoder, type, rate, n_entries);
 	} else if (rate > 270000) {
