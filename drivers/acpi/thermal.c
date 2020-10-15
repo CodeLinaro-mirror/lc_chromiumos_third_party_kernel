@@ -865,17 +865,11 @@ static int acpi_thermal_register_thermal_zone(struct acpi_thermal *tz)
 		goto remove_dev_link;
 	}
 
-	result = thermal_zone_device_enable(tz->thermal_zone);
-	if (result)
-		goto acpi_bus_detach;
-
 	dev_info(&tz->device->dev, "registered as thermal_zone%d\n",
 		 tz->thermal_zone->id);
 
 	return 0;
 
-acpi_bus_detach:
-	acpi_bus_detach_private_data(tz->device->handle);
 remove_dev_link:
 	sysfs_remove_link(&tz->thermal_zone->device.kobj, "device");
 remove_tz_link:
@@ -1037,6 +1031,9 @@ static int acpi_thermal_add(struct acpi_device *device)
 		return -ENOMEM;
 
 	tz->device = device;
+	result = thermal_zone_device_enable(tz->thermal_zone);
+	if (result)
+		goto free_memory;
 	strcpy(tz->name, device->pnp.bus_id);
 	strcpy(acpi_device_name(device), ACPI_THERMAL_DEVICE_NAME);
 	strcpy(acpi_device_class(device), ACPI_THERMAL_CLASS);
