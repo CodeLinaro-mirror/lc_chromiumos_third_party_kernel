@@ -1265,7 +1265,6 @@ static void tb_restore_children(struct tb_switch *sw)
 
 		if (port->remote) {
 			tb_switch_lane_bonding_enable(port->remote->sw);
-			tb_switch_configure_link(port->remote->sw);
 
 			tb_restore_children(port->remote->sw);
 		} else if (port->xdomain) {
