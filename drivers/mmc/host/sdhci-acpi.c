@@ -5,6 +5,7 @@
  * Copyright (c) 2012, Intel Corporation.
  */
 
+#include <linux/bitfield.h>
 #include <linux/init.h>
 #include <linux/export.h>
 #include <linux/module.h>
@@ -558,9 +559,7 @@ static int amd_select_drive_strength(struct mmc_card *card,
 	 * of A. This matches the previously hard coded value.
 	 */
 	preset = sdhci_readw(host, SDHCI_PRESET_FOR_SDR104);
-	preset_driver_strength =
-		(preset & SDHCI_PRESET_DRV_MASK) >> SDHCI_PRESET_DRV_SHIFT;
-
+	preset_driver_strength = FIELD_GET(SDHCI_PRESET_DRV_MASK, preset);
 	/*
 	 * We want the controller driver strength to match the card's driver
 	 * strength so they have similar rise/fall times.
