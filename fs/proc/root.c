@@ -226,6 +226,10 @@ static int proc_reconfigure(struct fs_context *fc)
 
 static int proc_get_tree(struct fs_context *fc)
 {
+	struct super_block *sb = fc->root->d_sb;
+	struct proc_fs_info *fs_info = proc_sb_info(sb);
+
+	proc_apply_options(fs_info, fc, current_user_ns());
 	return get_tree_nodev(fc, proc_fill_super);
 }
 
