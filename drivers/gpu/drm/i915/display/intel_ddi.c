@@ -588,7 +588,7 @@ struct icl_mg_phy_ddi_buf_trans {
 	u32 cri_txdeemph_override_17_12;
 };
 
-static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_rbr_hbr[] = {
+static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_rbr_hbr[] __maybe_unused = {
 				/* Voltage swing  pre-emphasis */
 	{ 0x18, 0x00, 0x00 },	/* 0              0   */
 	{ 0x1D, 0x00, 0x05 },	/* 0              1   */
@@ -602,7 +602,7 @@ static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_rbr_hbr
 	{ 0x3F, 0x00, 0x00 },	/* 3              0   */
 };
 
-static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hbr2_hbr3[] = {
+static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hbr2_hbr3[] __maybe_unused = {
 				/* Voltage swing  pre-emphasis */
 	{ 0x18, 0x00, 0x00 },	/* 0              0   */
 	{ 0x1D, 0x00, 0x05 },	/* 0              1   */
@@ -616,7 +616,7 @@ static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hbr2_hb
 	{ 0x3F, 0x00, 0x00 },	/* 3              0   */
 };
 
-static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hdmi[] = {
+static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations_hdmi[] __maybe_unused = {
 				/* HDMI Preset	VS	Pre-emph */
 	{ 0x1A, 0x0, 0x0 },	/* 1		400mV	0dB */
 	{ 0x20, 0x0, 0x0 },	/* 2		500mV	0dB */
@@ -703,6 +703,20 @@ static const struct cnl_ddi_buf_trans tgl_combo_phy_ddi_translations_dp_hbr2[] =
 	{ 0x6, 0x7F, 0x2F, 0x00, 0x10 },	/* 500   900      5.1   */
 	{ 0xC, 0x61, 0x3C, 0x00, 0x03 },	/* 650   700      0.6   */
 	{ 0x6, 0x7B, 0x35, 0x00, 0x0A },	/* 600   900      3.5   */
+	{ 0x6, 0x7F, 0x3F, 0x00, 0x00 },	/* 900   900      0.0   */
+};
+
+static const struct cnl_ddi_buf_trans tgl_uy_combo_phy_ddi_translations_dp_hbr2[] = {
+						/* NT mV Trans mV db    */
+	{ 0xA, 0x35, 0x3F, 0x00, 0x00 },	/* 350   350      0.0   */
+	{ 0xA, 0x4F, 0x36, 0x00, 0x09 },	/* 350   500      3.1   */
+	{ 0xC, 0x60, 0x32, 0x00, 0x0D },	/* 350   700      6.0   */
+	{ 0xC, 0x7F, 0x2D, 0x00, 0x12 },	/* 350   900      8.2   */
+	{ 0xC, 0x47, 0x3F, 0x00, 0x00 },	/* 500   500      0.0   */
+	{ 0xC, 0x6F, 0x36, 0x00, 0x09 },	/* 500   700      2.9   */
+	{ 0x6, 0x7D, 0x32, 0x00, 0x0D },	/* 500   900      5.1   */
+	{ 0x6, 0x60, 0x3C, 0x00, 0x03 },	/* 650   700      0.6   */
+	{ 0x6, 0x7F, 0x34, 0x00, 0x0B },	/* 600   900      3.5   */
 	{ 0x6, 0x7F, 0x3F, 0x00, 0x00 },	/* 900   900      0.0   */
 };
 
@@ -1050,9 +1064,16 @@ static const struct cnl_ddi_buf_trans *
 tgl_get_combo_buf_trans(struct intel_encoder *encoder, int type, int rate,
 			int *n_entries)
 {
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+
 	if (type == INTEL_OUTPUT_HDMI || type == INTEL_OUTPUT_EDP) {
 		return icl_get_combo_buf_trans(encoder, type, rate, n_entries);
 	} else if (rate > 270000) {
+		if (IS_TGL_U(dev_priv) || IS_TGL_Y(dev_priv)) {
+			*n_entries = ARRAY_SIZE(tgl_uy_combo_phy_ddi_translations_dp_hbr2);
+			return tgl_uy_combo_phy_ddi_translations_dp_hbr2;
+		}
+
 		*n_entries = ARRAY_SIZE(tgl_combo_phy_ddi_translations_dp_hbr2);
 		return tgl_combo_phy_ddi_translations_dp_hbr2;
 	}

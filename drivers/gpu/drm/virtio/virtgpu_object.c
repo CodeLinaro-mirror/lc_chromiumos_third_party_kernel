@@ -215,6 +215,9 @@ int virtio_gpu_object_create(struct virtio_gpu_device *vgdev,
 		goto err_free_gem;
 
 	bo->dumb = params->dumb;
+	bo->resource_v2 = params->resource_v2;
+	bo->guest_memory_type = params->guest_memory_type;
+	bo->caching_type = params->caching_type;
 
 	if (fence) {
 		ret = -ENOMEM;
@@ -231,7 +234,7 @@ int virtio_gpu_object_create(struct virtio_gpu_device *vgdev,
 	if (params->virgl) {
 		virtio_gpu_cmd_resource_create_3d(vgdev, bo, params,
 						  objs, fence);
-	} else {
+	} else if (params->dumb) {
 		virtio_gpu_cmd_create_resource(vgdev, bo, params,
 					       objs, fence);
 	}
