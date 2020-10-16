@@ -431,6 +431,117 @@ struct wlan_10_4_dbg_tx_pf_sched_stats {
 	__le32 pfsched_peer_skipped[WAL_STATS_PREFETCH_MAX_QUEUES];
 } __packed;
 
+struct wlan_10_4_halphy_cal_stats_t {
+	/* bit 0: Represent the stats is for home channel or scan channel.
+	 *        0: Scan channel, 1: Home channel
+	 * bit 1: Represents the register which controls the hardware
+	 *	  calibration
+	 *        is enabled or not.
+	 *        0: Not enabled, 1: Enabled
+	 * bit 2: Represents the calibration status from hardware perspective.
+	 *        0: Fail, 1: Pass
+	 * bit 3: Represents the status of post processing of caldata in halphy.
+	 *        0: Fail, 1: Pass
+	 * bit 4: Represents if the post processed data applied to
+	 *	  hardware or not.
+	 *        0: Not applied, 1:Applied
+	 * bit 5 - 31 : Reserved for future use
+	 */
+	__le32 statusflags;
+	/* lastcaltime -
+	 * Units are target clock ticks.
+	 * Used just to determine whether cal results are new or a repeat of
+	 * prior cal results.
+	 */
+	__le32 lastcaltime;
+	__le32 reserved; /* for future use */
+} __packed;
+
+/* Below ANI stats are directly fetched from the BB registers.
+ * The values will be displayed in hexa decimal format and mainly
+ * used for debugging purpose.
+ * These values will not be used by host for any other purpose.
+ */
+struct wlan_10_4_halphy_ani_stats_t {
+	/* current OFDM ANI level used */
+	__le32 ofdm_ANI_level;
+	/* current CCK ANI level used */
+	__le32 cck_ANI_level;
+	/* Detection threshold for 11b packet during agc CORR state */
+	__le32 th_d0_b;
+	/* Detection threshold for 11b packet after agc CORR state */
+	__le32 th_d0_b_tf_est;
+	/* threshold for flag_firstep */
+	__le32 firstep;
+	/* threshold for flag_firstep_low */
+	__le32 firstep_low;
+	/* the minimum rssi (SNR)required to validate strong signal detection */
+	__le32 rssi_thr1a;
+	/* cyclic power threshold1 */
+	__le32 cycpwr_thr1;
+	/* in-band or total power ratio required for strong signal detection */
+	__le32 relpwr;
+	/* Barker corr input backoff for VOTING */
+	__le32 bk_in_backoff;
+	/* Strong signal detection in case of RF saturation
+	 * 0: Disabled,1: Enabled
+	 */
+	__le32 enable_rfsat_strong;
+	/* gain update when AGC is starting a new search
+	 * 0: Disabled 1: Enabled
+	 */
+	__le32 enable_srch_start_gain;
+	/* Very weak ofdm signal detection: 0: Disabled, 1: Enabled */
+	__le32 use_self_corr_low;
+	/* reserved for future use */
+	__le32 reserved_1;
+	/* reserved for future use */
+	__le32 reserved_2;
+} __packed;
+
+struct wlan_10_4_halphy_tx_stats_t {
+	/* Num of dpd training frames queued */
+	__le32 dpd_hw_queued;
+	/* Num of dpd training frames reaped */
+	__le32 dpd_hw_reaped;
+	/* Num of dpd training frames transmission done */
+	__le32 dpd_tx_done;
+	/* Num of dpd training frames transmission abort */
+	__le32 dpd_tx_abort;
+	/* Num of dpd training frames transmission fail */
+	__le32 dpd_tx_fail;
+	/* Num of ibf training frames queued */
+	__le32 ibf_hw_queued;
+	/* Num of ibf training frames reaped */
+	__le32 ibf_hw_reaped;
+	/* Num of ibf training frames transmission done */
+	__le32 ibf_tx_done;
+	/* Num of ibf training frames transmission abort */
+	__le32 ibf_tx_abort;
+	/* Num of ibf training frames transmission fail */
+	__le32 ibf_tx_fail;
+	/* Num of enqueue */
+	__le32 tx_async_enqueue;
+	/* Num of dequeue */
+	__le32 tx_async_dequeue;
+	/* Reserved for future use */
+	__le32 reserved;
+} __packed;
+
+struct wlan_10_4_halphy_dbg_stats {
+	struct wlan_10_4_halphy_cal_stats_t nf_stats;
+	struct wlan_10_4_halphy_cal_stats_t ibf_stats;
+	struct wlan_10_4_halphy_cal_stats_t dpd_stats;
+	struct wlan_10_4_halphy_cal_stats_t rxdco_stats;
+	struct wlan_10_4_halphy_cal_stats_t peakdetect_stats;
+	struct wlan_10_4_halphy_cal_stats_t txiqcal_stats;
+	struct wlan_10_4_halphy_cal_stats_t rxiqcal_stats;
+	struct wlan_10_4_halphy_cal_stats_t carrierlkg_stats;
+	struct wlan_10_4_halphy_cal_stats_t rxfltrcal_stats;
+	struct wlan_10_4_halphy_ani_stats_t ani_stats;
+	struct wlan_10_4_halphy_tx_stats_t tx_stats;
+} __packed;
+
 struct wlan_10_4_htt_stats {
 	struct htt_10_4_wal_pdev_txrx txrx_stats;
 	struct htt_dbg_stats_rx_reorder_stats rx_reorder_stats;
@@ -448,6 +559,7 @@ struct wlan_10_4_htt_stats {
 	struct wlan_10_4_dbg_tx_desc_stats tx_desc_stats;
 	struct wlan_10_4_dbg_tx_fetch_mgr_stats tx_fetch_mgr_stats;
 	struct wlan_10_4_dbg_tx_pf_sched_stats tx_pf_sched_stats;
+	struct wlan_10_4_halphy_dbg_stats halphy_dbg_stats;
 } __packed;
 
 struct htt_10_2_wal_tx_stats {

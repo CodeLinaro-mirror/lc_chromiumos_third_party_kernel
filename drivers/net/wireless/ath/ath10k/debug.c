@@ -3122,7 +3122,7 @@ static ssize_t ath10k_write_reset_htt_stats(struct file *file,
 	if (ret)
 		return ret;
 
-	if (reset == 0 || reset > 0x1ffff)
+	if (reset == 0 || reset > 0x7ffff)
 		return -EINVAL;
 
 	mutex_lock(&ar->conf_mutex);
