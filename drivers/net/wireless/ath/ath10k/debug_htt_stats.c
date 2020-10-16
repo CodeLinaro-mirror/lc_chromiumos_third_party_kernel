@@ -232,6 +232,21 @@ static int ath10k_htt_10_4_process_stats(struct ath10k *ar, struct sk_buff *skb)
 			       tx_pf_sched_stats, len);
 			break;
 		}
+		case HTT_DBG_STATS_HALPHY_INFO: {
+			struct wlan_10_4_halphy_dbg_stats
+				*halphy_dbg_stats =
+			(struct wlan_10_4_halphy_dbg_stats *)skb->data;
+
+			if (len && len != sizeof(*halphy_dbg_stats))
+				return -EPROTO;
+
+			if (!skb_pull(skb, len))
+				return -EPROTO;
+
+			memcpy(&ar->debug.htt_10_4.halphy_dbg_stats,
+			       halphy_dbg_stats, len);
+			break;
+		}
 		default:
 			if (!skb_pull(skb, len))
 				return -EPROTO;
@@ -1512,6 +1527,221 @@ ath10k_htt_10_4_tx_pfsched_info_fill(
 	*length = len;
 }
 
+void ath10k_htt_10_4_halphy_info_fill(struct wlan_10_4_halphy_dbg_stats *stats,
+				      char *buf, int *length)
+{
+	unsigned int len = *length;
+	struct wlan_10_4_halphy_cal_stats_t *nf_stats = &stats->nf_stats;
+	struct wlan_10_4_halphy_cal_stats_t *ibf_stats = &stats->ibf_stats;
+	struct wlan_10_4_halphy_cal_stats_t *dpd_stats = &stats->dpd_stats;
+	struct wlan_10_4_halphy_cal_stats_t *rxdco_stats = &stats->rxdco_stats;
+	struct wlan_10_4_halphy_cal_stats_t *peakdetect_stats =
+					&stats->peakdetect_stats;
+	struct wlan_10_4_halphy_cal_stats_t *txiqcal_stats =
+					&stats->txiqcal_stats;
+	struct wlan_10_4_halphy_cal_stats_t *rxiqcal_stats =
+					&stats->rxiqcal_stats;
+	struct wlan_10_4_halphy_cal_stats_t *carrierlkg_stats =
+					&stats->carrierlkg_stats;
+	struct wlan_10_4_halphy_cal_stats_t *rxfltrcal_stats =
+					&stats->rxfltrcal_stats;
+	struct wlan_10_4_halphy_ani_stats_t *ani_stats = &stats->ani_stats;
+	struct wlan_10_4_halphy_tx_stats_t *tx_stats = &stats->tx_stats;
+	unsigned int buf_len = ATH10K_HTT_STATS_BUF_SIZE;
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "======halphy dbg stats======");
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "NF Calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			le32_to_cpu(nf_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(nf_stats->lastcaltime));
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "IBF Calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			 le32_to_cpu(ibf_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(ibf_stats->lastcaltime));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "DPD calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			 le32_to_cpu(dpd_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(dpd_stats->lastcaltime));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "RXDCO Calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			 le32_to_cpu(rxdco_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(rxdco_stats->lastcaltime));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "Peak detector calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			 le32_to_cpu(peakdetect_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(peakdetect_stats->lastcaltime));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "TX IQ Calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			 le32_to_cpu(txiqcal_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(txiqcal_stats->lastcaltime));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "RX IQ Calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			 le32_to_cpu(rxiqcal_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(rxiqcal_stats->lastcaltime));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "Carrier Leakage calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			 le32_to_cpu(carrierlkg_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(carrierlkg_stats->lastcaltime));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "RX Filter calibration stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
+			 "Status flags : ",
+			 le32_to_cpu(rxfltrcal_stats->statusflags));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Last cal time: ",
+			 le32_to_cpu(rxfltrcal_stats->lastcaltime));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "ANI stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "current OFDM ANI level used : ",
+			 le32_to_cpu(ani_stats->ofdm_ANI_level));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "current CCK ANI level used: ",
+			 le32_to_cpu(ani_stats->cck_ANI_level));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Detection threshold for 11b(first correlation): ",
+			 le32_to_cpu(ani_stats->th_d0_b));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Detection threshold for 11b(second correlation): ",
+			 le32_to_cpu(ani_stats->th_d0_b_tf_est));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Threshold for flag_firstep: ",
+			 le32_to_cpu(ani_stats->firstep));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Threshold for flag_firstep_low: ",
+			 le32_to_cpu(ani_stats->firstep_low));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Minimum SNR to validate: ",
+			 le32_to_cpu(ani_stats->rssi_thr1a));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Cyclic power threshold1: ",
+			 le32_to_cpu(ani_stats->cycpwr_thr1));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Power ratio reqiured: ",
+			 le32_to_cpu(ani_stats->relpwr));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Barker input backoff: ",
+			 le32_to_cpu(ani_stats->bk_in_backoff));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Enable strong signal detection: ",
+			 le32_to_cpu(ani_stats->enable_rfsat_strong));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Enable gain update: ",
+			 le32_to_cpu(ani_stats->enable_srch_start_gain));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+			 "Enable very weak ofdm signal detection: ",
+			 le32_to_cpu(ani_stats->use_self_corr_low));
+
+	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+			 "HALPHY calibration specific TX stats");
+	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
+			 "=================");
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of dpd training frames queued : ",
+			 le32_to_cpu(tx_stats->dpd_hw_queued));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of dpd training frames reaped : ",
+			 le32_to_cpu(tx_stats->dpd_hw_reaped));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of dpd training frames transmission done : ",
+			 le32_to_cpu(tx_stats->dpd_tx_done));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of dpd training frames transmission abort : ",
+			 le32_to_cpu(tx_stats->dpd_tx_abort));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of dpd training frames transmission fail : ",
+			 le32_to_cpu(tx_stats->dpd_tx_fail));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of ibf training frames queued : ",
+			 le32_to_cpu(tx_stats->ibf_hw_queued));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of ibf training frames reaped : ",
+			 le32_to_cpu(tx_stats->ibf_hw_reaped));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of ibf training frames transmission done : ",
+			 le32_to_cpu(tx_stats->ibf_tx_done));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of ibf training frames transmission abort : ",
+			 le32_to_cpu(tx_stats->ibf_tx_abort));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of ibf training frames transmission fail : ",
+			 le32_to_cpu(tx_stats->ibf_tx_fail));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of enqueue : ",
+			 le32_to_cpu(tx_stats->tx_async_enqueue));
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
+			 "Num of dequeue : ",
+			 le32_to_cpu(tx_stats->tx_async_dequeue));
+
+	if (len >= buf_len)
+		buf[len - 1] = 0;
+	else
+		buf[len] = 0;
+
+	*length = len;
+}
 static void ath10k_htt_10_4_stats_fill(struct ath10k *ar, char *buf,
 				       int *length)
 {
@@ -1595,6 +1825,11 @@ static void ath10k_htt_10_4_stats_fill(struct ath10k *ar, char *buf,
 		case HTT_DBG_STATS_TX_PFSCHED_INFO:
 	ath10k_htt_10_4_tx_pfsched_info_fill
 		(&ar->debug.htt_10_4.tx_pf_sched_stats,
+		 buf, length);
+			break;
+		case HTT_DBG_STATS_HALPHY_INFO:
+	ath10k_htt_10_4_halphy_info_fill
+		(&ar->debug.htt_10_4.halphy_dbg_stats,
 		 buf, length);
 			break;
 		default:

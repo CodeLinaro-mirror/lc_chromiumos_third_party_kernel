@@ -49,7 +49,10 @@ enum htt_dbg_stats_type {
 	HTT_DBG_STATS_TX_DESC_INFO      = 1 << 14,
 	HTT_DBG_STATS_TX_FETCH_MGR_INFO = 1 << 15,
 	HTT_DBG_STATS_TX_PFSCHED_INFO	= 1 << 16,
-	/* bits 14-23 currently reserved */
+	HTT_DBG_STATS_TX_PATH_STATS_INFO = 1 << 17,
+	HTT_DBG_STATS_HALPHY_INFO	= 1 << 18,
+
+	/* bits 19-23 currently reserved */
 
 	HTT_DBG_NUM_STATS /* keep this last */
 };
@@ -339,7 +342,7 @@ struct htt_stats_req {
 } __packed;
 
 #define HTT_STATS_REQ_CFG_STAT_TYPE_INVALID 0xff
-#define HTT_STATS_BIT_MASK GENMASK(16, 0)
+#define HTT_STATS_BIT_MASK GENMASK(18, 0)
 
 /*
  * htt_oob_sync_req - request out-of-band sync
