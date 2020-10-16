@@ -2513,8 +2513,8 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 		if (!mppath) {
 			mpp_path_add(sdata, proxied_addr, mpp_addr);
 			rcu_read_unlock();
-			mpath_dbg(sdata, "MESH MPPU add mpp %pM dest %pM  \n",
-				  mpp_addr, proxied_addr);
+			sdata_info(sdata, "MESH MPPU add mpp %pM dest %pM  \n",
+				   mpp_addr, proxied_addr);
 		} else {
 			u8 old_mpp[ETH_ALEN];
 			bool mpp_table_updated = 0;
@@ -2529,8 +2529,8 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 			spin_unlock_bh(&mppath->state_lock);
 			rcu_read_unlock();
 			if (mpp_table_updated) {
-				mpath_dbg(sdata, "MESH MPPU mpp changed from %pM to %pM for dest %pM \n",
-					  old_mpp, mpp_addr, proxied_addr);
+				sdata_info(sdata, "MESH MPPU mpp changed from %pM to %pM for dest %pM \n",
+					   old_mpp, mpp_addr, proxied_addr);
 			}
 		}
 	}
