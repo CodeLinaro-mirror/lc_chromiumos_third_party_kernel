@@ -71,7 +71,7 @@ MODULE_PARM_DESC(phyaddr, "Physical device address");
 #define STMMAC_TX_THRESH	(DMA_TX_SIZE / 4)
 #define STMMAC_RX_THRESH	(DMA_RX_SIZE / 4)
 
-static int flow_ctrl = FLOW_OFF;
+static int flow_ctrl = FLOW_RX;
 module_param(flow_ctrl, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(flow_ctrl, "Flow control ability [on/off]");
 
@@ -829,8 +829,7 @@ static void stmmac_adjust_link(struct net_device *dev)
 			priv->oldduplex = phydev->duplex;
 		}
 		/* Flow Control operation */
-		if (phydev->pause)
-			stmmac_mac_flow_ctrl(priv, phydev->duplex);
+		stmmac_mac_flow_ctrl(priv, phydev->duplex);
 
 		if (phydev->speed != priv->speed) {
 			new_state = true;
@@ -4368,7 +4367,7 @@ int stmmac_dvr_probe(struct device *device,
 			 __func__, priv->plat->maxmtu);
 
 	if (flow_ctrl)
-		priv->flow_ctrl = FLOW_AUTO;	/* RX/TX pause on */
+		priv->flow_ctrl = flow_ctrl;	/* RX/TX pause on */
 
 	/* Setup channels NAPI */
 	maxq = max(priv->plat->rx_queues_to_use, priv->plat->tx_queues_to_use);
