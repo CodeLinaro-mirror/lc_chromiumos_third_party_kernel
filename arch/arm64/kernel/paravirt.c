@@ -14,5 +14,7 @@
 struct static_key paravirt_steal_enabled;
 struct static_key paravirt_steal_rq_enabled;
 
-struct paravirt_patch_template pv_ops;
+struct paravirt_patch_template pv_ops = {
+	.state.vcpu_is_preempted = native_vcpu_is_preempted,
+};
 EXPORT_SYMBOL_GPL(pv_ops);

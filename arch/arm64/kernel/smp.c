@@ -49,6 +49,7 @@
 #include <asm/tlbflush.h>
 #include <asm/ptrace.h>
 #include <asm/virt.h>
+#include <asm/paravirt.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
@@ -718,6 +719,9 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	unsigned int this_cpu;
 
 	init_cpu_topology();
+
+	/* Init paravirt CPU state */
+	pv_state_init();
 
 	this_cpu = smp_processor_id();
 	store_cpu_topology(this_cpu);
