@@ -311,6 +311,14 @@ struct kvm_vcpu_arch {
 	/* True when deferrable sysregs are loaded on the physical CPU,
 	 * see kvm_vcpu_load_sysregs and kvm_vcpu_put_sysregs. */
 	bool sysregs_loaded_on_cpu;
+
+#ifdef CONFIG_PARAVIRT
+	/* PV state of the VCPU (e.g. vcpu_is_preempted()) */
+	struct {
+		gpa_t base;
+		struct gfn_to_hva_cache ghc;
+	} pv_state;
+#endif
 };
 
 /* vcpu_arch flags field values: */
@@ -395,6 +403,60 @@ void handle_exit_early(struct kvm_vcpu *vcpu, struct kvm_run *run,
 
 int kvm_perf_init(void);
 int kvm_perf_teardown(void);
+
+#ifdef CONFIG_PARAVIRT
+static inline bool kvm_vcpu_state_supported(void)
+{
+	return true;
+}
+
+int kvm_init_vcpu_state(struct kvm_vcpu *vcpu, gfn_t addr);
+int kvm_release_vcpu_state(struct kvm_vcpu *vcpu);
+
+static inline void kvm_arm_vcpu_state_init(struct kvm_vcpu_arch *vcpu_arch)
+{
+	vcpu_arch->pv_state.base = GPA_INVALID;
+	memset(&vcpu_arch->pv_state.ghc, 0x00, sizeof(struct gfn_to_hva_cache));
+}
+
+static inline bool
+kvm_arm_is_vcpu_state_enabled(struct kvm_vcpu_arch *vcpu_arch)
+{
+	return (vcpu_arch->pv_state.base != GPA_INVALID);
+}
+
+void kvm_update_vcpu_preempted(struct kvm_vcpu *vcpu, bool preempted);
+#else
+static inline bool kvm_vcpu_state_supported(void)
+{
+	return false;
+}
+
+static inline int kvm_init_vcpu_state(struct kvm_vcpu *vcpu, gfn_t addr)
+{
+	return 0;
+}
+
+static inline int kvm_release_vcpu_state(struct kvm_vcpu *vcpu)
+{
+	return 0;
+}
+
+static inline void kvm_arm_vcpu_state_init(struct kvm_vcpu_arch *vcpu_arch)
+{
+}
+
+static inline bool
+kvm_arm_is_vcpu_state_enabled(struct kvm_vcpu_arch *vcpu_arch)
+{
+	return 0;
+}
+
+static inline void
+kvm_update_vcpu_preempted(struct kvm_vcpu *vcpu, bool preempted)
+{
+}
+#endif
 
 void kvm_set_sei_esr(struct kvm_vcpu *vcpu, u64 syndrome);
 

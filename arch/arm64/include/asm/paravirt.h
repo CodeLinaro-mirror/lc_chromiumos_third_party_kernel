@@ -7,6 +7,16 @@ struct static_key;
 extern struct static_key paravirt_steal_enabled;
 extern struct static_key paravirt_steal_rq_enabled;
 
+struct pvstate_vcpu_info {
+	bool	preempted;
+	u8	reserved[63];
+};
+
+struct pv_state_ops {
+	bool (*vcpu_is_preempted)(int cpu);
+};
+extern struct pv_state_ops pv_state_ops;
+
 struct pv_time_ops {
 	unsigned long long (*steal_clock)(int cpu);
 };

@@ -429,7 +429,19 @@ int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 				break;
 			}
 			break;
+		case ARM_SMCCC_HV_PV_STATE_FEATURES:
+			if (kvm_vcpu_state_supported())
+				val = SMCCC_RET_SUCCESS;
+			break;
 		}
+		break;
+	case ARM_SMCCC_HV_PV_STATE_INIT:
+		if (kvm_init_vcpu_state(vcpu, smccc_get_arg1(vcpu)) == 0)
+			val = SMCCC_RET_SUCCESS;
+		break;
+	case ARM_SMCCC_HV_PV_STATE_RELEASE:
+		if (kvm_release_vcpu_state(vcpu) == 0)
+			val = SMCCC_RET_SUCCESS;
 		break;
 	default:
 		return kvm_psci_call(vcpu);
