@@ -401,7 +401,7 @@ static int kvm_psci_call(struct kvm_vcpu *vcpu)
 int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 {
 	u32 func_id = smccc_get_function(vcpu);
-	u32 val = SMCCC_RET_NOT_SUPPORTED;
+	long val = SMCCC_RET_NOT_SUPPORTED;
 	u32 feature;
 
 	switch (func_id) {
