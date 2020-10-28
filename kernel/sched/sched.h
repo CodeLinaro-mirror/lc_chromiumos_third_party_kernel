@@ -67,6 +67,7 @@
 #include <linux/syscalls.h>
 #include <linux/task_work.h>
 #include <linux/tsacct_kern.h>
+#include <linux/android_vendor.h>
 
 #include <asm/tlb.h>
 
@@ -432,6 +433,8 @@ struct task_group {
 	struct uclamp_se	uclamp[UCLAMP_CNT];
 	/* Latency-sensitive flag used for a task group */
 	unsigned int		latency_sensitive;
+
+	ANDROID_VENDOR_DATA_ARRAY(1, 4);
 #endif
 
 };
@@ -841,6 +844,8 @@ struct root_domain {
 	 * CPUs of the rd. Protected by RCU.
 	 */
 	struct perf_domain __rcu *pd;
+
+	ANDROID_VENDOR_DATA_ARRAY(1, 4);
 };
 
 extern void init_defrootdomain(void);
@@ -1077,6 +1082,8 @@ struct rq {
 #endif
 	unsigned int		push_busy;
 	struct cpu_stop_work	push_work;
+
+	ANDROID_VENDOR_DATA_ARRAY(1, 96);
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
