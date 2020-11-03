@@ -3723,7 +3723,8 @@ static int ath10k_mac_tx_wmi_mgmt(struct ath10k *ar, struct sk_buff *skb)
 	spin_lock_bh(&ar->data_lock);
 
 	if (skb_queue_len(q) == ATH10K_MAX_NUM_MGMT_PENDING) {
-		ath10k_warn(ar, "wmi mgmt tx queue is full\n");
+		ath10k_warn(ar, "wmi mgmt tx queue is full, num_tx_work: %lld\n",
+			    ar->debug.num_tx_work);
 		ret = -ENOSPC;
 		goto unlock;
 	}
