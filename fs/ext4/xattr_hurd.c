@@ -22,7 +22,7 @@ static int
 ext4_xattr_hurd_get(const struct xattr_handler *handler,
 		    struct dentry *unused, struct inode *inode,
 		    const char *name, void *buffer, size_t size,
-            int flags)
+		    int flags)
 {
 	if (!test_opt(inode->i_sb, XATTR_USER))
 		return -EOPNOTSUPP;
