@@ -1,4 +1,3 @@
-<<<<<<< HEAD   (bcb85e FROMGIT: ASoC: mediatek: mt8183-da7219: fix DAPM paths for r)
 // SPDX-License-Identifier: (GPL-2.0 OR MIT)
 /*
  * Copyright 2020 Google LLC
@@ -6,12 +5,6 @@
 
 /dts-v1/;
 #include "mt8183-kukui-jacuzzi.dtsi"
-#include "mt8183-kukui-audio-da7219-max98357a.dtsi"
-
-/ {
-	model = "Google willow board";
-	compatible = "google,willow", "mediatek,mt8183";
-};
 
 &i2c2 {
 	trackpad@2c {
@@ -27,5 +20,4 @@
 		wakeup-source;
 	};
 };
-=======
->>>>>>> CHANGE (848a82 CHROMIUM: arm64: dts: mt8183: Add audio codec MT6358 on Will)
+
