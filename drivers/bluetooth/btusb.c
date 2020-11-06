@@ -412,6 +412,23 @@ static const struct usb_device_id blacklist_table[] = {
 #define BTUSB_RESET_RESUME	10
 #define BTUSB_DIAG_RUNNING	11
 #define BTUSB_OOB_WAKE_ENABLED	12
+#define BTUSB_USE_ALT1_FOR_WBS	15
+
+/* Per core spec 5, vol 4, part B, table 2.1,
+ * list the hci packet payload sizes for various ALT settings.
+ * This is used to set the packet length for the wideband sppech.
+ * If a controller does not probe its usb alt setting, the default
+ * value will be 0. Any clients at upper layers should interpret it
+ * as a default value and set a proper packet length accordingly.
+ *
+ * To calcuate the HCI packet payload length:
+ *   for alternate settings 1 - 5:
+ *     hci_packet_size = suggested_max_packet_size * 3 (packets) -
+ *                       3 (HCI header octets)
+ *   for alternate setting 6:
+ *     hci_packet_size = suggested_max_packet_size - 3 (HCI header octets)
+ */
+static const int hci_packet_size_usb_alt[] = { 0, 24, 48, 72, 96, 144, 60 };
 
 struct btusb_data {
 	struct hci_dev       *hdev;
@@ -2199,22 +2216,21 @@ static int btusb_send_frame_intel(struct hci_dev *hdev, struct sk_buff *skb)
 
 static int btusb_setup_intel_new(struct hci_dev *hdev)
 {
-	static const u8 reset_param[] = { 0x00, 0x01, 0x00, 0x01,
-					  0x00, 0x08, 0x04, 0x00 };
 	struct btusb_data *data = hci_get_drvdata(hdev);
-	struct sk_buff *skb;
 	struct intel_version ver;
-	struct intel_boot_params *params;
+	struct intel_boot_params params;
 	struct intel_debug_features features;
 	const struct firmware *fw;
-	const u8 *fw_ptr;
-	u32 frag_len;
+	u32 boot_param;
 	char fwname[64];
 	ktime_t calltime, delta, rettime;
 	unsigned long long duration;
 	int err;
 
 	BT_DBG("%s", hdev->name);
+
+	/* The default boot parameter */
+	boot_param = 0x00040800;
 
 	calltime = ktime_get();
 
@@ -2223,8 +2239,11 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 	 * loaded.
 	 */
 	err = btintel_read_version(hdev, &ver);
-	if (err)
+	if (err) {
+		bt_dev_err(hdev, "Intel Read version failed (%d)", err);
+		btintel_reset_to_bootloader(hdev);
 		return err;
+	}
 
 	/* The hardware platform number has a fixed value of 0x37 and
 	 * for now only accept this single value.
@@ -2271,7 +2290,7 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 	if (ver.fw_variant == 0x23) {
 		clear_bit(BTUSB_BOOTLOADER, &data->flags);
 		btintel_check_bdaddr(hdev);
-		return 0;
+		goto finish;
 	}
 
 	/* If the device is not in bootloader mode, then the only possible
@@ -2286,56 +2305,25 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 	/* Read the secure boot parameters to identify the operating
 	 * details of the bootloader.
 	 */
-	skb = __hci_cmd_sync(hdev, 0xfc0d, 0, NULL, HCI_INIT_TIMEOUT);
-	if (IS_ERR(skb)) {
-		BT_ERR("%s: Reading Intel boot parameters failed (%ld)",
-		       hdev->name, PTR_ERR(skb));
-		return PTR_ERR(skb);
-	}
-
-	if (skb->len != sizeof(*params)) {
-		BT_ERR("%s: Intel boot parameters size mismatch", hdev->name);
-		kfree_skb(skb);
-		return -EILSEQ;
-	}
-
-	params = (struct intel_boot_params *)skb->data;
-
-	BT_INFO("%s: Device revision is %u", hdev->name,
-		le16_to_cpu(params->dev_revid));
-
-	BT_INFO("%s: Secure boot is %s", hdev->name,
-		params->secure_boot ? "enabled" : "disabled");
-
-	BT_INFO("%s: OTP lock is %s", hdev->name,
-		params->otp_lock ? "enabled" : "disabled");
-
-	BT_INFO("%s: API lock is %s", hdev->name,
-		params->api_lock ? "enabled" : "disabled");
-
-	BT_INFO("%s: Debug lock is %s", hdev->name,
-		params->debug_lock ? "enabled" : "disabled");
-
-	BT_INFO("%s: Minimum firmware build %u week %u %u", hdev->name,
-		params->min_fw_build_nn, params->min_fw_build_cw,
-		2000 + params->min_fw_build_yy);
+	err = btintel_read_boot_params(hdev, &params);
+	if (err)
+		return err;
 
 	/* It is required that every single firmware fragment is acknowledged
 	 * with a command complete event. If the boot parameters indicate
 	 * that this bootloader does not send them, then abort the setup.
 	 */
-	if (params->limited_cce != 0x00) {
+	if (params.limited_cce != 0x00) {
 		BT_ERR("%s: Unsupported Intel firmware loading method (%u)",
-		       hdev->name, params->limited_cce);
-		kfree_skb(skb);
+		       hdev->name, params.limited_cce);
 		return -EINVAL;
 	}
 
 	/* If the OTP has no valid Bluetooth device address, then there will
 	 * also be no valid address for the operational firmware.
 	 */
-	if (!bacmp(&params->otp_bdaddr, BDADDR_ANY)) {
-		BT_INFO("%s: No device address configured", hdev->name);
+	if (!bacmp(&params.otp_bdaddr, BDADDR_ANY)) {
+		bt_dev_info(hdev, "No device address configured");
 		set_bit(HCI_QUIRK_INVALID_BDADDR, &hdev->quirks);
 	}
 
@@ -2365,7 +2353,7 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 	case 0x0c:	/* WsP */
 		snprintf(fwname, sizeof(fwname), "intel/ibt-%u-%u.sfi",
 			 le16_to_cpu(ver.hw_variant),
-			 le16_to_cpu(params->dev_revid));
+			 le16_to_cpu(params.dev_revid));
 		break;
 	case 0x11:	/* JfP */
 	case 0x12:	/* ThP */
@@ -2383,7 +2371,6 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 	if (err < 0) {
 		BT_ERR("%s: Failed to load Intel firmware file (%d)",
 		       hdev->name, err);
-		kfree_skb(skb);
 		return err;
 	}
 
@@ -2397,7 +2384,7 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 	case 0x0c:	/* WsP */
 		snprintf(fwname, sizeof(fwname), "intel/ibt-%u-%u.ddc",
 			 le16_to_cpu(ver.hw_variant),
-			 le16_to_cpu(params->dev_revid));
+			 le16_to_cpu(params.dev_revid));
 		break;
 	case 0x11:	/* JfP */
 	case 0x12:	/* ThP */
@@ -2411,8 +2398,6 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 		return -EINVAL;
 	}
 
-	kfree_skb(skb);
-
 	if (fw->size < 644) {
 		BT_ERR("%s: Invalid size of firmware file (%zu)",
 		       hdev->name, fw->size);
@@ -2422,69 +2407,15 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 
 	set_bit(BTUSB_DOWNLOADING, &data->flags);
 
-	/* Start the firmware download transaction with the Init fragment
-	 * represented by the 128 bytes of CSS header.
-	 */
-	err = btintel_secure_send(hdev, 0x00, 128, fw->data);
+	/* Start firmware downloading and get boot parameter */
+	err = btintel_download_firmware(hdev, fw, &boot_param);
 	if (err < 0) {
-		BT_ERR("%s: Failed to send firmware header (%d)",
-		       hdev->name, err);
-		goto done;
-	}
-
-	/* Send the 256 bytes of public key information from the firmware
-	 * as the PKey fragment.
-	 */
-	err = btintel_secure_send(hdev, 0x03, 256, fw->data + 128);
-	if (err < 0) {
-		BT_ERR("%s: Failed to send firmware public key (%d)",
-		       hdev->name, err);
-		goto done;
-	}
-
-	/* Send the 256 bytes of signature information from the firmware
-	 * as the Sign fragment.
-	 */
-	err = btintel_secure_send(hdev, 0x02, 256, fw->data + 388);
-	if (err < 0) {
-		BT_ERR("%s: Failed to send firmware signature (%d)",
-		       hdev->name, err);
-		goto done;
-	}
-
-	fw_ptr = fw->data + 644;
-	frag_len = 0;
-
-	while (fw_ptr - fw->data < fw->size) {
-		struct hci_command_hdr *cmd = (void *)(fw_ptr + frag_len);
-
-		frag_len += sizeof(*cmd) + cmd->plen;
-
-		/* The parameter length of the secure send command requires
-		 * a 4 byte alignment. It happens so that the firmware file
-		 * contains proper Intel_NOP commands to align the fragments
-		 * as needed.
-		 *
-		 * Send set of commands with 4 byte alignment from the
-		 * firmware data buffer as a single Data fragement.
+		/* When FW download fails, send Intel Reset to retry
+		 * FW download.
 		 */
-		if (!(frag_len % 4)) {
-			err = btintel_secure_send(hdev, 0x01, frag_len, fw_ptr);
-			if (err < 0) {
-				BT_ERR("%s: Failed to send firmware data (%d)",
-				       hdev->name, err);
-				/* When FW download fails during FW data stage,
-				 * send Intel Reset to retry FW download.
-				 */
-				btintel_retry_fw_download(hdev);
-				goto done;
-			}
-
-			fw_ptr += frag_len;
-			frag_len = 0;
-		}
+		btintel_reset_to_bootloader(hdev);
+		goto done;
 	}
-
 	set_bit(BTUSB_FIRMWARE_LOADED, &data->flags);
 
 	BT_INFO("%s: Waiting for firmware download to complete", hdev->name);
@@ -2511,6 +2442,7 @@ static int btusb_setup_intel_new(struct hci_dev *hdev)
 	if (err) {
 		BT_ERR("%s: Firmware loading timeout", hdev->name);
 		err = -ETIMEDOUT;
+		btintel_reset_to_bootloader(hdev);
 		goto done;
 	}
 
@@ -2545,12 +2477,12 @@ done:
 
 	set_bit(BTUSB_BOOTING, &data->flags);
 
-	skb = __hci_cmd_sync(hdev, 0xfc01, sizeof(reset_param), reset_param,
-			     HCI_INIT_TIMEOUT);
-	if (IS_ERR(skb))
-		return PTR_ERR(skb);
-
-	kfree_skb(skb);
+	err = btintel_send_intel_reset(hdev, boot_param);
+	if (err) {
+		bt_dev_err(hdev, "Intel Soft Reset failed (%d)", err);
+		btintel_reset_to_bootloader(hdev);
+		return err;
+	}
 
 	/* The bootloader will not indicate when the device is ready. This
 	 * is done by the operational firmware sending bootup notification.
@@ -2571,7 +2503,8 @@ done:
 	}
 
 	if (err) {
-		BT_ERR("%s: Device boot timeout", hdev->name);
+		bt_dev_err(hdev, "Device boot timeout");
+		btintel_reset_to_bootloader(hdev);
 		return -ETIMEDOUT;
 	}
 
@@ -2591,6 +2524,18 @@ done:
 	 */
 	btintel_load_ddc_config(hdev, fwname);
 
+	/* As the Intel bluetooth controller has now booted in operational
+	 * mode, re-program the URBs for BULK IN endpoint
+	 */
+	if (test_bit(BTUSB_BULK_RUNNING, &data->flags)) {
+		err = btusb_submit_bulk_urb(hdev, GFP_NOIO);
+		if (err < 0) {
+			clear_bit(BTUSB_BULK_RUNNING, &data->flags);
+			return err;
+		}
+		btusb_submit_bulk_urb(hdev, GFP_NOIO);
+	}
+
 	/* Read the Intel supported features and if new exception formats
 	 * supported, need to load the additional DDC config to enable.
 	 */
@@ -2606,6 +2551,7 @@ done:
 
 	btintel_version_info(hdev, &ver);
 
+finish:
 	/* All Intel controllers that support the Microsoft vendor
 	 * extension are using 0xFC1E for VsMsftOpCode.
 	 */
@@ -2623,26 +2569,6 @@ done:
 	 * and thus no need to fail the setup.
 	 */
 	btintel_set_event_mask(hdev, false);
-
-	/* As the Intel bluetooth controller has now booted in operational
-	 * mode, re-program the URBs for BULK IN endpoint
-	 */
-	if (test_bit(BTUSB_BULK_RUNNING, &data->flags)) {
-		err = btusb_submit_bulk_urb(hdev, GFP_NOIO);
-		if (err < 0) {
-			clear_bit(BTUSB_BULK_RUNNING, &data->flags);
-			return err;
-		}
-		btusb_submit_bulk_urb(hdev, GFP_NOIO);
-	}
-
-	/* Read the Intel version information after loading the FW  */
-	err = btintel_read_version(hdev, &ver);
-	if (err)
-		return err;
-
-	btintel_version_info(hdev, &ver);
-	bt_dev_info(hdev, "Setup complete");
 
 	return 0;
 }
@@ -3336,6 +3262,14 @@ static int btusb_probe(struct usb_interface *intf,
 	hdev->notify = btusb_notify;
 	hdev->prevent_wake = btusb_prevent_wake;
 
+	if (id->driver_info & BTUSB_AMP) {
+		/* AMP controllers do not support SCO packets */
+		data->isoc = NULL;
+	} else {
+		/* Interface orders are hardcoded in the specification */
+		data->isoc = usb_ifnum_to_if(data->udev, ifnum_base + 1);
+	}
+
 #ifdef CONFIG_PM
 	err = btusb_config_oob_wake(hdev);
 	if (err)
@@ -3404,6 +3338,10 @@ static int btusb_probe(struct usb_interface *intf,
 		hdev->hw_error = btintel_hw_error;
 		hdev->set_diag = btintel_set_diag;
 		hdev->set_bdaddr = btintel_set_bdaddr;
+
+		if (btusb_find_altsetting(data, 6))
+			hdev->wbs_pkt_len = hci_packet_size_usb_alt[6];
+
 #ifdef CONFIG_BT_EVE_HACKS
 		/* HCI_QUIRK_STRICT_DUPLICATE_FILTER is removed due to the
 		 * conflict of intention within BlueZ kernel.
@@ -3449,16 +3387,13 @@ static int btusb_probe(struct usb_interface *intf,
 		 * Explicitly request a device reset on resume.
 		 */
 		set_bit(BTUSB_RESET_RESUME, &data->flags);
+		if (btusb_find_altsetting(data, 1)) {
+			set_bit(BTUSB_USE_ALT1_FOR_WBS, &data->flags);
+			hdev->wbs_pkt_len = hci_packet_size_usb_alt[1];
+		} else
+			bt_dev_err(hdev, "Device does not support ALT setting 1");
 	}
 #endif
-
-	if (id->driver_info & BTUSB_AMP) {
-		/* AMP controllers do not support SCO packets */
-		data->isoc = NULL;
-	} else {
-		/* Interface orders are hardcoded in the specification */
-		data->isoc = usb_ifnum_to_if(data->udev, ifnum_base + 1);
-	}
 
 	if (!reset)
 		set_bit(HCI_QUIRK_RESET_ON_CLOSE, &hdev->quirks);
