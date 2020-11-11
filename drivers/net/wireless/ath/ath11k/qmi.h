@@ -140,6 +140,7 @@ struct ath11k_qmi {
 #define QMI_IPQ8074_FW_MEM_MODE				0xFF
 #define HOST_DDR_REGION_TYPE				0x1
 #define BDF_MEM_REGION_TYPE				0x2
+#define M3_DUMP_REGION_TYPE				0x3
 #define CALDB_MEM_REGION_TYPE				0x4
 
 struct qmi_wlanfw_host_cap_req_msg_v01 {
