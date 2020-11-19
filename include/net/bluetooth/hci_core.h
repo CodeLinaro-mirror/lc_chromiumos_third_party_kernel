@@ -394,9 +394,6 @@ struct hci_dev {
 	unsigned int	le_cnt;
 	unsigned int	timeout_cnt;
 
-	unsigned int	count_adv_change_in_progress;
-	unsigned int	count_scan_change_in_progress;
-
 	unsigned int	acl_mtu;
 	unsigned int	sco_mtu;
 	unsigned int	le_mtu;
