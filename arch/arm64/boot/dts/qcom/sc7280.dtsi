@@ -6,6 +6,8 @@
  */
 
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/clock/qcom,gcc-sc7280.h>
 
 / {
 	interrupt-parent = <&intc>;
@@ -14,6 +16,20 @@
 	#size-cells = <2>;
 
 	chosen { };
+
+	clocks {
+		xo_board: xo-board {
+			compatible = "fixed-clock";
+			clock-frequency = <76800000>;
+			#clock-cells = <0>;
+		};
+
+		sleep_clk: sleep-clk {
+			compatible = "fixed-clock";
+			clock-frequency = <32000>;
+			#clock-cells = <0>;
+		};
+	};
 
 	cpus {
 		#address-cells = <2>;
@@ -224,6 +240,21 @@
 				reg = <0 0x17c2d000 0 0x1000>;
 				status = "disabled";
 			};
+		};
+
+		/* dummy clock controller nodes, to be removed later */
+		gcc: clock-controller@100000 {
+			compatible = "qcom,dummycc";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+			clock-output-names = "gcc_clocks";
+		};
+
+		rpmhcc: qcom,rpmhcc {
+			compatible = "qcom,dummycc";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+			clock-output-names = "rpmhcc_clocks";
 		};
 	};
 
