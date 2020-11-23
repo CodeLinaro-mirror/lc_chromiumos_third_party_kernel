@@ -4,6 +4,7 @@
  *
  */
 
+#include <linux/bitfield.h>
 #include <linux/bitmap.h>
 #include <linux/bitops.h>
 #include <linux/device.h>
@@ -35,6 +36,10 @@
 
 #define CACHE_LINE_SIZE_SHIFT         6
 
+#define LLCC_COMMON_HW_INFO           0x00030000
+#define LLCC_MAJOR_VERSION_SHIFT      24
+#define LLCC_MAJOR_VERSION_MASK       GENMASK(31, LLCC_MAJOR_VERSION_SHIFT)
+
 #define LLCC_COMMON_STATUS0           0x0003000c
 #define LLCC_LB_CNT_MASK              GENMASK(31, 28)
 #define LLCC_LB_CNT_SHIFT             28
@@ -47,6 +52,7 @@
 
 #define LLCC_TRP_SCID_DIS_CAP_ALLOC   0x21f00
 #define LLCC_TRP_PCB_ACT              0x21f04
+#define LLCC_TRP_WRSC_EN              0x21f20
 
 #define BANK_OFFSET_STRIDE	      0x80000
 
@@ -73,6 +79,7 @@
  *               then the ways assigned to this client are not flushed on power
  *               collapse.
  * @activate_on_init: Activate the slice immediately after it is programmed
+ * @write_scid_en: Enables write cache support for a given scid
  */
 struct llcc_slice_config {
 	u32 usecase_id;
@@ -87,6 +94,7 @@ struct llcc_slice_config {
 	bool dis_cap_alloc;
 	bool retain_on_pc;
 	bool activate_on_init;
+	bool write_scid_en;
 };
 
 struct qcom_llcc_config {
@@ -350,6 +358,7 @@ static int _qcom_llcc_cfg_program(const struct llcc_slice_config *config,
 	u32 attr1_val;
 	u32 attr0_val;
 	u32 max_cap_cacheline;
+	u32 wren = 0;
 	struct llcc_slice_desc desc;
 
 	attr1_val = config->cache_mode;
@@ -397,6 +406,13 @@ static int _qcom_llcc_cfg_program(const struct llcc_slice_config *config,
 		retain_pc = config->retain_on_pc << config->slice_id;
 		ret = regmap_write(drv_data->bcast_regmap,
 				LLCC_TRP_PCB_ACT, retain_pc);
+		if (ret)
+			return ret;
+	}
+
+	if (drv_data->major_version == 2) {
+		wren |= config->write_scid_en << config->slice_id;
+		ret = regmap_write(drv_data->bcast_regmap, LLCC_TRP_WRSC_EN, wren);
 		if (ret)
 			return ret;
 	}
@@ -464,6 +480,7 @@ static int qcom_llcc_probe(struct platform_device *pdev)
 	const struct qcom_llcc_config *cfg;
 	const struct llcc_slice_config *llcc_cfg;
 	u32 sz;
+	u32 version;
 
 	drv_data = devm_kzalloc(dev, sizeof(*drv_data), GFP_KERNEL);
 	if (!drv_data) {
@@ -483,6 +500,12 @@ static int qcom_llcc_probe(struct platform_device *pdev)
 		ret = PTR_ERR(drv_data->bcast_regmap);
 		goto err;
 	}
+
+	ret = regmap_read(drv_data->bcast_regmap, LLCC_COMMON_HW_INFO, &version);
+	if (ret)
+		goto err;
+
+	drv_data->major_version = FIELD_GET(LLCC_MAJOR_VERSION_MASK, version);
 
 	ret = regmap_read(drv_data->regmap, LLCC_COMMON_STATUS0,
 						&num_banks);
