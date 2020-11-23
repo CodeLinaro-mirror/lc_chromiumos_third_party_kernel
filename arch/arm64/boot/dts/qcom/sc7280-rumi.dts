@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * sc7280 IDP board device tree source
+ *
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ */
+
+/dts-v1/;
+
+#include "sc7280.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. SC7280 RUMI platform";
+	compatible = "qcom,sc7280-rumi";
+
+};
