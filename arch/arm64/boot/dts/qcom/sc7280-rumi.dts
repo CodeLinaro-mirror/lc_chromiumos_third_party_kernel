@@ -13,4 +13,35 @@
 	model = "Qualcomm Technologies, Inc. SC7280 RUMI platform";
 	compatible = "qcom,sc7280-rumi";
 
+	aliases {
+		serial0 = &uart5;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+};
+
+&qupv3_id_0 {
+	status = "okay";
+};
+
+&uart5 {
+	status = "okay";
+};
+
+/* PINCTRL - additions to nodes defined in sc7280.dtsi */
+
+&qup_uart5_default {
+	pinconf-tx {
+		pins = "gpio46";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	pinconf-rx {
+		pins = "gpio47";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
 };
