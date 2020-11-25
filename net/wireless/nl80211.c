@@ -4520,6 +4520,9 @@ static int nl80211_send_station(struct sk_buff *msg, u32 cmd, u32 portid,
 	PUT_SINFO(PEER_PM, peer_pm, u32);
 	PUT_SINFO(NONPEER_PM, nonpeer_pm, u32);
 
+	if (sinfo->filled & BIT(NL80211_STA_INFO_TX_RTS_RETRIES))
+		PUT_SINFO(TX_RTS_RETRIES, tx_rts_retries, u32);
+
 	if (sinfo->filled & BIT(NL80211_STA_INFO_BSS_PARAM)) {
 		bss_param = nla_nest_start(msg, NL80211_STA_INFO_BSS_PARAM);
 		if (!bss_param)

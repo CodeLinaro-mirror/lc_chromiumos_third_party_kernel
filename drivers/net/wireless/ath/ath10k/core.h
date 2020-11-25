@@ -419,11 +419,22 @@ enum ath10k_counter_type {
 	ATH10K_COUNTER_TYPE_MAX,
 };
 
+enum ath10k_stats_retry_type {
+	ATH10K_STATS_DATA_RETRY,
+	ATH10K_STATS_RTS_RETRY,
+};
+
+enum ath10k_peer_stats_version {
+	ATH10K_HTT_T2H_PEER_STATS_V1 = 1,
+	ATH10K_HTT_T2H_PEER_STATS_V2,
+};
+
 enum ath10k_stats_type {
 	ATH10K_STATS_TYPE_SUCC,
 	ATH10K_STATS_TYPE_FAIL,
 	ATH10K_STATS_TYPE_RETRY,
 	ATH10K_STATS_TYPE_AMPDU,
+	ATH10K_STATS_TYPE_RTS_RETRY,
 	ATH10K_STATS_TYPE_MAX,
 };
 
@@ -464,6 +475,7 @@ struct ath10k_sta {
 	struct ieee80211_tx_info tx_info;
 	u32 last_tx_bitrate;
 	u32 tx_retry_count;
+	u32 tx_rts_retry_count;
 
 	struct work_struct update_wk;
 	u64 rx_duration;
@@ -485,6 +497,7 @@ struct ath10k_sta {
 	u8 sta_kickout;
 	unsigned long sta_kickout_timeout;
 	u32 pkt_status[HTT_TX_COMPL_STATES_MAX];
+	enum ath10k_peer_stats_version version;
 };
 
 #define ATH10K_VDEV_SETUP_TIMEOUT_HZ	(5 * HZ)

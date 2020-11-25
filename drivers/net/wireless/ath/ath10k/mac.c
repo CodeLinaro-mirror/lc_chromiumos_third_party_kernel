@@ -8499,6 +8499,11 @@ static void ath10k_sta_statistics(struct ieee80211_hw *hw,
 
 	sinfo->tx_retries = arsta->tx_retry_count;
 	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_RETRIES);
+
+	if (arsta->tx_rts_retry_count) {
+		sinfo->tx_rts_retries = arsta->tx_rts_retry_count;
+		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_RTS_RETRIES);
+	}
 }
 
 static int ath10k_mac_op_set_tid_config(struct ieee80211_hw *hw,

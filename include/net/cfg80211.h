@@ -1256,6 +1256,7 @@ struct station_info {
 	u32 rx_packets;
 	u32 tx_packets;
 	u32 tx_retries;
+	u32 tx_rts_retries;
 	u32 tx_failed;
 	u32 rx_dropped_misc;
 	struct sta_bss_parameters bss_param;

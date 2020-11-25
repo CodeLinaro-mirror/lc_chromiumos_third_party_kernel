@@ -167,6 +167,7 @@ enum qca9377_chip_id_rev {
 #define ATH10K_HW_BW_MASK				GENMASK(4, 3)
 #define ATH10K_HW_GI_MASK				GENMASK(5, 5)
 #define ATH10K_HW_SKIPPED_RATE_CTRL_MASK		GENMASK(6, 6)
+#define ATH10K_HW_RETRY_TYPE				GENMASK(7, 7)
 #define ATH10K_HW_WCN3990_BW_BIT_MASK			GENMASK(5, 3)
 #define ATH10K_HW_WCN3990_GI_MASK			GENMASK(6, 6)
 #define ATH10K_HW_WCN3990_SKIPPED_RATE_CTRL_MASK	GENMASK(7, 7)
@@ -636,6 +637,7 @@ struct ath10k_hw_ops {
 	int (*get_bw)(u8 flags);
 	int (*get_gi)(u8 flags);
 	int (*get_skipped_rate_ctrl)(u8 flags);
+	int (*get_retry_type)(u8 flags);
 };
 
 extern const struct ath10k_hw_ops qca988x_ops;
@@ -693,6 +695,14 @@ ath10k_get_skipped_rate_ctrl(struct ath10k_hw_params *hw, u8 flags)
 {
 	if (hw->hw_ops->get_skipped_rate_ctrl)
 		return hw->hw_ops->get_skipped_rate_ctrl(flags);
+	return 0;
+}
+
+static inline int
+ath10k_get_retry_type(struct ath10k_hw_params *hw, u8 flags)
+{
+	if (hw->hw_ops->get_retry_type)
+		return hw->hw_ops->get_retry_type(flags);
 	return 0;
 }
 

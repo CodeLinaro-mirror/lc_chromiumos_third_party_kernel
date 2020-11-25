@@ -668,7 +668,8 @@ static ssize_t ath10k_dbg_sta_dump_tx_stats(struct file *file,
 	struct ath10k *ar = arsta->arvif->ar;
 	struct ath10k_htt_data_stats *stats;
 	const char *str_name[ATH10K_STATS_TYPE_MAX] = {"succ", "fail",
-						       "retry", "ampdu"};
+						       "retry", "ampdu",
+						       "rts_retry"};
 	const char *str[ATH10K_COUNTER_TYPE_MAX] = {"bytes", "pkts"};
 	int len = 0, i, j, k, retval = 0;
 	const int size = 16 * 4096;
@@ -691,6 +692,10 @@ static ssize_t ath10k_dbg_sta_dump_tx_stats(struct file *file,
 	}
 
 	for (k = 0; k < ATH10K_STATS_TYPE_MAX; k++) {
+		if (k == ATH10K_STATS_TYPE_RTS_RETRY &&
+		    arsta->version != ATH10K_HTT_T2H_PEER_STATS_V2)
+			continue;
+
 		for (j = 0; j < ATH10K_COUNTER_TYPE_MAX; j++) {
 			stats = &arsta->tx_stats->stats[k];
 			len += scnprintf(buf + len, size - len, "%s_%s:\n",

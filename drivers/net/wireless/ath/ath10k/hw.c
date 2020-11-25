@@ -1155,11 +1155,17 @@ static int ath10k_hw_skipped_rate_ctrl(u8 flags)
 	return FIELD_GET(ATH10K_HW_SKIPPED_RATE_CTRL_MASK, flags);
 }
 
+static int ath10k_hw_retry_type(u8 flags)
+{
+	return FIELD_GET(ATH10K_HW_RETRY_TYPE, flags);
+}
+
 const struct ath10k_hw_ops qca988x_ops = {
 	.set_coverage_class = ath10k_hw_qca988x_set_coverage_class,
 	.get_bw = ath10k_hw_bw,
 	.get_gi = ath10k_hw_gi,
 	.get_skipped_rate_ctrl = ath10k_hw_skipped_rate_ctrl,
+	.get_retry_type = ath10k_hw_retry_type,
 };
 
 static int ath10k_qca99x0_rx_desc_get_l3_pad_bytes(struct htt_rx_desc *rxd)
@@ -1174,6 +1180,7 @@ const struct ath10k_hw_ops qca99x0_ops = {
 	.get_bw = ath10k_hw_bw,
 	.get_gi = ath10k_hw_gi,
 	.get_skipped_rate_ctrl = ath10k_hw_skipped_rate_ctrl,
+	.get_retry_type = ath10k_hw_retry_type,
 };
 
 const struct ath10k_hw_ops qca6174_ops = {
