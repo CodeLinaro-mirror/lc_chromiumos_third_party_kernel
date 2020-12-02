@@ -88,7 +88,9 @@ static int cam_mem_util_map_cpu_va(struct dma_buf *dmabuf,
 	return 0;
 
 fail:
+#if 0
 	dma_buf_end_cpu_access(dmabuf, DMA_BIDIRECTIONAL);
+#endif
 	return rc;
 }
 static int cam_mem_util_unmap_cpu_va(struct dma_buf *dmabuf,
@@ -241,11 +243,13 @@ int cam_mem_get_cpu_buf(int32_t buf_handle, uintptr_t *vaddr_ptr, size_t *len)
 			rc = -EINVAL;
 			goto end;
 		}
+#if 0
 		rc = dma_buf_begin_cpu_access(dmabuf, DMA_BIDIRECTIONAL);
 		if (rc) {
 			CAM_ERR(CAM_MEM, "dma begin access failed rc=%d", rc);
 			goto end;
 		}
+#endif
 	} else {
 		CAM_ERR(CAM_MEM, "Invalid kmdvaddr");
 		rc = -EINVAL;
@@ -297,9 +301,11 @@ int cam_mem_put_cpu_buf(int32_t buf_handle)
 
 	if ((tbl.bufq[idx].flags & CAM_MEM_FLAG_KMD_ACCESS) &&
 		(tbl.bufq[idx].kmdvaddr)) {
+#if 0
 		rc = dma_buf_end_cpu_access(dmabuf, DMA_BIDIRECTIONAL);
 		if (rc)
 			CAM_ERR(CAM_MEM, "dma begin access failed rc=%d", rc);
+#endif
 	} else {
 		CAM_ERR(CAM_MEM, "Invalid buf flag");
 		rc = -EINVAL;
@@ -362,7 +368,7 @@ int cam_mem_mgr_cache_ops(struct cam_mem_cache_ops_cmd *cmd)
 		CAM_DBG(CAM_MEM, "BUF is not cached");
 		goto end;
 	}
-
+#if 0
 	rc = dma_buf_begin_cpu_access(tbl.bufq[idx].dma_buf,
 		(cmd->mem_cache_ops == CAM_MEM_CLEAN_INV_CACHE) ?
 		DMA_BIDIRECTIONAL : DMA_TO_DEVICE);
@@ -377,7 +383,7 @@ int cam_mem_mgr_cache_ops(struct cam_mem_cache_ops_cmd *cmd)
 		CAM_ERR(CAM_MEM, "dma end access failed rc=%d", rc);
 		goto end;
 	}
-
+#endif
 end:
 	mutex_unlock(&tbl.bufq[idx].q_lock);
 	return rc;

@@ -15,6 +15,7 @@
 #define _CAM_NODE_H_
 
 #include <linux/kref.h>
+#include <media/v4l2-subdev.h>
 #include "cam_context.h"
 #include "cam_hw_mgr_intf.h"
 #include "cam_req_mgr_interface.h"
@@ -57,11 +58,12 @@ struct cam_node {
  *
  * @brief:       Handle ioctl commands
  *
- * @node:                  Node handle
+ * @sd:                    subdev device node
  * @cmd:                   IOCTL command
+ * @arg:                   IOCTL arguments
  *
  */
-int cam_node_handle_ioctl(struct cam_node *node, struct cam_control *cmd);
+int cam_node_handle_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg);
 
 /**
  * cam_node_deinit()

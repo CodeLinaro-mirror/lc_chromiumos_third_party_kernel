@@ -16,6 +16,26 @@
 #include "cam_sensor_soc.h"
 #include "cam_sensor_core.h"
 
+static int cam_sensor_querycap(struct v4l2_subdev *sd, void *arg)
+{
+	struct v4l2_capability *cap = (struct v4l2_capability *)arg;
+
+	CAM_DBG(CAM_SENSOR, "Query device capabilities");
+
+	if (!cap) {
+		CAM_ERR(CAM_SENSOR, "Invalid argument(s)");
+		return -EINVAL;
+	}
+
+	strscpy(cap->driver, "qcom-camera-sensor", sizeof(cap->driver));
+	strscpy(cap->card, "Qualcomm sensor driver", sizeof(cap->card));
+	strscpy(cap->bus_info, "platform:qcom,sensor", sizeof(cap->bus_info));
+	cap->device_caps = V4L2_CAP_DEVICE_CAPS;
+	cap->capabilities = cap->device_caps;
+
+	return 0;
+}
+
 static long cam_sensor_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
 {
@@ -24,6 +44,11 @@ static long cam_sensor_subdev_ioctl(struct v4l2_subdev *sd,
 		v4l2_get_subdevdata(sd);
 
 	switch (cmd) {
+	case VIDIOC_QUERYCAP:
+		rc = cam_sensor_querycap(sd, arg);
+		if (rc)
+			CAM_ERR(CAM_SENSOR, "V4L2 Query capability failed");
+		break;
 	case VIDIOC_CAM_CONTROL:
 		rc = cam_sensor_driver_cmd(s_ctrl, arg);
 		break;
@@ -68,6 +93,7 @@ static long cam_sensor_init_subdev_do_ioctl(struct v4l2_subdev *sd,
 	}
 
 	switch (cmd) {
+	case VIDIOC_QUERYCAP:
 	case VIDIOC_CAM_CONTROL:
 		rc = cam_sensor_subdev_ioctl(sd, cmd, &cmd_data);
 		if (rc < 0)

@@ -252,6 +252,26 @@ static int32_t cam_ir_led_config(struct cam_ir_led_ctrl *ictrl,
 	return rc;
 }
 
+static int cam_ir_led_querycap(struct v4l2_subdev *sd, void *arg)
+{
+	struct v4l2_capability *cap = (struct v4l2_capability *)arg;
+
+	CAM_DBG(CAM_IR_LED, "Query device capabilities");
+
+	if (!cap) {
+		CAM_ERR(CAM_IR_LED, "Invalid argument(s)");
+		return -EINVAL;
+	}
+
+	strscpy(cap->driver, "qcom-camera-ir-led", sizeof(cap->driver));
+	strscpy(cap->card, "Qualcomm IR-LED driver", sizeof(cap->card));
+	strscpy(cap->bus_info, "platform:qcom,ir_led", sizeof(cap->bus_info));
+	cap->device_caps = V4L2_CAP_DEVICE_CAPS;
+	cap->capabilities = cap->device_caps;
+
+	return 0;
+}
+
 static int32_t cam_ir_led_driver_cmd(struct cam_ir_led_ctrl *ictrl,
 		void *arg, struct cam_ir_led_private_soc *soc_private)
 {
@@ -412,6 +432,11 @@ static long cam_ir_led_subdev_ioctl(struct v4l2_subdev *sd,
 	soc_private = ictrl->soc_info.soc_private;
 
 	switch (cmd) {
+	case VIDIOC_QUERYCAP:
+		rc = cam_ir_led_querycap(sd, arg);
+		if (rc)
+			CAM_ERR(CAM_IR_LED, "V4L2 Query capability failed");
+		break;
 	case VIDIOC_CAM_CONTROL:
 		rc = cam_ir_led_driver_cmd(ictrl, arg,
 			soc_private);
@@ -442,6 +467,7 @@ static long cam_ir_led_subdev_do_ioctl(struct v4l2_subdev *sd,
 	}
 
 	switch (cmd) {
+	case VIDIOC_QUERYCAP:
 	case VIDIOC_CAM_CONTROL:
 		rc = cam_ir_led_subdev_ioctl(sd, cmd, &cmd_data);
 		if (rc)

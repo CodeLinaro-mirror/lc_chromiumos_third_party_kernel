@@ -112,6 +112,19 @@ struct cam_cpas_client {
 };
 
 /**
+ * struct cam_cpas_bus_bw_map : Bus bandwidth mapping information
+ *
+ * @rpmh_level:	Enumerated RPMH regulator vote level
+ * @level_name: Vote level symbolic name "suspend", "nominal" etc
+ * @index:	Offset into bandwidth table
+ */
+struct cam_cpas_bus_bw_map {
+	enum cam_vote_level rpmh_level;
+	char *level_name;
+	unsigned short int index;
+};
+
+/**
  * struct cam_cpas_bus_client : Bus client information
  *
  * @dyn_vote: Whether dynamic voting enabled
@@ -128,7 +141,7 @@ struct cam_cpas_bus_client {
 	struct mutex lock;
 	bool valid;
 	char name[32];
-	unsigned int *bw_tbl;
+	const struct cam_cpas_bus_bw_map *bw_tbl;
 	size_t bw_tbl_size;
 	struct icc_path *path;
 };

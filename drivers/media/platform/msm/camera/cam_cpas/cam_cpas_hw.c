@@ -26,14 +26,80 @@
 static uint cam_min_camnoc_ib_bw;
 module_param(cam_min_camnoc_ib_bw, uint, 0644);
 
-static unsigned int cam_ahb_bw_tbl[] = {
-	0,
-	76500,
-	76500,
-	150000,
-	150000,
-	300000,
-	300000,
+#define RPMH_REGULATOR_LEVEL_OFF	(0)
+#define RPMH_REGULATOR_LEVEL_RETENTION	RPMH_REGULATOR_LEVEL_OFF
+#define RPMH_REGULATOR_LEVEL_MIN_SVS	(1)
+#define RPMH_REGULATOR_LEVEL_LOW_SVS	RPMH_REGULATOR_LEVEL_MIN_SVS
+#define RPMH_REGULATOR_LEVEL_SVS	RPMH_REGULATOR_LEVEL_MIN_SVS
+#define RPMH_REGULATOR_LEVEL_SVS_L1	RPMH_REGULATOR_LEVEL_MIN_SVS
+#define RPMH_REGULATOR_LEVEL_NOM	(2)
+#define RPMH_REGULATOR_LEVEL_NOM_L1	RPMH_REGULATOR_LEVEL_NOM
+#define RPMH_REGULATOR_LEVEL_NOM_L2	RPMH_REGULATOR_LEVEL_NOM
+#define RPMH_REGULATOR_LEVEL_TURBO	(3)
+#define RPMH_REGULATOR_LEVEL_TURBO_L1	RPMH_REGULATOR_LEVEL_TURBO
+
+static const unsigned int ahb_bus_bw_kbps_tbl[] =
+{
+	0, 89500, 125000, 250000
+};
+
+static const struct cam_cpas_bus_bw_map ahb_bus_map[] =
+{
+	{
+		.rpmh_level	= CAM_SUSPEND_VOTE,
+		.level_name	= "suspend",
+		.index		= RPMH_REGULATOR_LEVEL_OFF,
+	},
+	{
+		.rpmh_level	= CAM_SUSPEND_VOTE,
+		.level_name	= "suspend",
+		.index		= RPMH_REGULATOR_LEVEL_RETENTION,
+	},
+	{
+		.rpmh_level	= CAM_MINSVS_VOTE,
+		.level_name	= "lowsvs",
+		.index		= RPMH_REGULATOR_LEVEL_MIN_SVS,
+	},
+	{
+		.rpmh_level	= CAM_LOWSVS_VOTE,
+		.level_name	= "lowsvs",
+		.index		= RPMH_REGULATOR_LEVEL_LOW_SVS,
+	},
+	{
+		.rpmh_level	= CAM_SVS_VOTE,
+		.level_name	= "svs",
+		.index		= RPMH_REGULATOR_LEVEL_SVS,
+	},
+	{
+		.rpmh_level	= CAM_SVSL1_VOTE,
+		.level_name	= "svs_l1",
+		.index		= RPMH_REGULATOR_LEVEL_SVS_L1,
+	},
+	{
+		.rpmh_level	= CAM_SVSL1_VOTE,
+		.level_name	= "nominal",
+		.index		= RPMH_REGULATOR_LEVEL_NOM,
+	},
+	{
+		.rpmh_level	= CAM_SVSL1_VOTE,
+		.level_name	= "nominal",
+		.index		= RPMH_REGULATOR_LEVEL_NOM_L1,
+	},
+	{
+		.rpmh_level	= CAM_NOMINAL_VOTE,
+		.level_name	= "nominal",
+		.index		= RPMH_REGULATOR_LEVEL_NOM_L2,
+	},
+	{
+		.rpmh_level	= CAM_TURBO_VOTE,
+		.level_name	= "turbo",
+		.index		= RPMH_REGULATOR_LEVEL_TURBO,
+	},
+	{
+		.rpmh_level	= CAM_TURBO_VOTE,
+		.level_name	= "turbo",
+		.index		= RPMH_REGULATOR_LEVEL_TURBO_L1,
+	},
 };
 
 int cam_cpas_util_reg_update(struct cam_hw_info *cpas_hw,
@@ -73,6 +139,9 @@ int cam_cpas_util_reg_update(struct cam_hw_info *cpas_hw,
 static int _cpas_vote_bus_level(struct cam_cpas_bus_client *bus_client,
 				unsigned int level)
 {
+	u8 tbl_idx;
+	u32 peak_bw, aver_bw = 0;
+
 	if (!bus_client->valid || (bus_client->dyn_vote == true)) {
 		CAM_ERR(CAM_CPAS, "Invalid params %d %d", bus_client->valid,
 			bus_client->dyn_vote);
@@ -84,9 +153,18 @@ static int _cpas_vote_bus_level(struct cam_cpas_bus_client *bus_client,
 		return -EINVAL;
 	}
 
-	CAM_DBG(CAM_CPAS, "Bus client=[%s] index[%d]", bus_client->name, level);
+	/* Get the index corresponding to defined level */
+	tbl_idx = bus_client->bw_tbl[level].index;
+	/* Get the relevant bandwidth */
+	peak_bw = ahb_bus_bw_kbps_tbl[tbl_idx];
+	if (tbl_idx > 0 && tbl_idx < bus_client->bw_tbl_size) {
+		aver_bw = (ahb_bus_bw_kbps_tbl[tbl_idx - 1] + peak_bw) >> 1;
+	}
 
-	return icc_set_bw(bus_client->path, 0, bus_client->bw_tbl[level]);
+	CAM_DBG(CAM_CPAS, "Client:%s RPMH level:%d, Aver BW:%ld Peak BW:%ld",
+		 bus_client->name, level, aver_bw, peak_bw);
+
+	return icc_set_bw(bus_client->path, aver_bw, peak_bw);
 }
 
 static int _cpas_vote_bus_bw(
@@ -138,7 +216,7 @@ static int _cpas_vote_bus_bw(
 static int cam_cpas_util_register_bus_client(
 	struct cam_hw_soc_info *soc_info, struct device_node *dev_node,
 	struct cam_cpas_bus_client *bus_client, const char *path_name,
-	unsigned int *bw_tbl, size_t bw_tbl_size)
+	const struct cam_cpas_bus_bw_map *bw_tbl, size_t bw_tbl_size)
 {
 	bus_client->path = of_icc_get(soc_info->dev, path_name);
 	if (IS_ERR_OR_NULL(bus_client->path)) {
@@ -952,15 +1030,16 @@ static int cam_cpas_hw_start(void *hw_priv, void *start_args,
 	if (rc)
 		goto done;
 
-	CAM_INFO(CAM_CPAS,
-		"AXI client=[%d][%s][%d] comp[%llu], comp_ab[%llu], uncomp[%llu]",
-		client_indx, cpas_client->data.identifier,
-		cpas_client->data.cell_index, axi_vote->compressed_bw,
-		axi_vote->compressed_bw_ab, axi_vote->uncompressed_bw);
 	rc = cam_cpas_util_apply_client_axi_vote(cpas_hw,
 		cpas_client, axi_vote);
 	if (rc)
 		goto done;
+
+	CAM_DBG(CAM_CPAS,
+		"AXI client=[%d][%s][%d] comp:%llu, comp_ab:%llu, uncomp:%llu",
+		client_indx, cpas_client->data.identifier,
+		cpas_client->data.cell_index, axi_vote->compressed_bw,
+		axi_vote->compressed_bw_ab, axi_vote->uncompressed_bw);
 
 	if (cpas_core->streamon_clients == 0) {
 		atomic_set(&cpas_core->irq_count, 1);
@@ -1579,7 +1658,7 @@ int cam_cpas_hw_probe(struct platform_device *pdev,
 	rc = cam_cpas_util_register_bus_client(&cpas_hw->soc_info,
 		cpas_hw->soc_info.pdev->dev.of_node,
 		&cpas_core->ahb_bus_client, "cam_ahb",
-		cam_ahb_bw_tbl, ARRAY_SIZE(cam_ahb_bw_tbl));
+		ahb_bus_map, ARRAY_SIZE(ahb_bus_map));
 	if (rc) {
 		CAM_WARN(CAM_CPAS, "Cannot setup AHB");
 		goto client_cleanup;

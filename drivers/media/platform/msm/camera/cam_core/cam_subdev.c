@@ -51,25 +51,20 @@ static long cam_subdev_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 	void *arg)
 {
 	long rc;
-	struct cam_node *node =
-		(struct cam_node *) v4l2_get_subdevdata(sd);
 
-	if (!node || node->state == CAM_NODE_STATE_UNINIT) {
-		rc = -EINVAL;
-		goto end;
-	}
+	if (!sd || !arg)
+		return -EINVAL;
 
 	switch (cmd) {
+	case VIDIOC_QUERYCAP:
 	case VIDIOC_CAM_CONTROL:
-		rc = cam_node_handle_ioctl(node,
-			(struct cam_control *) arg);
+		rc = cam_node_handle_ioctl(sd, cmd, arg);
 		break;
 	default:
-		CAM_ERR(CAM_CORE, "Invalid command %d for %s", cmd,
-			node->name);
+		CAM_ERR(CAM_CORE, "Invalid command %d for %s", cmd, sd->name);
 		rc = -EINVAL;
 	}
-end:
+
 	return rc;
 }
 

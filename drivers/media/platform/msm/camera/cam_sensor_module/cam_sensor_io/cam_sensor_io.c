@@ -20,13 +20,14 @@ int32_t camera_io_dev_poll(struct camera_io_master *io_master_info,
 	enum camera_sensor_i2c_type data_type,
 	uint32_t delay_ms)
 {
+#if defined(CONFIG_QTI_PHY_IO)
 	int16_t mask = data_mask & 0xFF;
-
+#endif
 	if (!io_master_info) {
 		CAM_ERR(CAM_SENSOR, "Invalid Args");
 		return -EINVAL;
 	}
-
+#if defined(CONFIG_QTI_PHY_IO)
 	if (io_master_info->master_type == CCI_MASTER) {
 		return cam_cci_i2c_poll(io_master_info->cci_client,
 			addr, data, mask, data_type, addr_type, delay_ms);
@@ -39,6 +40,8 @@ int32_t camera_io_dev_poll(struct camera_io_master *io_master_info,
 			io_master_info->master_type);
 		return -EINVAL;
 	}
+#endif
+	return 0;
 }
 
 int32_t camera_io_dev_read(struct camera_io_master *io_master_info,
@@ -50,7 +53,7 @@ int32_t camera_io_dev_read(struct camera_io_master *io_master_info,
 		CAM_ERR(CAM_SENSOR, "Invalid Args");
 		return -EINVAL;
 	}
-
+#if defined(CONFIG_QTI_PHY_IO)
 	if (io_master_info->master_type == CCI_MASTER) {
 		return cam_cci_i2c_read(io_master_info->cci_client,
 			addr, data, addr_type, data_type);
@@ -65,6 +68,7 @@ int32_t camera_io_dev_read(struct camera_io_master *io_master_info,
 			io_master_info->master_type);
 		return -EINVAL;
 	}
+#endif
 	return 0;
 }
 
@@ -73,6 +77,7 @@ int32_t camera_io_dev_read_seq(struct camera_io_master *io_master_info,
 	enum camera_sensor_i2c_type addr_type,
 	enum camera_sensor_i2c_type data_type, int32_t num_bytes)
 {
+#if defined(CONFIG_QTI_PHY_IO)
 	if (io_master_info->master_type == CCI_MASTER) {
 		return cam_camera_cci_i2c_read_seq(io_master_info->cci_client,
 			addr, data, addr_type, data_type, num_bytes);
@@ -87,6 +92,7 @@ int32_t camera_io_dev_read_seq(struct camera_io_master *io_master_info,
 			io_master_info->master_type);
 		return -EINVAL;
 	}
+#endif
 	return 0;
 }
 
@@ -104,7 +110,7 @@ int32_t camera_io_dev_write(struct camera_io_master *io_master_info,
 		CAM_ERR(CAM_SENSOR, "Invalid Register Settings");
 		return -EINVAL;
 	}
-
+#if defined(CONFIG_QTI_PHY_IO)
 	if (io_master_info->master_type == CCI_MASTER) {
 		return cam_cci_i2c_write_table(io_master_info,
 			write_setting);
@@ -119,6 +125,8 @@ int32_t camera_io_dev_write(struct camera_io_master *io_master_info,
 			io_master_info->master_type);
 		return -EINVAL;
 	}
+#endif
+	return 0;
 }
 
 int32_t camera_io_dev_write_continuous(struct camera_io_master *io_master_info,
@@ -136,7 +144,7 @@ int32_t camera_io_dev_write_continuous(struct camera_io_master *io_master_info,
 		CAM_ERR(CAM_SENSOR, "Invalid Register Settings");
 		return -EINVAL;
 	}
-
+#if defined(CONFIG_QTI_PHY_IO)
 	if (io_master_info->master_type == CCI_MASTER) {
 		return cam_cci_i2c_write_continuous_table(io_master_info,
 			write_setting, cam_sensor_i2c_write_flag);
@@ -151,6 +159,8 @@ int32_t camera_io_dev_write_continuous(struct camera_io_master *io_master_info,
 			io_master_info->master_type);
 		return -EINVAL;
 	}
+#endif
+	return 0;
 }
 
 int32_t camera_io_init(struct camera_io_master *io_master_info)

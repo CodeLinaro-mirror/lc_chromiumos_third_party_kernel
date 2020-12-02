@@ -27,6 +27,26 @@ struct v4l2_subdev *cam_cci_get_subdev(int cci_dev_index)
 	return NULL;
 }
 
+static int cam_cci_querycap(struct v4l2_subdev *sd, void *arg)
+{
+	struct v4l2_capability *cap = (struct v4l2_capability *)arg;
+
+	CAM_DBG(CAM_CCI, "Query device capabilities");
+
+	if (!cap) {
+		CAM_ERR(CAM_CCI, "Invalid argument(s)");
+		return -EINVAL;
+	}
+
+	strscpy(cap->driver, "qcom-camera-cci", sizeof(cap->driver));
+	strscpy(cap->card, "Qualcomm CCI driver", sizeof(cap->card));
+	strscpy(cap->bus_info, "platform:qcom,cci", sizeof(cap->bus_info));
+	cap->device_caps = V4L2_CAP_DEVICE_CAPS;
+	cap->capabilities = cap->device_caps;
+
+	return 0;
+}
+
 static long cam_cci_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
 {
@@ -40,6 +60,11 @@ static long cam_cci_subdev_ioctl(struct v4l2_subdev *sd,
 	switch (cmd) {
 	case VIDIOC_MSM_CCI_CFG:
 		rc = cam_cci_core_cfg(sd, arg);
+		break;
+	case VIDIOC_QUERYCAP:
+		rc = cam_cci_querycap(sd, arg);
+		if (rc)
+			CAM_ERR(CAM_CCI, "V4L2 Query capability failed");
 		break;
 	case VIDIOC_CAM_CONTROL:
 		break;
@@ -55,7 +80,28 @@ static long cam_cci_subdev_ioctl(struct v4l2_subdev *sd,
 static long cam_cci_subdev_compat_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, unsigned long arg)
 {
-	return cam_cci_subdev_ioctl(sd, cmd, NULL);
+	struct cam_control cmd_data;
+	int rc;
+
+	if (copy_from_user(&cmd_data, (void __user *)arg,
+		sizeof(cmd_data))) {
+		CAM_ERR(CAM_SENSOR, "Failed to copy from user_ptr=%pK size=%zu",
+			(void __user *)arg, sizeof(cmd_data));
+		return -EFAULT;
+	}
+
+	rc = cam_cci_subdev_ioctl(sd, cmd, &cmd_data);
+	if (!rc) {
+		if (copy_to_user((void __user *)arg, &cmd_data,
+			sizeof(cmd_data))) {
+			CAM_ERR(CAM_SENSOR,
+				"Failed to copy to user_ptr=%pK size=%zu",
+				(void __user *)arg, sizeof(cmd_data));
+			rc = -EFAULT;
+		}
+	}
+
+	return rc;
 }
 #endif
 

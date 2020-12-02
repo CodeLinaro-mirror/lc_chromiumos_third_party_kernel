@@ -37,14 +37,14 @@ int32_t cam_cci_i2c_read(struct cam_sensor_cci_client *cci_client,
 	cci_ctrl.cfg.cci_i2c_read_cfg.data_type = data_type;
 	cci_ctrl.cfg.cci_i2c_read_cfg.data = buf;
 	cci_ctrl.cfg.cci_i2c_read_cfg.num_byte = data_type;
-	rc = v4l2_subdev_call(cci_client->cci_subdev,
-		core, ioctl, VIDIOC_MSM_CCI_CFG, &cci_ctrl);
+	rc = v4l2_subdev_call(cci_client->cci_subdev, core, ioctl,
+			      VIDIOC_MSM_CCI_CFG, &cci_ctrl);
 	if (rc < 0) {
 		CAM_ERR(CAM_SENSOR, "rc = %d", rc);
 		return rc;
 	}
-
 	rc = cci_ctrl.status;
+
 	if (data_type == CAMERA_SENSOR_I2C_TYPE_BYTE)
 		*data = buf[0];
 	else if (data_type == CAMERA_SENSOR_I2C_TYPE_WORD)
@@ -125,8 +125,8 @@ static int32_t cam_cci_i2c_write_table_cmd(
 	cci_ctrl.cfg.cci_i2c_write_cfg.data_type = write_setting->data_type;
 	cci_ctrl.cfg.cci_i2c_write_cfg.addr_type = write_setting->addr_type;
 	cci_ctrl.cfg.cci_i2c_write_cfg.size = write_setting->size;
-	rc = v4l2_subdev_call(client->cci_client->cci_subdev,
-		core, ioctl, VIDIOC_MSM_CCI_CFG, &cci_ctrl);
+	rc = v4l2_subdev_call(client->cci_client->cci_subdev, core, ioctl,
+			      VIDIOC_MSM_CCI_CFG, &cci_ctrl);
 	if (rc < 0) {
 		CAM_ERR(CAM_SENSOR, "Failed rc = %d", rc);
 		return rc;
@@ -140,7 +140,6 @@ static int32_t cam_cci_i2c_write_table_cmd(
 
 	return rc;
 }
-
 
 int32_t cam_cci_i2c_write_table(
 	struct camera_io_master *client,
@@ -206,6 +205,9 @@ int32_t cam_cci_i2c_poll(struct cam_sensor_cci_client *client,
 	for (i = 0; i < delay_ms; i++) {
 		rc = cam_cci_i2c_compare(client,
 			addr, data, data_mask, data_type, addr_type);
+#if defined(CONFIG_QTI_VIRT_IO)
+		rc = I2C_COMPARE_MATCH;
+#endif
 		if (!rc)
 			return rc;
 

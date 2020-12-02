@@ -8,4 +8,4 @@ ccflags-y += -I$(srctree)/drivers/media/platform/msm/camera/cam_sensor_module/ca
 ccflags-y += -I$(srctree)/drivers/media/platform/msm/camera/cam_smmu/
 ccflags-y += -I$(srctree)/drivers/media/platform/msm/camera/cam_utils
 
-obj-$(CONFIG_QTI_SENSORS) += cam_actuator_dev.o cam_actuator_core.o cam_actuator_soc.o
+obj-$(CONFIG_QTI_ACTUATOR) += cam_actuator_dev.o cam_actuator_core.o cam_actuator_soc.o

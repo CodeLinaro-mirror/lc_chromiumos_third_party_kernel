@@ -5,7 +5,6 @@
 menuconfig SPECTRA_CAMERA
 	bool "Qualcomm Technologies, Inc. Spectra Camera"
 	depends on (ARCH_QCOM)
-	depends on INTERCONNECT || !INTERCONNECT
 	depends on (MEDIA_SUPPORT && MEDIA_CONTROLLER && V4L_PLATFORM_DRIVERS)
 	select SC_CAMCC_7180
 	help
@@ -66,6 +65,7 @@ if QTI_ISP
 
 	config QTI_PPI
 		bool "Qualcomm PPI driver"
+		default y
 		depends on (QTI_ISP)
 		help
 		Support for the PPI interfaces
@@ -134,7 +134,8 @@ config QTI_CPAS
         bool "Qualcomm CPAS driver"
 	default y
 	depends on (QTI_CAMERA_SYNC && QTI_CAMERA_SMMU && QTI_CAMERA_CRM)
-	select INTERCONNECT
+	select QCOM_CLK_RPMH
+	select INTERCONNECT_QCOM_SC7180
         help
           Support for CDMx engines SW interface
 
@@ -187,33 +188,132 @@ config QTI_SENSORS
 
           To compile this driver as a module, choose M here
 
-if QTI_SENSORS
-	config QTI_CCI
-		bool "Qualcomm CCI driver"
-		default y
-		depends on (I2C && I2C_QUP)
-		help
-		  Support for the synchronous QUP based I2C interface
+	if QTI_SENSORS
+		config QTI_EEPROM
+			bool "Camera EEPROM driver"
+			default y
+			help
+			  Support for the Camera eeprom driver
 
-		  To compile this driver as a module, choose M here
+			  To compile this driver as a module, choose M here
 
-	config QTI_I2C
-		bool "Qualcomm I2C driver"
-		default y
-		depends on (I2C && I2C_QCOM_GENI)
-		help
-		  Support for the synchronous GENI based I2C interface
+		config QTI_ACTUATOR
+			bool "Camera Actuator driver"
+			default y
+			help
+			  Support for the Camera actuator driver
 
-		  To compile this driver as a module, choose M here
+			  To compile this driver as a module, choose M here
 
-	config QTI_SPI
-		bool "Qualcomm SPI_GENI driver"
-		default n
-		depends on (SPI && (SPI_QCOM_GENI || SPI_QCOM_QSPI))
-		help
-		  Support for the GENI based Serial Peripheral Interface
+		config QTI_FLASH
+			bool "Camera FLASH driver"
+			default n
+			help
+			  Support for the Camera Flash driver
 
-		  To compile this driver as a module, choose M here
-endif
+			  To compile this driver as a module, choose M here
+
+		config QTI_IR_LED
+			bool "Camera IR Led driver"
+			default n
+			help
+			  Support for the Camera Infrared Led driver
+
+			  To compile this driver as a module, choose M here
+		choice
+			prompt "Select interface"
+			  help
+			  Select physical interface for real devices or Virtual
+			  interface and dummy devices
+
+			config QTI_PHY_IO
+				bool "I2C, CCI or SPI interface"
+				  help
+				  Use real devices attached on I2C/CCI or SPI physical interface.
+
+			config QTI_VIRT_IO
+				bool "Virtual interface"
+				  help
+				  Use Virtual interface for dummy devices.
+
+				  This driver not return data or any kind of acknowledge.
+				  It used only for testing purposes.
+
+		endchoice
+
+		if (QTI_VIRT_IO)
+			config QTI_FSENSOR_ADDR
+				hex "Front Sensor ID register"
+				range 0x0 0xFFFF
+				default "0x300b"
+				help
+				  The address of register contains the sensor id
+			config QTI_FSENSOR_DATA
+				hex "Front Sensor ID"
+				range 0x0 0xFFFF
+				default "0x5675"
+				help
+				  The value in ID register
+			if (QTI_FSENSOR_ADDR != 0)
+				config QTI_FSENSOR_ID
+					hex "Sensor Slave address"
+					range 0x0 0xFF
+					default "0x6c"
+					help
+					  The Sensor address on CCI/I2C bus
+			endif
+			config QTI_RSENSOR_ADDR
+				hex "Rear Sensor ID register"
+				range 0x0 0xFFFF
+				default "0x300b"
+				help
+				  The address of register contains the sensor id
+			config QTI_RSENSOR_DATA
+				hex "Rear Sensor ID"
+				range 0x0 0xFFFF
+				default "0x885a"
+				help
+				  The value in ID register
+			if (QTI_RSENSOR_ADDR != 0)
+				config QTI_RSENSOR_ID
+					hex "Sensor Slave address"
+					range 0x0 0xFF
+					default "0x20"
+					help
+					  The Sensor address on CCI/I2C bus
+			endif
+		endif
+
+		if (QTI_PHY_IO || QTI_VIRT_IO)
+			config QTI_CCI
+				bool "Qualcomm CCI driver"
+				default y
+				select I2C_QUP
+				help
+				  Support for the synchronous QUP based I2C interface
+
+				  To compile this driver as a module, choose M here
+
+			config QTI_I2C
+				bool "Qualcomm I2C driver"
+				default y
+				select I2C_QCOM_GENI
+				help
+				  Support for the synchronous GENI based I2C interface
+
+				  To compile this driver as a module, choose M here
+
+			config QTI_SPI
+				bool "Qualcomm SPI_GENI driver"
+				default y
+				select SPI_QCOM_QSPI
+				select SPI_QCOM_GENI
+				help
+				  Support for the GENI based Serial Peripheral Interface
+
+				  To compile this driver as a module, choose M here
+		endif
+
+	endif
 
 endif

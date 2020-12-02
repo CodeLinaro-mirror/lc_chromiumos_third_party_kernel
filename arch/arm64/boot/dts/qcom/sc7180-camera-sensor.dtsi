@@ -25,7 +25,7 @@
 	eeprom_rear: qcom,eeprom@0 {
 		cell-index = <1>;
 		compatible = "qcom,eeprom";
-		regulator-names = "cam_vio";
+		regulator-names = "cam_dummy_vio_s0";
 		rgltr-cntrl-support;
 		rgltr-min-voltage = <1800000>;
 		rgltr-max-voltage = <1800000>;
@@ -61,7 +61,7 @@
 	eeprom_front: qcom,eeprom@1 {
 		cell-index = <0>;
 		compatible = "qcom,eeprom";
-		regulator-names = "cam_vio";
+		regulator-names = "cam_dummy_vio_s1";
 		rgltr-cntrl-support;
 		rgltr-min-voltage = <1800000>;
 		rgltr-max-voltage = <1800000>;
@@ -103,7 +103,7 @@
 		sensor-position-yaw = <180>;
 		eeprom-src = <&eeprom_rear>;
 		power-domains = <&camcc TITAN_TOP_GDSC>;
-		regulator-names = "cam_vio";
+		regulator-names = "cam_dummy_vio_s0";
 		rgltr-cntrl-support;
 		rgltr-min-voltage = <1800000>;
 		rgltr-max-voltage = <1800000>;
@@ -144,7 +144,7 @@
 		sensor-position-yaw = <180>;
 		eeprom-src = <&eeprom_front>;
 		power-domains = <&camcc TITAN_TOP_GDSC>;
-		regulator-names = "cam_vio";
+		regulator-names = "cam_dummy_vio_s0";
 		rgltr-cntrl-support;
 		rgltr-min-voltage = <1800000>;
 		rgltr-max-voltage = <1800000>;

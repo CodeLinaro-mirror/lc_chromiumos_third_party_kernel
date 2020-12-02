@@ -1291,12 +1291,6 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 		return rc;
 	}
 
-	if (region_id != CAM_SMMU_REGION_SHARED &&
-	    region_id != CAM_SMMU_REGION_SHARED) {
-		CAM_ERR(CAM_SMMU, "Error: Wrong region id passed");
-		return -EINVAL;
-	}
-
 	attach = dma_buf_attach(buf, iommu_cb_set.cb_info[idx].dev);
 	if (IS_ERR_OR_NULL(attach)) {
 		rc = PTR_ERR(attach);

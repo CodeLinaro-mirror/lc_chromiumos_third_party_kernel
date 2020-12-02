@@ -285,6 +285,8 @@ static int __cam_node_handle_config_dev(struct cam_node *node,
 		return -EINVAL;
 	}
 
+	CAM_DBG(CAM_CORE, "Config node name %s dev name:%s", node->name,
+		ctx->dev_name);
 	rc = cam_context_handle_config_dev(ctx, config);
 	if (rc)
 		CAM_ERR(CAM_CORE, "Config failure for node %s", node->name);
@@ -663,20 +665,46 @@ err:
 	return rc;
 }
 
-int cam_node_handle_ioctl(struct cam_node *node, struct cam_control *cmd)
+static int cam_node_querycap(struct v4l2_subdev *sd, void *arg)
 {
+	struct v4l2_capability *cap = (struct v4l2_capability *)arg;
+
+	CAM_DBG(CAM_CCI, "Query device capabilities '%s'", sd->name);
+
+	if (!cap) {
+		CAM_ERR(CAM_CCI, "Invalid argument(s)");
+		return -EINVAL;
+	}
+
+	strscpy(cap->driver, "qcom-core-node", sizeof(cap->driver));
+	strscpy(cap->card, sd->name, strlen(sd->name));
+	strscpy(cap->bus_info, "platform:qcom,core", sizeof(cap->bus_info));
+	cap->device_caps = V4L2_CAP_DEVICE_CAPS;
+	cap->capabilities = cap->device_caps;
+
+	return 0;
+}
+
+int cam_node_handle_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+{
+	struct cam_control *ctrl;
+	struct cam_node *node;
 	int rc = 0;
 
-	if (!cmd)
+	node = v4l2_get_subdevdata(sd);
+	if (!node || node->state == CAM_NODE_STATE_UNINIT) {
 		return -EINVAL;
+	}
 
-	CAM_DBG(CAM_CORE, "handle cmd %d", cmd->op_code);
+	ctrl = arg;
 
-	switch (cmd->op_code) {
+	CAM_DBG(CAM_CORE, "handle cmd %d", ctrl->op_code);
+
+	switch (ctrl->op_code) {
 	case CAM_QUERY_CAP: {
 		struct cam_query_cap_cmd query;
 
-		if (copy_from_user(&query, u64_to_user_ptr(cmd->handle),
+		if (copy_from_user(&query, u64_to_user_ptr(ctrl->handle),
 			sizeof(query))) {
 			rc = -EFAULT;
 			break;
@@ -689,7 +717,7 @@ int cam_node_handle_ioctl(struct cam_node *node, struct cam_control *cmd)
 			break;
 		}
 
-		if (copy_to_user(u64_to_user_ptr(cmd->handle), &query,
+		if (copy_to_user(u64_to_user_ptr(ctrl->handle), &query,
 			sizeof(query)))
 			rc = -EFAULT;
 
@@ -698,7 +726,7 @@ int cam_node_handle_ioctl(struct cam_node *node, struct cam_control *cmd)
 	case CAM_ACQUIRE_DEV: {
 		struct cam_acquire_dev_cmd acquire;
 
-		if (copy_from_user(&acquire, u64_to_user_ptr(cmd->handle),
+		if (copy_from_user(&acquire, u64_to_user_ptr(ctrl->handle),
 			sizeof(acquire))) {
 			rc = -EFAULT;
 			break;
@@ -709,7 +737,7 @@ int cam_node_handle_ioctl(struct cam_node *node, struct cam_control *cmd)
 				rc);
 			break;
 		}
-		if (copy_to_user(u64_to_user_ptr(cmd->handle), &acquire,
+		if (copy_to_user(u64_to_user_ptr(ctrl->handle), &acquire,
 			sizeof(acquire)))
 			rc = -EFAULT;
 		break;
@@ -719,7 +747,7 @@ int cam_node_handle_ioctl(struct cam_node *node, struct cam_control *cmd)
 		void *acquire_ptr = NULL;
 		size_t acquire_size;
 
-		if (copy_from_user(&api_version, (void __user *)cmd->handle,
+		if (copy_from_user(&api_version, (void __user *)ctrl->handle,
 			sizeof(api_version))) {
 			rc = -EFAULT;
 			break;
@@ -741,7 +769,7 @@ int cam_node_handle_ioctl(struct cam_node *node, struct cam_control *cmd)
 			break;
 		}
 
-		if (copy_from_user(acquire_ptr, (void __user *)cmd->handle,
+		if (copy_from_user(acquire_ptr, (void __user *)ctrl->handle,
 			acquire_size)) {
 			rc = -EFAULT;
 			goto acquire_kfree;
@@ -757,7 +785,7 @@ int cam_node_handle_ioctl(struct cam_node *node, struct cam_control *cmd)
 			CAM_INFO(CAM_CORE, "Acquire HW successful");
 		}
 
-		if (copy_to_user((void __user *)cmd->handle, acquire_ptr,
+		if (copy_to_user((void __user *)ctrl->handle, acquire_ptr,
 			acquire_size))
 			rc = -EFAULT;
 
@@ -768,7 +796,7 @@ acquire_kfree:
 	case CAM_START_DEV: {
 		struct cam_start_stop_dev_cmd start;
 
-		if (copy_from_user(&start, u64_to_user_ptr(cmd->handle),
+		if (copy_from_user(&start, u64_to_user_ptr(ctrl->handle),
 			sizeof(start)))
 			rc = -EFAULT;
 		else {
@@ -782,7 +810,7 @@ acquire_kfree:
 	case CAM_STOP_DEV: {
 		struct cam_start_stop_dev_cmd stop;
 
-		if (copy_from_user(&stop, u64_to_user_ptr(cmd->handle),
+		if (copy_from_user(&stop, u64_to_user_ptr(ctrl->handle),
 			sizeof(stop)))
 			rc = -EFAULT;
 		else {
@@ -796,7 +824,7 @@ acquire_kfree:
 	case CAM_CONFIG_DEV: {
 		struct cam_config_dev_cmd config;
 
-		if (copy_from_user(&config, u64_to_user_ptr(cmd->handle),
+		if (copy_from_user(&config, u64_to_user_ptr(ctrl->handle),
 			sizeof(config)))
 			rc = -EFAULT;
 		else {
@@ -810,7 +838,7 @@ acquire_kfree:
 	case CAM_RELEASE_DEV: {
 		struct cam_release_dev_cmd release;
 
-		if (copy_from_user(&release, u64_to_user_ptr(cmd->handle),
+		if (copy_from_user(&release, u64_to_user_ptr(ctrl->handle),
 			sizeof(release)))
 			rc = -EFAULT;
 		else {
@@ -826,7 +854,7 @@ acquire_kfree:
 		size_t release_size;
 		void *release_ptr = NULL;
 
-		if (copy_from_user(&api_version, (void __user *)cmd->handle,
+		if (copy_from_user(&api_version, (void __user *)ctrl->handle,
 			sizeof(api_version))) {
 			rc = -EFAULT;
 			break;
@@ -848,7 +876,7 @@ acquire_kfree:
 			break;
 		}
 
-		if (copy_from_user(release_ptr, (void __user *)cmd->handle,
+		if (copy_from_user(release_ptr, (void __user *)ctrl->handle,
 			release_size)) {
 			rc = -EFAULT;
 			goto release_kfree;
@@ -870,7 +898,7 @@ release_kfree:
 	case CAM_FLUSH_REQ: {
 		struct cam_flush_dev_cmd flush;
 
-		if (copy_from_user(&flush, u64_to_user_ptr(cmd->handle),
+		if (copy_from_user(&flush, u64_to_user_ptr(ctrl->handle),
 			sizeof(flush)))
 			rc = -EFAULT;
 		else {
@@ -884,7 +912,7 @@ release_kfree:
 	case CAM_DUMP_REQ: {
 		struct cam_dump_req_cmd dump;
 
-		if (copy_from_user(&dump, u64_to_user_ptr(cmd->handle),
+		if (copy_from_user(&dump, u64_to_user_ptr(ctrl->handle),
 			sizeof(dump))) {
 			rc = -EFAULT;
 		} else {
@@ -893,7 +921,7 @@ release_kfree:
 				CAM_ERR(CAM_CORE,
 				    "Dump device %s failed(rc = %d) ",
 				    node->name, rc);
-			} else if (copy_to_user(u64_to_user_ptr(cmd->handle),
+			} else if (copy_to_user(u64_to_user_ptr(ctrl->handle),
 				&dump, sizeof(dump))) {
 				CAM_ERR(CAM_CORE,
 				    "Dump device %s copy_to_user fail",
@@ -903,9 +931,16 @@ release_kfree:
 		}
 		break;
 	}
+
 	default:
-		CAM_ERR(CAM_CORE, "Unknown op code %d", cmd->op_code);
-		rc = -EINVAL;
+		if (cmd == VIDIOC_QUERYCAP) {
+			rc = cam_node_querycap(sd, arg);
+			if (rc)
+				CAM_ERR(CAM_CORE, "V4L2 Query capability fail");
+		} else {
+			CAM_ERR(CAM_CORE, "Unknown op code %d", ctrl->op_code);
+			rc = -EINVAL;
+		}
 	}
 
 	return rc;

@@ -7,4 +7,4 @@ ccflags-y += -I$(srctree)/drivers/media/platform/msm/camera/cam_sensor_module/ca
 ccflags-y += -I$(srctree)/drivers/media/platform/msm/camera/cam_req_mgr
 ccflags-y += -I$(srctree)/drivers/media/platform/msm/camera/cam_smmu/
 
-obj-$(CONFIG_QTI_SENSORS) += cam_ir_led_dev.o cam_ir_led_soc.o cam_ir_led_core.o
+obj-$(CONFIG_QTI_IR_LED) += cam_ir_led_dev.o cam_ir_led_soc.o cam_ir_led_core.o

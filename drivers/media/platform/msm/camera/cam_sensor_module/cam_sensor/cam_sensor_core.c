@@ -20,6 +20,14 @@
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
 
+#if defined(CONFIG_QTI_VIRT_IO)
+u16 fsensor_addr = CONFIG_QTI_FSENSOR_ADDR;
+u32 fsensor_data = CONFIG_QTI_FSENSOR_DATA;
+u8  fsensor_id   = CONFIG_QTI_FSENSOR_ID;
+u16 rsensor_addr = CONFIG_QTI_RSENSOR_ADDR;
+u32 rsensor_data = CONFIG_QTI_RSENSOR_DATA;
+u8  rsensor_id   = CONFIG_QTI_RSENSOR_ID;
+#endif
 
 static void cam_sensor_update_req_mgr(
 	struct cam_sensor_ctrl_t *s_ctrl,
@@ -630,12 +638,27 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 			 slave_info);
 		return -EINVAL;
 	}
-
+#if defined(CONFIG_QTI_PHY_IO)
 	rc = camera_io_dev_read(
 		&(s_ctrl->io_master_info),
 		slave_info->sensor_id_reg_addr,
 		&chipid, CAMERA_SENSOR_I2C_TYPE_WORD,
 		CAMERA_SENSOR_I2C_TYPE_WORD);
+#else
+	if (fsensor_addr && fsensor_addr == slave_info->sensor_id_reg_addr &&
+	    fsensor_id == slave_info->sensor_slave_addr) {
+		chipid = fsensor_data;
+		CAM_DBG(CAM_SENSOR, "Setup front dummy sensor ID: 0x%x",
+			chipid);
+	}
+
+	if (rsensor_addr && rsensor_addr == slave_info->sensor_id_reg_addr &&
+	    rsensor_id == slave_info->sensor_slave_addr) {
+		chipid = rsensor_data;
+		CAM_DBG(CAM_SENSOR, "Setup rear dummy sensor ID: 0x%x",
+			chipid);
+	}
+#endif
 
 	CAM_INFO(CAM_SENSOR, "read id: 0x%x expected id 0x%x", chipid,
 		 slave_info->sensor_id);
@@ -655,6 +678,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	struct cam_control *cmd = (struct cam_control *)arg;
 	struct cam_sensor_power_ctrl_t *power_info =
 		&s_ctrl->sensordata->power_info;
+
 	if (!s_ctrl || !arg) {
 		CAM_ERR(CAM_SENSOR, "s_ctrl is NULL");
 		return -EINVAL;
@@ -668,6 +692,9 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		}
 	}
 
+	CAM_DBG(CAM_SENSOR, "%s[%d] op_code:0x%x", __func__, __LINE__,
+		cmd->op_code);
+
 	mutex_lock(&(s_ctrl->cam_sensor_mutex));
 	switch (cmd->op_code) {
 	case CAM_SENSOR_PROBE_CMD: {
@@ -677,8 +704,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 			break;
 		}
 
-		if (cmd->handle_type ==
-			CAM_HANDLE_MEM_HANDLE) {
+		if (cmd->handle_type == CAM_HANDLE_MEM_HANDLE) {
 			rc = cam_handle_mem_ptr(cmd->handle, s_ctrl);
 			if (rc < 0) {
 				CAM_ERR(CAM_SENSOR, "Get Buffer Handle Failed");
@@ -731,7 +757,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		}
 
 		CAM_INFO(CAM_SENSOR,
-			"Probe success,slot:%d,slave_addr:0x%x,sensor_id:0x%x",
+			"Probe done, slot:%d, slave_addr:0x%x, sensor_id:0x%x",
 			s_ctrl->soc_info.index,
 			s_ctrl->sensordata->slave_info.sensor_slave_addr,
 			s_ctrl->sensordata->slave_info.sensor_id);
@@ -804,8 +830,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 
 		s_ctrl->sensor_state = CAM_SENSOR_ACQUIRE;
 		s_ctrl->last_flush_req = 0;
-		CAM_INFO(CAM_SENSOR,
-			"CAM_ACQUIRE_DEV Success, sensor_id:0x%x,sensor_slave_addr:0x%x",
+		CAM_DBG(CAM_SENSOR,
+			"Success, sensor_id:0x%x,sensor_slave_addr:0x%x",
 			s_ctrl->sensordata->slave_info.sensor_id,
 			s_ctrl->sensordata->slave_info.sensor_slave_addr);
 	}
@@ -854,8 +880,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->bridge_intf.session_hdl = -1;
 
 		s_ctrl->sensor_state = CAM_SENSOR_INIT;
-		CAM_INFO(CAM_SENSOR,
-			"CAM_RELEASE_DEV Success, sensor_id:0x%x,sensor_slave_addr:0x%x",
+		CAM_DBG(CAM_SENSOR,
+			"Success, sensor_id:0x%x,sensor_slave_addr:0x%x",
 			s_ctrl->sensordata->slave_info.sensor_id,
 			s_ctrl->sensordata->slave_info.sensor_slave_addr);
 		s_ctrl->streamon_count = 0;
@@ -865,8 +891,11 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		break;
 	case CAM_QUERY_CAP: {
 		struct  cam_sensor_query_cap sensor_cap;
-
+		memset(&sensor_cap, 0, sizeof(sensor_cap));
 		cam_sensor_query_cap(s_ctrl, &sensor_cap);
+		sensor_cap.pos_roll	  = 90;
+		sensor_cap.pos_pitch	  = 0;
+		sensor_cap.pos_yaw	  = 180;
 		if (copy_to_user(u64_to_user_ptr(cmd->handle),
 			&sensor_cap, sizeof(struct  cam_sensor_query_cap))) {
 			CAM_ERR(CAM_SENSOR, "Failed Copy to User");
@@ -1081,6 +1110,7 @@ int cam_sensor_power(struct v4l2_subdev *sd, int on)
 	return 0;
 }
 
+#if defined(CONFIG_QTI_PHY_IO)
 int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
 {
 	int rc;
@@ -1163,6 +1193,16 @@ int cam_sensor_power_down(struct cam_sensor_ctrl_t *s_ctrl)
 
 	return rc;
 }
+#else
+int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
+{
+	return 0;
+}
+int cam_sensor_power_down(struct cam_sensor_ctrl_t *s_ctrl)
+{
+	return 0;
+}
+#endif
 
 int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 	int64_t req_id, enum cam_sensor_packet_opcodes opcode)

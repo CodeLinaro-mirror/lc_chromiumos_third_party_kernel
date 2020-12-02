@@ -17,6 +17,26 @@
 #include "cam_csiphy_core.h"
 #include <media/cam_sensor.h>
 
+static int cam_csiphy_querycap(struct v4l2_subdev *sd, void *arg)
+{
+	struct v4l2_capability *cap = (struct v4l2_capability *)arg;
+
+	CAM_DBG(CAM_CSIPHY, "Query device capabilities");
+
+	if (!cap) {
+		CAM_ERR(CAM_CSIPHY, "Invalid argument(s)");
+		return -EINVAL;
+	}
+
+	strscpy(cap->driver, "qcom-camera-csiphy", sizeof(cap->driver));
+	strscpy(cap->card, "Qualcomm CSIPHY driver", sizeof(cap->card));
+	strscpy(cap->bus_info, "platform:qcom,csiphy", sizeof(cap->bus_info));
+	cap->device_caps = V4L2_CAP_DEVICE_CAPS;
+	cap->capabilities = cap->device_caps;
+
+	return 0;
+}
+
 static long cam_csiphy_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
 {
@@ -24,6 +44,11 @@ static long cam_csiphy_subdev_ioctl(struct v4l2_subdev *sd,
 	int rc = 0;
 
 	switch (cmd) {
+	case VIDIOC_QUERYCAP:
+		rc = cam_csiphy_querycap(sd, arg);
+		if (rc)
+			CAM_ERR(CAM_CSIPHY, "V4L2 Query capability failed");
+		break;
 	case VIDIOC_CAM_CONTROL:
 		rc = cam_csiphy_core_cfg(csiphy_dev, arg);
 		if (rc != 0) {
@@ -75,6 +100,7 @@ static long cam_csiphy_subdev_compat_ioctl(struct v4l2_subdev *sd,
 	 * Passed to the api in core.c
 	 */
 	switch (cmd) {
+	case VIDIOC_QUERYCAP:
 	case VIDIOC_CAM_CONTROL:
 		rc = cam_csiphy_subdev_ioctl(sd, cmd, &cmd_data);
 		break;

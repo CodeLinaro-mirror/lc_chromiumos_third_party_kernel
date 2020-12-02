@@ -301,21 +301,43 @@ int cam_cpas_register_client(
 }
 EXPORT_SYMBOL(cam_cpas_register_client);
 
-int cam_cpas_subdev_cmd(struct cam_cpas_intf *cpas_intf,
-	struct cam_control *cmd)
+static int cam_cpas_querycap(struct v4l2_subdev *sd, void *arg)
 {
-	int rc = 0;
+	struct v4l2_capability *cap = (struct v4l2_capability *)arg;
 
-	if (!cmd) {
-		CAM_ERR(CAM_CPAS, "Invalid input cmd");
+	CAM_DBG(CAM_CCI, "Query device capabilities '%s'", sd->name);
+
+	if (!cap) {
+		CAM_ERR(CAM_CCI, "Invalid argument(s)");
 		return -EINVAL;
 	}
 
-	switch (cmd->op_code) {
+	strscpy(cap->driver, "qcom-cpas-node", sizeof(cap->driver));
+	strscpy(cap->card, sd->name, strlen(sd->name));
+	strscpy(cap->bus_info, "platform:qcom,cpas", sizeof(cap->bus_info));
+	cap->device_caps = V4L2_CAP_DEVICE_CAPS;
+	cap->capabilities = cap->device_caps;
+
+	return 0;
+}
+
+static int cam_cpas_subdev_cmd(struct v4l2_subdev *sd, unsigned int cmd,
+			       void *arg)
+{
+	struct cam_cpas_intf *cpas_intf = v4l2_get_subdevdata(sd);
+	struct cam_control *ctrl = arg;
+	int rc = 0;
+
+	if (!cpas_intf) {
+		CAM_ERR(CAM_CPAS, "Invalid input ctrl");
+		return -EINVAL;
+	}
+
+	switch (ctrl->op_code) {
 	case CAM_QUERY_CAP: {
 		struct cam_cpas_query_cap query;
 
-		rc = copy_from_user(&query, u64_to_user_ptr(cmd->handle),
+		rc = copy_from_user(&query, u64_to_user_ptr(ctrl->handle),
 			sizeof(query));
 		if (rc) {
 			CAM_ERR(CAM_CPAS, "Failed in copy from user, rc=%d",
@@ -329,7 +351,7 @@ int cam_cpas_subdev_cmd(struct cam_cpas_intf *cpas_intf,
 		if (rc)
 			break;
 
-		rc = copy_to_user(u64_to_user_ptr(cmd->handle), &query,
+		rc = copy_to_user(u64_to_user_ptr(ctrl->handle), &query,
 			sizeof(query));
 		if (rc)
 			CAM_ERR(CAM_CPAS, "Failed in copy to user, rc=%d", rc);
@@ -339,9 +361,15 @@ int cam_cpas_subdev_cmd(struct cam_cpas_intf *cpas_intf,
 	case CAM_SD_SHUTDOWN:
 		break;
 	default:
-		CAM_ERR(CAM_CPAS, "Unknown op code %d for CPAS", cmd->op_code);
-		rc = -EINVAL;
-		break;
+		if (cmd == VIDIOC_QUERYCAP) {
+			rc = cam_cpas_querycap(sd, arg);
+			if (rc)
+				CAM_ERR(CAM_CORE, "V4L2 Query capability fail");
+		} else {
+			CAM_ERR(CAM_CPAS, "Unknown op code %d for CPAS",
+				ctrl->op_code);
+			rc = -EINVAL;
+		}
 	}
 
 	return rc;
@@ -387,16 +415,16 @@ static long cam_cpas_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
 {
 	int32_t rc;
-	struct cam_cpas_intf *cpas_intf = v4l2_get_subdevdata(sd);
 
-	if (!cpas_intf) {
-		CAM_ERR(CAM_CPAS, "CPAS not initialized");
-		return -ENODEV;
+	if (!sd || !arg) {
+		CAM_ERR(CAM_CPAS, "Invalid argiment(s)");
+		return -EINVAL;
 	}
 
 	switch (cmd) {
+	case VIDIOC_QUERYCAP:
 	case VIDIOC_CAM_CONTROL:
-		rc = cam_cpas_subdev_cmd(cpas_intf, (struct cam_control *) arg);
+		rc = cam_cpas_subdev_cmd(sd, cmd, arg);
 		break;
 	default:
 		CAM_ERR(CAM_CPAS, "Invalid command %d for CPAS!", cmd);
@@ -427,16 +455,7 @@ static long cam_cpas_subdev_compat_ioctl(struct v4l2_subdev *sd,
 		return -EFAULT;
 	}
 
-	switch (cmd) {
-	case VIDIOC_CAM_CONTROL:
-		rc = cam_cpas_subdev_cmd(cpas_intf, &cmd_data);
-		break;
-	default:
-		CAM_ERR(CAM_CPAS, "Invalid command %d for CPAS!", cmd);
-		rc = -EINVAL;
-		break;
-	}
-
+	rc = cam_cpas_subdev_ioctl(sd, cmd, &cmd_data);
 	if (!rc) {
 		if (copy_to_user((void __user *)arg, &cmd_data,
 			sizeof(cmd_data))) {
