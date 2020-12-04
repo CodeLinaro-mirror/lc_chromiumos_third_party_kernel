@@ -241,6 +241,7 @@ struct sfe_ipv4_connection_match {
 	/*
 	 * QoS information
 	 */
+	u32 mark;			/* mark for outgoing packet */
 	u32 priority;
 	u32 dscp;
 
@@ -291,7 +292,6 @@ struct sfe_ipv4_connection {
 					/* Pointer to the next entry in the list of all connections */
 	struct sfe_ipv4_connection *all_connections_prev;
 					/* Pointer to the previous entry in the list of all connections */
-	u32 mark;			/* mark for outgoing packet */
 	u32 debug_read_seq;		/* sequence number for debug dump */
 	int flow_accel_delay_pkts;	/* Number of packets that must be
 					 * received until flow is eligible for
@@ -886,15 +886,19 @@ void sfe_ipv4_mark_rule(struct sfe_connection_mark *mark)
 					      mark->src_ip.ip, mark->src_port,
 					      mark->dest_ip.ip, mark->dest_port);
 	if (c) {
-		WARN_ON((0 != c->mark) && (0 == mark->mark));
-		c->mark = mark->mark;
+		WARN_ON((c->original_match->mark != 0) &&
+			(c->reply_match->mark != 0) &&
+			(mark->mark == 0));
+		/* Apply mark identically in both flow directions. */
+		c->original_match->mark = mark->mark;
+		c->reply_match->mark = mark->mark;
 	}
 	spin_unlock_bh(&si->lock);
 
 	if (c) {
 		DEBUG_TRACE("Matching connection found for mark, "
 			    "setting from %08x to %08x\n",
-			    c->mark, mark->mark);
+			    c->original_match->mark, mark->mark);
 	}
 }
 
@@ -1227,7 +1231,7 @@ static int sfe_ipv4_recv_udp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 		return 0;
 	}
 
-	/* If QoS policy (e.g. Priority, DSCP) has not been resolved
+	/* If QoS policy (e.g. Mark, Priority, DSCP) has not been resolved
 	 * yet for this flow direction then kick packet back up to go
 	 * through slow path.  The QoS policy will then be snooped and
 	 * applied at the POSTROUTING Netfilter hook.
@@ -1381,7 +1385,7 @@ static int sfe_ipv4_recv_udp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 	/*
 	 * Mark outgoing packet.
 	 */
-	skb->mark = cm->connection->mark;
+	skb->mark = cm->mark;
 	if (skb->mark) {
 		DEBUG_TRACE("SKB MARK is NON ZERO %x\n", skb->mark);
 	}
@@ -1649,7 +1653,7 @@ static int sfe_ipv4_recv_tcp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 
 	counter_cm = cm->counter_match;
 
-	/* If QoS policy (e.g. Priority, DSCP) has not been resolved
+	/* If QoS policy (e.g. Mark, Priority, DSCP) has not been resolved
 	 * yet for both directions then kick packet back up to go
 	 * through slow path.  The QoS policy will then be snooped and
 	 * applied at the POSTROUTING Netfilter hook.
@@ -1956,7 +1960,7 @@ static int sfe_ipv4_recv_tcp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 	/*
 	 * Mark outgoing packet
 	 */
-	skb->mark = cm->connection->mark;
+	skb->mark = cm->mark;
 	if (skb->mark) {
 		DEBUG_TRACE("SKB MARK is NON ZERO %x\n", skb->mark);
 	}
@@ -2393,6 +2397,7 @@ sfe_ipv4_update_qos_state(struct sfe_ipv4_connection *c,
 		cm = c->original_match;
 	else
 		cm = c->reply_match;
+	cm->mark = sic->mark;
 	if (sic->flags & SFE_CREATE_FLAG_REMARK_PRIORITY) {
 		cm->priority = sic->priority;
 		cm->flags |= SFE_IPV4_CONNECTION_MATCH_FLAG_PRIORITY_REMARK;
@@ -2626,7 +2631,6 @@ int sfe_ipv4_create_rule(struct sfe_connection_create *sic)
 	c->dest_port_xlate = sic->dest_port_xlate;
 	c->reply_dev = dest_dev;
 	c->reply_match = reply_cm;
-	c->mark = sic->mark;
 	c->debug_read_seq = 0;
 	c->last_sync_jiffies = get_jiffies_64();
 	c->flow_accel_delay_pkts = sic->flow_accel_delay_pkts;
@@ -2970,7 +2974,8 @@ static bool sfe_ipv4_debug_dev_read_connections_connection(struct sfe_ipv4 *si, 
 	u64 dest_rx_packets;
 	u64 dest_rx_bytes;
 	u64 last_sync_jiffies;
-	u32 mark;
+	u32 src_mark;
+	u32 dest_mark;
 	char src_priority[12];
 	char dest_priority[12];
 	char src_dscp[6];
@@ -3004,6 +3009,7 @@ static bool sfe_ipv4_debug_dev_read_connections_connection(struct sfe_ipv4 *si, 
 	src_ip_xlate = c->src_ip_xlate;
 	src_port = c->src_port;
 	src_port_xlate = c->src_port_xlate;
+	src_mark = original_cm->mark;
 	if (!(original_cm->flags &
 	      SFE_IPV4_CONNECTION_MATCH_FLAG_QOS_RESOLVED)) {
 		snprintf(src_priority, sizeof(src_priority), "-");
@@ -3033,6 +3039,7 @@ static bool sfe_ipv4_debug_dev_read_connections_connection(struct sfe_ipv4 *si, 
 	dest_ip_xlate = c->dest_ip_xlate;
 	dest_port = c->dest_port;
 	dest_port_xlate = c->dest_port_xlate;
+	dest_mark = reply_cm->mark;
 	if (!(reply_cm->flags & SFE_IPV4_CONNECTION_MATCH_FLAG_QOS_RESOLVED)) {
 		snprintf(dest_priority, sizeof(dest_priority), "-");
 		snprintf(dest_dscp, sizeof(dest_dscp), "-");
@@ -3053,7 +3060,6 @@ static bool sfe_ipv4_debug_dev_read_connections_connection(struct sfe_ipv4 *si, 
 	dest_rx_packets = reply_cm->rx_packet_count64;
 	dest_rx_bytes = reply_cm->rx_byte_count64;
 	last_sync_jiffies = get_jiffies_64() - c->last_sync_jiffies;
-	mark = c->mark;
 	flow_accel_delay_pkts = c->flow_accel_delay_pkts;
 
 	spin_unlock_bh(&si->lock);
@@ -3063,28 +3069,31 @@ static bool sfe_ipv4_debug_dev_read_connections_connection(struct sfe_ipv4 *si, 
 				"src_dev=\"%s\" "
 				"src_ip=\"%pI4\" src_ip_xlate=\"%pI4\" "
 				"src_port=\"%u\" src_port_xlate=\"%u\" "
+				"src_mark=\"0x%08x\" "
 				"src_priority=\"%s\" src_dscp=\"%s\" "
 				"src_rx_pkts=\"%llu\" src_rx_bytes=\"%llu\" "
 				"dest_dev=\"%s\" "
 				"dest_ip=\"%pI4\" dest_ip_xlate=\"%pI4\" "
 				"dest_port=\"%u\" dest_port_xlate=\"%u\" "
+				"dest_mark=\"0x%08x\" "
 				"dest_priority=\"%s\" dest_dscp=\"%s\" "
 				"dest_rx_pkts=\"%llu\" dest_rx_bytes=\"%llu\" "
 				"last_sync=\"%llu\" "
-				"mark=\"%08x\" "
 				"flow_accel_delay_pkts=\"%d\" />\n",
 				protocol,
 				src_dev->name,
 				&src_ip, &src_ip_xlate,
 				ntohs(src_port), ntohs(src_port_xlate),
+				src_mark,
 				src_priority, src_dscp,
 				src_rx_packets, src_rx_bytes,
 				dest_dev->name,
 				&dest_ip, &dest_ip_xlate,
 				ntohs(dest_port), ntohs(dest_port_xlate),
+				dest_mark,
 				dest_priority, dest_dscp,
 				dest_rx_packets, dest_rx_bytes,
-				last_sync_jiffies, mark, flow_accel_delay_pkts);
+				last_sync_jiffies, flow_accel_delay_pkts);
 
 	if (copy_to_user(buffer + *total_read, msg, CHAR_DEV_MSG_SIZE)) {
 		return false;
