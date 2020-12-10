@@ -1522,5 +1522,3 @@ ap_spi_fp: &spi10 {
 		};
 	};
 };
-
-#include "sc7180-camera.dtsi"
