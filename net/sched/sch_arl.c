@@ -1188,6 +1188,10 @@ static int gso_segment(struct sk_buff *skb, struct Qdisc *sch,
 		segs->next = NULL;
 		qdisc_skb_cb(segs)->pkt_len = segs->len;
 		len += segs->len;
+		/* Complete the latency sampling on the last segment */
+		if (unlikely(!nskb && q->params.mode == ARL_INGRESS))
+			arl_sample_latency_ingress(q, segs);
+
 		ret = qdisc_enqueue(segs, q->qdisc, to_free);
 		if (ret != NET_XMIT_SUCCESS) {
 			if (net_xmit_drop_count(ret))
@@ -1201,6 +1205,8 @@ static int gso_segment(struct sk_buff *skb, struct Qdisc *sch,
 	if (nb > 1)
 		qdisc_tree_reduce_backlog(sch, 1 - nb, prev_len - len);
 	sch->qstats.backlog += len;
+	if (q->params.mode == ARL_INGRESS)
+		q->vars.bw_est_bytes_sent += len;
 	consume_skb(skb);
 
 	return nb > 0 ? NET_XMIT_SUCCESS : NET_XMIT_DROP;
