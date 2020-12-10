@@ -704,6 +704,7 @@ static int sfe_cm_conntrack_event(struct notifier_block *this,
 	struct sfe_connection_destroy sid;
 	struct nf_conn *ct = item->ct;
 	struct nf_conntrack_tuple orig_tuple;
+	bool is_v4;
 
 	/*
 	 * If we don't have a conntrack entry then we're done.
@@ -713,11 +714,9 @@ static int sfe_cm_conntrack_event(struct notifier_block *this,
 		return NOTIFY_DONE;
 	}
 
-	/*
-	 * We're only interested in destroy events.
-	 */
-	if (unlikely(!(events & (1 << IPCT_DESTROY)))) {
-		DEBUG_TRACE("ignoring non-destroy event\n");
+	/* We're only interested in destroy and connmark events. */
+	if (unlikely(!(events & ((1 << IPCT_DESTROY) | (1 << IPCT_MARK))))) {
+		DEBUG_TRACE("ignoring non-destroy and non-mark event\n");
 		return NOTIFY_DONE;
 	}
 
@@ -747,16 +746,39 @@ static int sfe_cm_conntrack_event(struct notifier_block *this,
 	if (likely(nf_ct_l3num(ct) == AF_INET)) {
 		sid.src_ip.ip = (__be32)orig_tuple.src.u3.ip;
 		sid.dest_ip.ip = (__be32)orig_tuple.dst.u3.ip;
-
-		sfe_ipv4_destroy_rule(&sid);
+		is_v4 = true;
 	} else if (likely(nf_ct_l3num(ct) == AF_INET6)) {
 		sid.src_ip.ip6[0] = *((struct sfe_ipv6_addr *)&orig_tuple.src.u3.in6);
 		sid.dest_ip.ip6[0] = *((struct sfe_ipv6_addr *)&orig_tuple.dst.u3.in6);
-
-		sfe_ipv6_destroy_rule(&sid);
+		is_v4 = false;
 	} else {
 		DEBUG_TRACE("ignoring non-IPv4 and non-IPv6 connection\n");
+		return NOTIFY_DONE;
 	}
+
+	/* Process connmark update events. */
+	if (unlikely(events & (1 << IPCT_MARK))) {
+		struct sfe_connection_mark mark;
+
+		mark.protocol = sid.protocol;
+		mark.src_ip = sid.src_ip;
+		mark.dest_ip = sid.dest_ip;
+		mark.src_port = sid.src_port;
+		mark.dest_port = sid.dest_port;
+		mark.mark = ct->mark;
+		if (likely(is_v4))
+			sfe_ipv4_mark_rule(&mark);
+		else
+			sfe_ipv6_mark_rule(&mark);
+	}
+
+	/* We're only interested in destroy events at this point. */
+	if (unlikely(!(events & (1 << IPCT_DESTROY))))
+		return NOTIFY_DONE;
+	if (likely(is_v4))
+		sfe_ipv4_destroy_rule(&sid);
+	else
+		sfe_ipv6_destroy_rule(&sid);
 
 	return NOTIFY_DONE;
 }
