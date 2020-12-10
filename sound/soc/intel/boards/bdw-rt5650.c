@@ -5,15 +5,16 @@
  * Copyright 2019, The Chromium OS Authors.  All rights reserved.
  */
 
+#include <linux/delay.h>
+#include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <linux/gpio/consumer.h>
-#include <linux/delay.h>
 #include <sound/core.h>
-#include <sound/pcm.h>
-#include <sound/soc.h>
-#include <sound/pcm_params.h>
 #include <sound/jack.h>
+#include <sound/pcm.h>
+#include <sound/pcm_params.h>
+#include <sound/soc.h>
+#include <sound/soc-acpi.h>
 
 #include "../common/sst-dsp.h"
 #include "../haswell/sst-haswell-ipc.h"
@@ -86,27 +87,27 @@ static int broadwell_ssp0_fixup(struct snd_soc_pcm_runtime *rtd,
 			struct snd_pcm_hw_params *params)
 {
 	struct snd_interval *rate = hw_param_interval(params,
-			SNDRV_PCM_HW_PARAM_RATE);
-	struct snd_interval *channels = hw_param_interval(params,
-						SNDRV_PCM_HW_PARAM_CHANNELS);
+						      SNDRV_PCM_HW_PARAM_RATE);
+	struct snd_interval *chan = hw_param_interval(params,
+						      SNDRV_PCM_HW_PARAM_CHANNELS);
 
 	/* The ADSP will covert the FE rate to 48k, max 4-channels */
 	rate->min = rate->max = 48000;
-	channels->min = 2;
-	channels->max = 4;
+	chan->min = 2;
+	chan->max = 4;
 
 	/* set SSP0 to 24 bit */
-	snd_mask_set_format(&params->masks[SNDRV_PCM_HW_PARAM_FORMAT -
-					   SNDRV_PCM_HW_PARAM_FIRST_MASK],
-					   SNDRV_PCM_FORMAT_S24_LE);
+	snd_mask_set_format(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT),
+			    SNDRV_PCM_FORMAT_S24_LE);
+
 	return 0;
 }
 
 static int bdw_rt5650_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	int ret;
 
 	/* Workaround: set codec PLL to 19.2MHz that PLL source is
@@ -137,6 +138,7 @@ static struct snd_soc_ops bdw_rt5650_ops = {
 	.hw_params = bdw_rt5650_hw_params,
 };
 
+#if !IS_ENABLED(CONFIG_SND_SOC_SOF_BROADWELL)
 static int bdw_rt5650_rtd_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_component *component =
@@ -158,41 +160,14 @@ static int bdw_rt5650_rtd_init(struct snd_soc_pcm_runtime *rtd)
 
 	return 0;
 }
-
-static const unsigned int channels[] = {
-	2, 4,
-};
-
-static const struct snd_pcm_hw_constraint_list constraints_channels = {
-	.count = ARRAY_SIZE(channels),
-	.list = channels,
-	.mask = 0,
-};
-
-static int bdw_rt5650_fe_startup(struct snd_pcm_substream *substream)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-
-	/* Board supports stereo and quad configurations for capture */
-	if (substream->stream != SNDRV_PCM_STREAM_CAPTURE)
-		return 0;
-
-	runtime->hw.channels_max = 4;
-	return snd_pcm_hw_constraint_list(runtime, 0,
-					  SNDRV_PCM_HW_PARAM_CHANNELS,
-					  &constraints_channels);
-}
-
-static const struct snd_soc_ops bdw_rt5650_fe_ops = {
-	.startup = bdw_rt5650_fe_startup,
-};
+#endif
 
 static int bdw_rt5650_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct bdw_rt5650_priv *bdw_rt5650 =
 		snd_soc_card_get_drvdata(rtd->card);
-	struct snd_soc_component *component = rtd->codec_dai->component;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
+	struct snd_soc_component *component = codec_dai->component;
 	int ret;
 
 	/* Enable codec ASRC function for Stereo DAC/Stereo1 ADC/DMIC/I2S1.
@@ -236,24 +211,34 @@ static int bdw_rt5650_init(struct snd_soc_pcm_runtime *rtd)
 }
 
 /* broadwell digital audio interface glue - connects codec <--> CPU */
+SND_SOC_DAILINK_DEF(dummy,
+	DAILINK_COMP_ARRAY(COMP_DUMMY()));
+
+SND_SOC_DAILINK_DEF(fe,
+	DAILINK_COMP_ARRAY(COMP_CPU("System Pin")));
+
+SND_SOC_DAILINK_DEF(platform,
+	DAILINK_COMP_ARRAY(COMP_PLATFORM("haswell-pcm-audio")));
+
+SND_SOC_DAILINK_DEF(be,
+	DAILINK_COMP_ARRAY(COMP_CODEC("i2c-10EC5650:00", "rt5645-aif1")));
+
 static struct snd_soc_dai_link bdw_rt5650_dais[] = {
 	/* Front End DAI links */
 	{
 		.name = "System PCM",
 		.stream_name = "System Playback",
-		.cpu_dai_name = "System Pin",
-		.platform_name = "haswell-pcm-audio",
 		.dynamic = 1,
-		.ops = &bdw_rt5650_fe_ops,
+#if !IS_ENABLED(CONFIG_SND_SOC_SOF_BROADWELL)
 		.init = bdw_rt5650_rtd_init,
+#endif
 		.trigger = {
 			SND_SOC_DPCM_TRIGGER_POST,
 			SND_SOC_DPCM_TRIGGER_POST
 		},
-		.codec_name = "snd-soc-dummy",
-		.codec_dai_name = "snd-soc-dummy-dai",
 		.dpcm_playback = 1,
 		.dpcm_capture = 1,
+		SND_SOC_DAILINK_REG(fe, dummy, platform),
 	},
 
 	/* Back End DAI links */
@@ -261,11 +246,7 @@ static struct snd_soc_dai_link bdw_rt5650_dais[] = {
 		/* SSP0 - Codec */
 		.name = "Codec",
 		.id = 0,
-		.cpu_dai_name = "snd-soc-dummy-dai",
-		.platform_name = "snd-soc-dummy",
 		.no_pcm = 1,
-		.codec_name = "i2c-10EC5650:00",
-		.codec_dai_name = "rt5645-aif1",
 		.dai_fmt = SND_SOC_DAIFMT_DSP_B | SND_SOC_DAIFMT_NB_NF |
 			SND_SOC_DAIFMT_CBS_CFS,
 		.ignore_suspend = 1,
@@ -275,6 +256,7 @@ static struct snd_soc_dai_link bdw_rt5650_dais[] = {
 		.dpcm_playback = 1,
 		.dpcm_capture = 1,
 		.init = bdw_rt5650_init,
+		SND_SOC_DAILINK_REG(dummy, be, dummy),
 	},
 };
 
@@ -296,6 +278,8 @@ static struct snd_soc_card bdw_rt5650_card = {
 static int bdw_rt5650_probe(struct platform_device *pdev)
 {
 	struct bdw_rt5650_priv *bdw_rt5650;
+	struct snd_soc_acpi_mach *mach;
+	int ret;
 
 	bdw_rt5650_card.dev = &pdev->dev;
 
@@ -304,23 +288,25 @@ static int bdw_rt5650_probe(struct platform_device *pdev)
 		GFP_KERNEL);
 	if (!bdw_rt5650)
 		return -ENOMEM;
+
+	/* override plaform name, if required */
+	mach = pdev->dev.platform_data;
+	ret = snd_soc_fixup_dai_links_platform_name(&bdw_rt5650_card,
+						    mach->mach_params.platform);
+
+	if (ret)
+		return ret;
+
 	snd_soc_card_set_drvdata(&bdw_rt5650_card, bdw_rt5650);
 
-	return snd_soc_register_card(&bdw_rt5650_card);
-}
-
-static int bdw_rt5650_remove(struct platform_device *pdev)
-{
-	snd_soc_unregister_card(&bdw_rt5650_card);
-	return 0;
+	return devm_snd_soc_register_card(&pdev->dev, &bdw_rt5650_card);
 }
 
 static struct platform_driver bdw_rt5650_audio = {
 	.probe = bdw_rt5650_probe,
-	.remove = bdw_rt5650_remove,
 	.driver = {
 		.name = "bdw-rt5650",
-		.owner = THIS_MODULE,
+		.pm = &snd_soc_pm_ops,
 	},
 };
 

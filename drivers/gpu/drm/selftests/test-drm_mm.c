@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Test cases for the drm_mm range manager
  */
@@ -682,6 +683,8 @@ static int __igt_insert(unsigned int count, u64 size, bool replace)
 		drm_mm_for_each_node_safe(node, next, &mm)
 			drm_mm_remove_node(node);
 		DRM_MM_BUG_ON(!drm_mm_clean(&mm));
+
+		cond_resched();
 	}
 
 	ret = 0;
@@ -944,6 +947,8 @@ static int __igt_insert_range(unsigned int count, u64 size, u64 start, u64 end)
 		drm_mm_for_each_node_safe(node, next, &mm)
 			drm_mm_remove_node(node);
 		DRM_MM_BUG_ON(!drm_mm_clean(&mm));
+
+		cond_resched();
 	}
 
 	ret = 0;
@@ -1068,6 +1073,7 @@ static int igt_align(void *ignored)
 		drm_mm_for_each_node_safe(node, next, &mm)
 			drm_mm_remove_node(node);
 		DRM_MM_BUG_ON(!drm_mm_clean(&mm));
+
 		cond_resched();
 	}
 
@@ -1610,7 +1616,7 @@ static int igt_topdown(void *ignored)
 	DRM_RND_STATE(prng, random_seed);
 	const unsigned int count = 8192;
 	unsigned int size;
-	unsigned long *bitmap = NULL;
+	unsigned long *bitmap;
 	struct drm_mm mm;
 	struct drm_mm_node *nodes, *node, *next;
 	unsigned int *order, n, m, o = 0;
@@ -1626,8 +1632,7 @@ static int igt_topdown(void *ignored)
 	if (!nodes)
 		goto err;
 
-	bitmap = kzalloc(count / BITS_PER_LONG * sizeof(unsigned long),
-			 GFP_KERNEL);
+	bitmap = bitmap_zalloc(count, GFP_KERNEL);
 	if (!bitmap)
 		goto err_nodes;
 
@@ -1712,7 +1717,7 @@ out:
 	drm_mm_takedown(&mm);
 	kfree(order);
 err_bitmap:
-	kfree(bitmap);
+	bitmap_free(bitmap);
 err_nodes:
 	vfree(nodes);
 err:
@@ -1740,8 +1745,7 @@ static int igt_bottomup(void *ignored)
 	if (!nodes)
 		goto err;
 
-	bitmap = kzalloc(count / BITS_PER_LONG * sizeof(unsigned long),
-			 GFP_KERNEL);
+	bitmap = bitmap_zalloc(count, GFP_KERNEL);
 	if (!bitmap)
 		goto err_nodes;
 
@@ -1813,7 +1817,7 @@ out:
 	drm_mm_takedown(&mm);
 	kfree(order);
 err_bitmap:
-	kfree(bitmap);
+	bitmap_free(bitmap);
 err_nodes:
 	vfree(nodes);
 err:

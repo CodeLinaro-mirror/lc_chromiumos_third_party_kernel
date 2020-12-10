@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 config DRM_MEDIATEK
 	tristate "DRM Support for Mediatek SoCs"
 	depends on DRM
@@ -10,7 +11,9 @@ config DRM_MEDIATEK
 	select DRM_MIPI_DSI
 	select DRM_PANEL
 	select MEMORY
+	select MTK_MMSYS
 	select MTK_SMI
+	select VIDEOMODE_HELPERS
 	help
 	  Choose this option if you have a Mediatek SoCs.
 	  The module will be called mediatek-drm

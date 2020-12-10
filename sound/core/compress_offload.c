@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  compress_core.c - compress offload core
  *
@@ -6,21 +7,7 @@
  *		Pierre-Louis Bossart <pierre-louis.bossart@linux.intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; version 2 of the License.
- *
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *  General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *
  */
 #define FORMAT(fmt) "%s: %d: " fmt, __func__, __LINE__
 #define pr_fmt(fmt) KBUILD_MODNAME ": " FORMAT(fmt)
@@ -171,7 +158,8 @@ static int snd_compr_free(struct inode *inode, struct file *f)
 	}
 
 	data->stream.ops->free(&data->stream);
-	kfree(data->stream.runtime->buffer);
+	if (!data->stream.runtime->dma_buffer_p)
+		kfree(data->stream.runtime->buffer);
 	kfree(data->stream.runtime);
 	kfree(data);
 	return 0;
@@ -399,9 +387,9 @@ static int snd_compr_mmap(struct file *f, struct vm_area_struct *vma)
 static __poll_t snd_compr_get_poll(struct snd_compr_stream *stream)
 {
 	if (stream->direction == SND_COMPRESS_PLAYBACK)
-		return POLLOUT | POLLWRNORM;
+		return EPOLLOUT | EPOLLWRNORM;
 	else
-		return POLLIN | POLLRDNORM;
+		return EPOLLIN | EPOLLRDNORM;
 }
 
 static __poll_t snd_compr_poll(struct file *f, poll_table *wait)
@@ -412,7 +400,7 @@ static __poll_t snd_compr_poll(struct file *f, poll_table *wait)
 	__poll_t retval = 0;
 
 	if (snd_BUG_ON(!data))
-		return POLLERR;
+		return EPOLLERR;
 
 	stream = &data->stream;
 
@@ -421,7 +409,7 @@ static __poll_t snd_compr_poll(struct file *f, poll_table *wait)
 	switch (stream->runtime->state) {
 	case SNDRV_PCM_STATE_OPEN:
 	case SNDRV_PCM_STATE_XRUN:
-		retval = snd_compr_get_poll(stream) | POLLERR;
+		retval = snd_compr_get_poll(stream) | EPOLLERR;
 		goto out;
 	default:
 		break;
@@ -447,7 +435,7 @@ static __poll_t snd_compr_poll(struct file *f, poll_table *wait)
 			retval = snd_compr_get_poll(stream);
 		break;
 	default:
-		retval = snd_compr_get_poll(stream) | POLLERR;
+		retval = snd_compr_get_poll(stream) | EPOLLERR;
 		break;
 	}
 out:
@@ -500,12 +488,54 @@ out:
 }
 #endif /* !COMPR_CODEC_CAPS_OVERFLOW */
 
+int snd_compr_malloc_pages(struct snd_compr_stream *stream, size_t size)
+{
+	struct snd_dma_buffer *dmab;
+	int ret;
+
+	if (snd_BUG_ON(!(stream) || !(stream)->runtime))
+		return -EINVAL;
+	dmab = kzalloc(sizeof(*dmab), GFP_KERNEL);
+	if (!dmab)
+		return -ENOMEM;
+	dmab->dev = stream->dma_buffer.dev;
+	ret = snd_dma_alloc_pages(dmab->dev.type, dmab->dev.dev, size, dmab);
+	if (ret < 0) {
+		kfree(dmab);
+		return ret;
+	}
+
+	snd_compr_set_runtime_buffer(stream, dmab);
+	stream->runtime->dma_bytes = size;
+	return 1;
+}
+EXPORT_SYMBOL(snd_compr_malloc_pages);
+
+int snd_compr_free_pages(struct snd_compr_stream *stream)
+{
+	struct snd_compr_runtime *runtime = stream->runtime;
+
+	if (snd_BUG_ON(!(stream) || !(stream)->runtime))
+		return -EINVAL;
+	if (runtime->dma_area == NULL)
+		return 0;
+	if (runtime->dma_buffer_p != &stream->dma_buffer) {
+		/* It's a newly allocated buffer. Release it now. */
+		snd_dma_free_pages(runtime->dma_buffer_p);
+		kfree(runtime->dma_buffer_p);
+	}
+
+	snd_compr_set_runtime_buffer(stream, NULL);
+	return 0;
+}
+EXPORT_SYMBOL(snd_compr_free_pages);
+
 /* revisit this with snd_pcm_preallocate_xxx */
 static int snd_compr_allocate_buffer(struct snd_compr_stream *stream,
 		struct snd_compr_params *params)
 {
 	unsigned int buffer_size;
-	void *buffer;
+	void *buffer = NULL;
 
 	buffer_size = params->buffer.fragment_size * params->buffer.fragments;
 	if (stream->ops->copy) {
@@ -514,7 +544,18 @@ static int snd_compr_allocate_buffer(struct snd_compr_stream *stream,
 		 * the data from core
 		 */
 	} else {
-		buffer = kmalloc(buffer_size, GFP_KERNEL);
+		if (stream->runtime->dma_buffer_p) {
+
+			if (buffer_size > stream->runtime->dma_buffer_p->bytes)
+				dev_err(&stream->device->dev,
+						"Not enough DMA buffer");
+			else
+				buffer = stream->runtime->dma_buffer_p->area;
+
+		} else {
+			buffer = kmalloc(buffer_size, GFP_KERNEL);
+		}
+
 		if (!buffer)
 			return -ENOMEM;
 	}
@@ -1044,23 +1085,14 @@ static int snd_compress_proc_init(struct snd_compr *compr)
 					   compr->card->proc_root);
 	if (!entry)
 		return -ENOMEM;
-	entry->mode = S_IFDIR | S_IRUGO | S_IXUGO;
-	if (snd_info_register(entry) < 0) {
-		snd_info_free_entry(entry);
-		return -ENOMEM;
-	}
+	entry->mode = S_IFDIR | 0555;
 	compr->proc_root = entry;
 
 	entry = snd_info_create_card_entry(compr->card, "info",
 					   compr->proc_root);
-	if (entry) {
+	if (entry)
 		snd_info_set_text_ops(entry, compr,
 				      snd_compress_proc_info_read);
-		if (snd_info_register(entry) < 0) {
-			snd_info_free_entry(entry);
-			entry = NULL;
-		}
-	}
 	compr->proc_info_entry = entry;
 
 	return 0;

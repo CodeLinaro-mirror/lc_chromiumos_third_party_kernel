@@ -1,29 +1,21 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * mt2701-afe-clock-ctrl.c  --  Mediatek 2701 afe clock ctrl
  *
  * Copyright (c) 2016 MediaTek Inc.
  * Author: Garlic Tseng <garlic.tseng@mediatek.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *	   Ryder Lee <ryder.lee@mediatek.com>
  */
-
-#include <sound/soc.h>
-#include <linux/regmap.h>
-#include <linux/pm_runtime.h>
 
 #include "mt2701-afe-common.h"
 #include "mt2701-afe-clock-ctrl.h"
 
 static const char *const base_clks[] = {
+	[MT2701_INFRA_SYS_AUDIO] = "infra_sys_audio_clk",
 	[MT2701_TOP_AUD_MCLK_SRC0] = "top_audio_mux1_sel",
 	[MT2701_TOP_AUD_MCLK_SRC1] = "top_audio_mux2_sel",
+	[MT2701_TOP_AUD_A1SYS] = "top_audio_a1sys_hp",
+	[MT2701_TOP_AUD_A2SYS] = "top_audio_a2sys_hp",
 	[MT2701_AUDSYS_AFE] = "audio_afe_pd",
 	[MT2701_AUDSYS_AFE_CONN] = "audio_afe_conn_pd",
 	[MT2701_AUDSYS_A1SYS] = "audio_a1sys_pd",
@@ -44,8 +36,9 @@ int mt2701_init_clock(struct mtk_base_afe *afe)
 	}
 
 	/* Get I2S related clocks */
-	for (i = 0; i < MT2701_I2S_NUM; i++) {
+	for (i = 0; i < afe_priv->soc->i2s_num; i++) {
 		struct mt2701_i2s_path *i2s_path = &afe_priv->i2s_path[i];
+		struct clk *i2s_ck;
 		char name[13];
 
 		snprintf(name, sizeof(name), "i2s%d_src_sel", i);
@@ -70,18 +63,20 @@ int mt2701_init_clock(struct mtk_base_afe *afe)
 		}
 
 		snprintf(name, sizeof(name), "i2so%d_hop_ck", i);
-		i2s_path->hop_ck[I2S_OUT] = devm_clk_get(afe->dev, name);
-		if (IS_ERR(i2s_path->hop_ck[I2S_OUT])) {
+		i2s_ck = devm_clk_get(afe->dev, name);
+		if (IS_ERR(i2s_ck)) {
 			dev_err(afe->dev, "failed to get %s\n", name);
-			return PTR_ERR(i2s_path->hop_ck[I2S_OUT]);
+			return PTR_ERR(i2s_ck);
 		}
+		i2s_path->hop_ck[SNDRV_PCM_STREAM_PLAYBACK] = i2s_ck;
 
 		snprintf(name, sizeof(name), "i2si%d_hop_ck", i);
-		i2s_path->hop_ck[I2S_IN] = devm_clk_get(afe->dev, name);
-		if (IS_ERR(i2s_path->hop_ck[I2S_IN])) {
+		i2s_ck = devm_clk_get(afe->dev, name);
+		if (IS_ERR(i2s_ck)) {
 			dev_err(afe->dev, "failed to get %s\n", name);
-			return PTR_ERR(i2s_path->hop_ck[I2S_IN]);
+			return PTR_ERR(i2s_ck);
 		}
+		i2s_path->hop_ck[SNDRV_PCM_STREAM_CAPTURE] = i2s_ck;
 
 		snprintf(name, sizeof(name), "asrc%d_out_ck", i);
 		i2s_path->asrco_ck = devm_clk_get(afe->dev, name);
@@ -103,10 +98,10 @@ int mt2701_init_clock(struct mtk_base_afe *afe)
 	return 0;
 }
 
-int mt2701_afe_enable_i2s(struct mtk_base_afe *afe, int id, int dir)
+int mt2701_afe_enable_i2s(struct mtk_base_afe *afe,
+			  struct mt2701_i2s_path *i2s_path,
+			  int dir)
 {
-	struct mt2701_afe_private *afe_priv = afe->platform_priv;
-	struct mt2701_i2s_path *i2s_path = &afe_priv->i2s_path[id];
 	int ret;
 
 	ret = clk_prepare_enable(i2s_path->asrco_ck);
@@ -129,11 +124,10 @@ err_hop_ck:
 	return ret;
 }
 
-void mt2701_afe_disable_i2s(struct mtk_base_afe *afe, int id, int dir)
+void mt2701_afe_disable_i2s(struct mtk_base_afe *afe,
+			    struct mt2701_i2s_path *i2s_path,
+			    int dir)
 {
-	struct mt2701_afe_private *afe_priv = afe->platform_priv;
-	struct mt2701_i2s_path *i2s_path = &afe_priv->i2s_path[id];
-
 	clk_disable_unprepare(i2s_path->hop_ck[dir]);
 	clk_disable_unprepare(i2s_path->asrco_ck);
 }
@@ -173,9 +167,25 @@ static int mt2701_afe_enable_audsys(struct mtk_base_afe *afe)
 	struct mt2701_afe_private *afe_priv = afe->platform_priv;
 	int ret;
 
-	ret = clk_prepare_enable(afe_priv->base_ck[MT2701_AUDSYS_AFE]);
+	/* Enable infra clock gate */
+	ret = clk_prepare_enable(afe_priv->base_ck[MT2701_INFRA_SYS_AUDIO]);
 	if (ret)
 		return ret;
+
+	/* Enable top a1sys clock gate */
+	ret = clk_prepare_enable(afe_priv->base_ck[MT2701_TOP_AUD_A1SYS]);
+	if (ret)
+		goto err_a1sys;
+
+	/* Enable top a2sys clock gate */
+	ret = clk_prepare_enable(afe_priv->base_ck[MT2701_TOP_AUD_A2SYS]);
+	if (ret)
+		goto err_a2sys;
+
+	/* Internal clock gates */
+	ret = clk_prepare_enable(afe_priv->base_ck[MT2701_AUDSYS_AFE]);
+	if (ret)
+		goto err_afe;
 
 	ret = clk_prepare_enable(afe_priv->base_ck[MT2701_AUDSYS_A1SYS]);
 	if (ret)
@@ -197,6 +207,12 @@ err_audio_a2sys:
 	clk_disable_unprepare(afe_priv->base_ck[MT2701_AUDSYS_A1SYS]);
 err_audio_a1sys:
 	clk_disable_unprepare(afe_priv->base_ck[MT2701_AUDSYS_AFE]);
+err_afe:
+	clk_disable_unprepare(afe_priv->base_ck[MT2701_TOP_AUD_A2SYS]);
+err_a2sys:
+	clk_disable_unprepare(afe_priv->base_ck[MT2701_TOP_AUD_A1SYS]);
+err_a1sys:
+	clk_disable_unprepare(afe_priv->base_ck[MT2701_INFRA_SYS_AUDIO]);
 
 	return ret;
 }
@@ -209,6 +225,9 @@ static void mt2701_afe_disable_audsys(struct mtk_base_afe *afe)
 	clk_disable_unprepare(afe_priv->base_ck[MT2701_AUDSYS_A2SYS]);
 	clk_disable_unprepare(afe_priv->base_ck[MT2701_AUDSYS_A1SYS]);
 	clk_disable_unprepare(afe_priv->base_ck[MT2701_AUDSYS_AFE]);
+	clk_disable_unprepare(afe_priv->base_ck[MT2701_TOP_AUD_A1SYS]);
+	clk_disable_unprepare(afe_priv->base_ck[MT2701_TOP_AUD_A2SYS]);
+	clk_disable_unprepare(afe_priv->base_ck[MT2701_INFRA_SYS_AUDIO]);
 }
 
 int mt2701_afe_enable_clock(struct mtk_base_afe *afe)
@@ -223,8 +242,8 @@ int mt2701_afe_enable_clock(struct mtk_base_afe *afe)
 	}
 
 	regmap_update_bits(afe->regmap, ASYS_TOP_CON,
-			   AUDIO_TOP_CON0_A1SYS_A2SYS_ON,
-			   AUDIO_TOP_CON0_A1SYS_A2SYS_ON);
+			   ASYS_TOP_CON_ASYS_TIMING_ON,
+			   ASYS_TOP_CON_ASYS_TIMING_ON);
 	regmap_update_bits(afe->regmap, AFE_DAC_CON0,
 			   AFE_DAC_CON0_AFE_ON,
 			   AFE_DAC_CON0_AFE_ON);
@@ -239,7 +258,7 @@ int mt2701_afe_enable_clock(struct mtk_base_afe *afe)
 int mt2701_afe_disable_clock(struct mtk_base_afe *afe)
 {
 	regmap_update_bits(afe->regmap, ASYS_TOP_CON,
-			   AUDIO_TOP_CON0_A1SYS_A2SYS_ON, 0);
+			   ASYS_TOP_CON_ASYS_TIMING_ON, 0);
 	regmap_update_bits(afe->regmap, AFE_DAC_CON0,
 			   AFE_DAC_CON0_AFE_ON, 0);
 
@@ -248,31 +267,32 @@ int mt2701_afe_disable_clock(struct mtk_base_afe *afe)
 	return 0;
 }
 
-void mt2701_mclk_configuration(struct mtk_base_afe *afe, int id, int domain,
-			       int mclk)
+int mt2701_mclk_configuration(struct mtk_base_afe *afe, int id)
+
 {
 	struct mt2701_afe_private *priv = afe->platform_priv;
 	struct mt2701_i2s_path *i2s_path = &priv->i2s_path[id];
-	int ret;
+	int ret = -EINVAL;
 
 	/* Set mclk source */
-	if (domain == 0)
+	if (!(MT2701_PLL_DOMAIN_0_RATE % i2s_path->mclk_rate))
 		ret = clk_set_parent(i2s_path->sel_ck,
 				     priv->base_ck[MT2701_TOP_AUD_MCLK_SRC0]);
-	else
+	else if (!(MT2701_PLL_DOMAIN_1_RATE % i2s_path->mclk_rate))
 		ret = clk_set_parent(i2s_path->sel_ck,
 				     priv->base_ck[MT2701_TOP_AUD_MCLK_SRC1]);
 
-	if (ret)
-		dev_err(afe->dev, "failed to set domain%d mclk source %d\n",
-			domain, ret);
+	if (ret) {
+		dev_err(afe->dev, "failed to set mclk source\n");
+		return ret;
+	}
 
 	/* Set mclk divider */
-	ret = clk_set_rate(i2s_path->div_ck, mclk);
-	if (ret)
+	ret = clk_set_rate(i2s_path->div_ck, i2s_path->mclk_rate);
+	if (ret) {
 		dev_err(afe->dev, "failed to set mclk divider %d\n", ret);
-}
+		return ret;
+	}
 
-MODULE_DESCRIPTION("MT2701 afe clock control");
-MODULE_AUTHOR("Garlic Tseng <garlic.tseng@mediatek.com>");
-MODULE_LICENSE("GPL v2");
+	return 0;
+}

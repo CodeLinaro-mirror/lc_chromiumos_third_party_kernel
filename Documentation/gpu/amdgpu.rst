@@ -17,13 +17,30 @@ Core Driver Infrastructure
 
 This section covers core driver infrastructure.
 
+.. _amdgpu_memory_domains:
+
+Memory Domains
+--------------
+
+.. kernel-doc:: include/uapi/drm/amdgpu_drm.h
+   :doc: memory domains
+
+Buffer Objects
+--------------
+
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
+   :doc: amdgpu_object
+
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
+   :internal:
+
 PRIME Buffer Sharing
 --------------------
 
-.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_prime.c
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_dma_buf.c
    :doc: PRIME Buffer Sharing
 
-.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_prime.c
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_dma_buf.c
    :internal:
 
 MMU Notifier
@@ -42,6 +59,7 @@ AMDGPU Virtual Memory
    :doc: GPUVM
 
 .. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+   :internal:
 
 Interrupt Handling
 ------------------
@@ -51,6 +69,26 @@ Interrupt Handling
 
 .. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_irq.c
    :internal:
+
+AMDGPU XGMI Support
+===================
+
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_xgmi.c
+   :doc: AMDGPU XGMI Support
+
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_xgmi.c
+   :internal:
+
+AMDGPU RAS debugfs control interface
+====================================
+
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_ras.c
+   :doc: AMDGPU RAS debugfs control interface
+
+
+.. kernel-doc:: drivers/gpu/drm/amd/amdgpu/amdgpu_ras.c
+   :internal:
+
 
 GPU Power/Thermal Controls and Monitoring
 =========================================

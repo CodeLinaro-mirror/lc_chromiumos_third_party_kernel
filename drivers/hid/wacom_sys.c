@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * drivers/input/tablet/wacom_sys.c
  *
@@ -5,10 +6,6 @@
  */
 
 /*
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 #include "wacom_wac.h"
@@ -750,18 +747,6 @@ struct wacom_hdev_data {
 static LIST_HEAD(wacom_udev_list);
 static DEFINE_MUTEX(wacom_udev_list_lock);
 
-static bool compare_device_paths(struct hid_device *hdev_a,
-		struct hid_device *hdev_b, char separator)
-{
-	int n1 = strrchr(hdev_a->phys, separator) - hdev_a->phys;
-	int n2 = strrchr(hdev_b->phys, separator) - hdev_b->phys;
-
-	if (n1 != n2 || n1 <= 0 || n2 <= 0)
-		return false;
-
-	return !strncmp(hdev_a->phys, hdev_b->phys, n1);
-}
-
 static bool wacom_are_sibling(struct hid_device *hdev,
 		struct hid_device *sibling)
 {
@@ -784,10 +769,10 @@ static bool wacom_are_sibling(struct hid_device *hdev,
 	 * the same physical parent device path.
 	 */
 	if (hdev->vendor == sibling->vendor && hdev->product == sibling->product) {
-		if (!compare_device_paths(hdev, sibling, '/'))
+		if (!hid_compare_device_paths(hdev, sibling, '/'))
 			return false;
 	} else {
-		if (!compare_device_paths(hdev, sibling, '.'))
+		if (!hid_compare_device_paths(hdev, sibling, '.'))
 			return false;
 	}
 
@@ -834,7 +819,7 @@ static struct wacom_hdev_data *wacom_get_hdev_data(struct hid_device *hdev)
 
 	/* Try to find an already-probed interface from the same device */
 	list_for_each_entry(data, &wacom_udev_list, list) {
-		if (compare_device_paths(hdev, data->dev, '/')) {
+		if (hid_compare_device_paths(hdev, data->dev, '/')) {
 			kref_get(&data->kref);
 			return data;
 		}
@@ -1418,7 +1403,7 @@ static int wacom_led_groups_alloc_and_register_one(struct device *dev,
 	if (!devres_open_group(dev, &wacom->led.groups[group_id], GFP_KERNEL))
 		return -ENOMEM;
 
-	leds = devm_kzalloc(dev, sizeof(struct wacom_led) * count, GFP_KERNEL);
+	leds = devm_kcalloc(dev, count, sizeof(struct wacom_led), GFP_KERNEL);
 	if (!leds) {
 		error = -ENOMEM;
 		goto err;
@@ -1518,7 +1503,7 @@ static int wacom_led_groups_allocate(struct wacom *wacom, int count)
 	struct wacom_group_leds *groups;
 	int error;
 
-	groups = devm_kzalloc(dev, sizeof(struct wacom_group_leds) * count,
+	groups = devm_kcalloc(dev, count, sizeof(struct wacom_group_leds),
 			      GFP_KERNEL);
 	if (!groups)
 		return -ENOMEM;

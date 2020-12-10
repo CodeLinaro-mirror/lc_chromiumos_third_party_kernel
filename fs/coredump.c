@@ -216,6 +216,8 @@ static int format_corename(struct core_name *cn, struct coredump_params *cprm,
 			return -ENOMEM;
 		(*argv)[(*argc)++] = 0;
 		++pat_ptr;
+		if (!(*pat_ptr))
+			return -ENOMEM;
 	}
 
 	/* Repeat as long as we have more pattern to process and more output
@@ -571,7 +573,7 @@ static int umh_pipe_setup(struct subprocess_info *info, struct cred *new)
 	return err;
 }
 
-void do_coredump(const siginfo_t *siginfo)
+void do_coredump(const kernel_siginfo_t *siginfo)
 {
 	struct core_state core_state;
 	struct core_name cn;
@@ -722,16 +724,11 @@ void do_coredump(const siginfo_t *siginfo)
 		 * privs and don't want to unlink another user's coredump.
 		 */
 		if (!need_suid_safe) {
-			mm_segment_t old_fs;
-
-			old_fs = get_fs();
-			set_fs(KERNEL_DS);
 			/*
 			 * If it doesn't exist, that's fine. If there's some
 			 * other problem, we'll catch it at the filp_open().
 			 */
-			(void) sys_unlink((const char __user *)cn.corename);
-			set_fs(old_fs);
+			do_unlinkat(AT_FDCWD, getname_kernel(cn.corename));
 		}
 
 		/*

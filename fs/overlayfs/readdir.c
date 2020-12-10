@@ -1,10 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *
  * Copyright (C) 2011 Novell Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published by
- * the Free Software Foundation.
  */
 
 #include <linux/fs.h>
@@ -119,6 +116,10 @@ static bool ovl_calc_d_ino(struct ovl_readdir_data *rdd,
 	/* Don't care if not doing ovl_iter() */
 	if (!rdd->dentry)
 		return false;
+
+	/* Always recalc d_ino when remapping lower inode numbers */
+	if (ovl_xino_bits(rdd->dentry->d_sb))
+		return true;
 
 	/* Always recalc d_ino for parent */
 	if (strcmp(p->name, "..") == 0)
@@ -285,7 +286,7 @@ static int ovl_check_whiteouts(struct dentry *dir, struct ovl_readdir_data *rdd)
 		}
 		inode_unlock(dir->d_inode);
 	}
-	revert_creds(old_cred);
+	ovl_revert_creds(rdd->dentry->d_sb, old_cred);
 
 	return err;
 }
@@ -435,6 +436,19 @@ static struct ovl_dir_cache *ovl_cache_get(struct dentry *dentry)
 	return cache;
 }
 
+/* Map inode number to lower fs unique range */
+static u64 ovl_remap_lower_ino(u64 ino, int xinobits, int fsid,
+			       const char *name, int namelen)
+{
+	if (ino >> (64 - xinobits)) {
+		pr_warn_ratelimited("overlayfs: d_ino too big (%.*s, ino=%llu, xinobits=%d)\n",
+				    namelen, name, ino, xinobits);
+		return ino;
+	}
+
+	return ino | ((u64)fsid) << (64 - xinobits);
+}
+
 /*
  * Set d_ino for upper entries. Non-upper entries should always report
  * the uppermost real inode ino and should not call this function.
@@ -452,9 +466,10 @@ static int ovl_cache_update_ino(struct path *path, struct ovl_cache_entry *p)
 	struct dentry *this = NULL;
 	enum ovl_path_type type;
 	u64 ino = p->real_ino;
+	int xinobits = ovl_xino_bits(dir->d_sb);
 	int err = 0;
 
-	if (!ovl_same_sb(dir->d_sb))
+	if (!ovl_same_sb(dir->d_sb) && !xinobits)
 		goto out;
 
 	if (p->name[0] == '.') {
@@ -489,8 +504,18 @@ get:
 		if (err)
 			goto fail;
 
-		WARN_ON_ONCE(dir->d_sb->s_dev != stat.dev);
+		/*
+		 * Directory inode is always on overlay st_dev.
+		 * Non-dir with ovl_same_dev() could be on pseudo st_dev in case
+		 * of xino bits overflow.
+		 */
+		WARN_ON_ONCE(S_ISDIR(stat.mode) &&
+			     dir->d_sb->s_dev != stat.dev);
 		ino = stat.ino;
+	} else if (xinobits && !OVL_TYPE_UPPER(type)) {
+		ino = ovl_remap_lower_ino(ino, xinobits,
+					  ovl_layer_lower(this)->fsid,
+					  p->name, p->len);
 	}
 
 out:
@@ -499,7 +524,7 @@ out:
 	return err;
 
 fail:
-	pr_warn_ratelimited("overlay: failed to look up (%s) for ino (%i)\n",
+	pr_warn_ratelimited("overlayfs: failed to look up (%s) for ino (%i)\n",
 			    p->name, err);
 	goto out;
 }
@@ -618,6 +643,8 @@ struct ovl_readdir_translate {
 	struct ovl_dir_cache *cache;
 	struct dir_context ctx;
 	u64 parent_ino;
+	int fsid;
+	int xinobits;
 };
 
 static int ovl_fill_real(struct dir_context *ctx, const char *name,
@@ -628,14 +655,17 @@ static int ovl_fill_real(struct dir_context *ctx, const char *name,
 		container_of(ctx, struct ovl_readdir_translate, ctx);
 	struct dir_context *orig_ctx = rdt->orig_ctx;
 
-	if (rdt->parent_ino && strcmp(name, "..") == 0)
+	if (rdt->parent_ino && strcmp(name, "..") == 0) {
 		ino = rdt->parent_ino;
-	else if (rdt->cache) {
+	} else if (rdt->cache) {
 		struct ovl_cache_entry *p;
 
 		p = ovl_cache_entry_find(&rdt->cache->root, name, namelen);
 		if (p)
 			ino = p->ino;
+	} else if (rdt->xinobits) {
+		ino = ovl_remap_lower_ino(ino, rdt->xinobits, rdt->fsid,
+					  name, namelen);
 	}
 
 	return orig_ctx->actor(orig_ctx, name, namelen, offset, ino, d_type);
@@ -661,10 +691,15 @@ static int ovl_iterate_real(struct file *file, struct dir_context *ctx)
 	int err;
 	struct ovl_dir_file *od = file->private_data;
 	struct dentry *dir = file->f_path.dentry;
+	struct ovl_layer *lower_layer = ovl_layer_lower(dir);
 	struct ovl_readdir_translate rdt = {
 		.ctx.actor = ovl_fill_real,
 		.orig_ctx = ctx,
+		.xinobits = ovl_xino_bits(dir->d_sb),
 	};
+
+	if (rdt.xinobits && lower_layer)
+		rdt.fsid = lower_layer->fsid;
 
 	if (OVL_TYPE_MERGE(ovl_path_type(dir->d_parent))) {
 		struct kstat stat;
@@ -704,13 +739,14 @@ static int ovl_iterate(struct file *file, struct dir_context *ctx)
 
 	if (od->is_real) {
 		/*
-		 * If parent is merge, then need to adjust d_ino for '..'.
-		 * If dir is upper and impure then need to adjust d_ino for
-		 * copied up entries.
+		 * If parent is merge, then need to adjust d_ino for '..', if
+		 * dir is impure then need to adjust d_ino for copied up
+		 * entries.
 		 */
-		if (ovl_same_sb(dentry->d_sb) &&
-		    (ovl_is_impure_dir(file) ||
-		     OVL_TYPE_MERGE(ovl_path_type(dentry->d_parent)))) {
+		if (ovl_xino_bits(dentry->d_sb) ||
+		    (ovl_same_sb(dentry->d_sb) &&
+		     (ovl_is_impure_dir(file) ||
+		      OVL_TYPE_MERGE(ovl_path_type(dentry->d_parent))))) {
 			return ovl_iterate_real(file, ctx);
 		}
 		return iterate_dir(od->realfile, ctx);
@@ -884,8 +920,11 @@ int ovl_check_empty_dir(struct dentry *dentry, struct list_head *list)
 	int err;
 	struct ovl_cache_entry *p, *n;
 	struct rb_root root = RB_ROOT;
+	const struct cred *old_cred;
 
+	old_cred = ovl_override_creds(dentry->d_sb);
 	err = ovl_dir_read_merged(dentry, list, &root);
+	ovl_revert_creds(dentry->d_sb, old_cred);
 	if (err)
 		return err;
 
@@ -1042,13 +1081,13 @@ void ovl_workdir_cleanup(struct inode *dir, struct vfsmount *mnt,
 	}
 }
 
-int ovl_indexdir_cleanup(struct dentry *dentry, struct vfsmount *mnt,
-			 struct path *lowerstack, unsigned int numlower)
+int ovl_indexdir_cleanup(struct ovl_fs *ofs)
 {
 	int err;
+	struct dentry *indexdir = ofs->indexdir;
 	struct dentry *index = NULL;
-	struct inode *dir = dentry->d_inode;
-	struct path path = { .mnt = mnt, .dentry = dentry };
+	struct inode *dir = indexdir->d_inode;
+	struct path path = { .mnt = ofs->upper_mnt, .dentry = indexdir };
 	LIST_HEAD(list);
 	struct rb_root root = RB_ROOT;
 	struct ovl_cache_entry *p;
@@ -1072,19 +1111,40 @@ int ovl_indexdir_cleanup(struct dentry *dentry, struct vfsmount *mnt,
 			if (p->len == 2 && p->name[1] == '.')
 				continue;
 		}
-		index = lookup_one_len(p->name, dentry, p->len);
+		index = lookup_one_len(p->name, indexdir, p->len);
 		if (IS_ERR(index)) {
 			err = PTR_ERR(index);
 			index = NULL;
 			break;
 		}
-		err = ovl_verify_index(index, lowerstack, numlower);
-		/* Cleanup stale and orphan index entries */
-		if (err && (err == -ESTALE || err == -ENOENT))
+		err = ovl_verify_index(ofs, index);
+		if (!err) {
+			goto next;
+		} else if (err == -ESTALE) {
+			/* Cleanup stale index entries */
 			err = ovl_cleanup(dir, index);
+		} else if (err != -ENOENT) {
+			/*
+			 * Abort mount to avoid corrupting the index if
+			 * an incompatible index entry was found or on out
+			 * of memory.
+			 */
+			break;
+		} else if (ofs->config.nfs_export) {
+			/*
+			 * Whiteout orphan index to block future open by
+			 * handle after overlay nlink dropped to zero.
+			 */
+			err = ovl_cleanup_and_whiteout(indexdir, dir, index);
+		} else {
+			/* Cleanup orphan index entries */
+			err = ovl_cleanup(dir, index);
+		}
+
 		if (err)
 			break;
 
+next:
 		dput(index);
 		index = NULL;
 	}

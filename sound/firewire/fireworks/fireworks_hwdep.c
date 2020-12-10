@@ -1,9 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * fireworks_hwdep.c - a part of driver for Fireworks based devices
  *
  * Copyright (c) 2013-2014 Takashi Sakamoto
- *
- * Licensed under the terms of the GNU General Public License, version 2.
  */
 
 /*
@@ -194,12 +193,12 @@ hwdep_poll(struct snd_hwdep *hwdep, struct file *file, poll_table *wait)
 
 	spin_lock_irq(&efw->lock);
 	if (efw->dev_lock_changed || efw->pull_ptr != efw->push_ptr)
-		events = POLLIN | POLLRDNORM;
+		events = EPOLLIN | EPOLLRDNORM;
 	else
 		events = 0;
 	spin_unlock_irq(&efw->lock);
 
-	return events | POLLOUT;
+	return events | EPOLLOUT;
 }
 
 static int

@@ -596,6 +596,7 @@
 #define BTN_DPAD_RIGHT		0x223
 
 #define KEY_ALS_TOGGLE		0x230	/* Ambient light sensor */
+#define KEY_ROTATE_LOCK_TOGGLE	0x231	/* Display rotation lock */
 
 #define KEY_BUTTONCONFIG		0x240	/* AL Button Configuration */
 #define KEY_TASKMANAGER		0x241	/* AL Task/Project Manager */
@@ -605,6 +606,7 @@
 #define KEY_SCREENSAVER		0x245	/* AL Screen Saver */
 #define KEY_VOICECOMMAND		0x246	/* Listening Voice Command */
 #define KEY_ASSISTANT		0x247	/* AL Context-aware desktop assistant */
+#define KEY_KBD_LAYOUT_NEXT	0x248	/* AC Next Keyboard Layout Select */
 
 #define KEY_BRIGHTNESS_MIN		0x250	/* Set Brightness to Minimum */
 #define KEY_BRIGHTNESS_MAX		0x251	/* Set Brightness to Maximum */
@@ -709,6 +711,14 @@
 #define REL_DIAL		0x07
 #define REL_WHEEL		0x08
 #define REL_MISC		0x09
+/*
+ * 0x0a is reserved and should not be used in input drivers.
+ * It was used by HID as REL_MISC+1 and userspace needs to detect if
+ * the next REL_* event is correct or is just REL_MISC + n.
+ * We define here REL_RESERVED so userspace can rely on it and detect
+ * the situation described above.
+ */
+#define REL_RESERVED		0x0a
 #define REL_WHEEL_HI_RES	0x0b
 #define REL_HWHEEL_HI_RES	0x0c
 #define REL_MAX			0x0f

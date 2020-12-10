@@ -88,9 +88,7 @@ static struct alt_sys_call_table default_table;
  * If an alt_syscall table allows prctl(), override it to prevent a process
  * from changing its syscall table.
  */
-static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
-                                     unsigned long arg3, unsigned long arg4,
-                                     unsigned long arg5);
+static asmlinkage long alt_sys_prctl(struct pt_regs *regs);
 
 #ifdef CONFIG_COMPAT
 #define SYSCALL_WHITELIST_COMPAT(x)                                     \
@@ -201,7 +199,6 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_io_setup  __NR_ia32_io_setup
 #define __NR_compat_io_submit __NR_ia32_io_submit
 #define __NR_compat_ioprio_set  __NR_ia32_ioprio_set
-#define __NR_compat_kcmp        __NR_ia32_kcmp
 #define __NR_compat_keyctl      __NR_ia32_keyctl
 #define __NR_compat_kill        __NR_ia32_kill
 #define __NR_compat_lgetxattr   __NR_ia32_lgetxattr

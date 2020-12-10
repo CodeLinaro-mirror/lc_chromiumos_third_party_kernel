@@ -11,7 +11,7 @@
 #include <linux/ktime.h>
 #include <linux/mutex.h>
 #include <linux/notifier.h>
-#include <linux/mfd/cros_ec_commands.h>
+#include <linux/platform_data/cros_ec_commands.h>
 
 struct iio_dev;
 

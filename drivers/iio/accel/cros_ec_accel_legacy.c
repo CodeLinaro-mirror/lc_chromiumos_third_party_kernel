@@ -1,16 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Driver for older Chrome OS EC accelerometer
  *
  * Copyright 2017 Google, Inc
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  *
  * This driver uses the memory mapper cros-ec interface to communicate
  * with the Chrome OS EC about accelerometer data or older commands.
@@ -26,10 +18,10 @@
 #include <linux/iio/trigger_consumer.h>
 #include <linux/iio/triggered_buffer.h>
 #include <linux/kernel.h>
-#include <linux/mfd/cros_ec.h>
-#include <linux/mfd/cros_ec_commands.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/platform_data/cros_ec_commands.h>
+#include <linux/platform_data/cros_ec_proto.h>
 #include <linux/platform_device.h>
 
 #define DRV_NAME	"cros-ec-accel-legacy"
@@ -40,6 +32,11 @@
  * g / (2^10 - 1) = 0.009586168; with g = 9.80665 m.s^-2
  */
 #define ACCEL_LEGACY_NSCALE 9586168
+
+/*
+ * Sensor frequency is hard-coded to 10Hz.
+ */
+static const int cros_ec_legacy_sample_freq[] = { 10, 0 };
 
 static int cros_ec_accel_legacy_read_cmd(struct iio_dev *indio_dev,
 				  unsigned long scan_mask, s16 *data)
@@ -104,6 +101,11 @@ static int cros_ec_accel_legacy_read(struct iio_dev *indio_dev,
 		*val = 0;
 		ret = IIO_VAL_INT;
 		break;
+	case IIO_CHAN_INFO_SAMP_FREQ:
+		*val = cros_ec_legacy_sample_freq[0];
+		*val2 = cros_ec_legacy_sample_freq[1];
+		ret = IIO_VAL_INT_PLUS_MICRO;
+		break;
 	default:
 		ret = cros_ec_sensors_core_read(st, chan, val, val2,
 				mask);
@@ -128,9 +130,39 @@ static int cros_ec_accel_legacy_write(struct iio_dev *indio_dev,
 	return -EINVAL;
 }
 
+/**
+ * cros_ec_accel_legacy_read_avail() - get available values
+ * @indio_dev:		pointer to state information for device
+ * @chan:	channel specification structure table
+ * @vals:	list of available values
+ * @type:	type of data returned
+ * @length:	number of data returned in the array
+ * @mask:	specifies which values to be requested
+ *
+ * Return:	an error code or IIO_AVAIL_LIST
+ */
+static int cros_ec_accel_legacy_read_avail(struct iio_dev *indio_dev,
+					   struct iio_chan_spec const *chan,
+					   const int **vals,
+					   int *type,
+					   int *length,
+					   long mask)
+{
+	switch (mask) {
+	case IIO_CHAN_INFO_SAMP_FREQ:
+		*length = ARRAY_SIZE(cros_ec_legacy_sample_freq);
+		*vals = cros_ec_legacy_sample_freq;
+		*type = IIO_VAL_INT_PLUS_MICRO;
+		return IIO_AVAIL_LIST;
+	}
+
+	return -EINVAL;
+}
+
 static const struct iio_info cros_ec_accel_legacy_info = {
 	.read_raw = &cros_ec_accel_legacy_read,
 	.write_raw = &cros_ec_accel_legacy_write,
+	.read_avail = &cros_ec_accel_legacy_read_avail,
 };
 
 /*
@@ -150,7 +182,11 @@ static const struct iio_info cros_ec_accel_legacy_info = {
 		.info_mask_separate =					\
 			BIT(IIO_CHAN_INFO_RAW) |			\
 			BIT(IIO_CHAN_INFO_CALIBBIAS),			\
-		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_SCALE),	\
+		.info_mask_shared_by_all =				\
+			BIT(IIO_CHAN_INFO_SCALE) |			\
+			BIT(IIO_CHAN_INFO_SAMP_FREQ),			\
+		.info_mask_shared_by_all_available =			\
+			BIT(IIO_CHAN_INFO_SAMP_FREQ),			\
 		.ext_info = cros_ec_sensors_ext_info,			\
 		.scan_type = {						\
 			.sign = 's',					\
@@ -212,5 +248,5 @@ module_platform_driver(cros_ec_accel_platform_driver);
 
 MODULE_DESCRIPTION("ChromeOS EC legacy accelerometer driver");
 MODULE_AUTHOR("Gwendal Grignou <gwendal@chromium.org>");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" DRV_NAME);

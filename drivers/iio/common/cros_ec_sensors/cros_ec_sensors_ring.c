@@ -24,13 +24,8 @@
 #include <linux/iio/kfifo_buf.h>
 #include <linux/iio/sysfs.h>
 #include <linux/kernel.h>
-#include <linux/mfd/cros_ec.h>
-#include <linux/mfd/cros_ec_commands.h>
 #include <linux/module.h>
 #include <linux/platform_data/cros_ec_sensorhub.h>
-#include <linux/platform_device.h>
-#include <linux/sort.h>
-#include <linux/slab.h>
 #include <linux/platform_device.h>
 
 #define DRV_NAME "cros-ec-ring"

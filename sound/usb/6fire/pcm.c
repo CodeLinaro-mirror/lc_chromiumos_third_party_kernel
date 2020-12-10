@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Linux driver for TerraTec DMX 6Fire USB
  *
@@ -6,11 +7,6 @@
  * Author:	Torsten Schenk <torsten.schenk@zoho.com>
  * Created:	Jan 01, 2011
  * Copyright:	(C) Torsten Schenk
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 #include "pcm.h"
@@ -590,12 +586,14 @@ static int usb6fire_pcm_buffers_init(struct pcm_runtime *rt)
 	int i;
 
 	for (i = 0; i < PCM_N_URBS; i++) {
-		rt->out_urbs[i].buffer = kzalloc(PCM_N_PACKETS_PER_URB
-				* PCM_MAX_PACKET_SIZE, GFP_KERNEL);
+		rt->out_urbs[i].buffer = kcalloc(PCM_MAX_PACKET_SIZE,
+						 PCM_N_PACKETS_PER_URB,
+						 GFP_KERNEL);
 		if (!rt->out_urbs[i].buffer)
 			return -ENOMEM;
-		rt->in_urbs[i].buffer = kzalloc(PCM_N_PACKETS_PER_URB
-				* PCM_MAX_PACKET_SIZE, GFP_KERNEL);
+		rt->in_urbs[i].buffer = kcalloc(PCM_MAX_PACKET_SIZE,
+						PCM_N_PACKETS_PER_URB,
+						GFP_KERNEL);
 		if (!rt->in_urbs[i].buffer)
 			return -ENOMEM;
 	}

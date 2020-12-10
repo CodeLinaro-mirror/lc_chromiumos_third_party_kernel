@@ -74,6 +74,8 @@
 #include <asm/io.h>
 #include <asm/unistd.h>
 
+#include "uid16.h"
+
 #ifndef SET_UNALIGN_CTL
 # define SET_UNALIGN_CTL(a, b)	(-EINVAL)
 #endif
@@ -104,17 +106,26 @@
 #ifndef SET_TSC_CTL
 # define SET_TSC_CTL(a)		(-EINVAL)
 #endif
-#ifndef MPX_ENABLE_MANAGEMENT
-# define MPX_ENABLE_MANAGEMENT()	(-EINVAL)
-#endif
-#ifndef MPX_DISABLE_MANAGEMENT
-# define MPX_DISABLE_MANAGEMENT()	(-EINVAL)
-#endif
 #ifndef GET_FP_MODE
 # define GET_FP_MODE(a)		(-EINVAL)
 #endif
 #ifndef SET_FP_MODE
 # define SET_FP_MODE(a,b)	(-EINVAL)
+#endif
+#ifndef SVE_SET_VL
+# define SVE_SET_VL(a)		(-EINVAL)
+#endif
+#ifndef SVE_GET_VL
+# define SVE_GET_VL()		(-EINVAL)
+#endif
+#ifndef PAC_RESET_KEYS
+# define PAC_RESET_KEYS(a, b)	(-EINVAL)
+#endif
+#ifndef SET_TAGGED_ADDR_CTRL
+# define SET_TAGGED_ADDR_CTRL(a)	(-EINVAL)
+#endif
+#ifndef GET_TAGGED_ADDR_CTRL
+# define GET_TAGGED_ADDR_CTRL()		(-EINVAL)
 #endif
 
 /*
@@ -134,7 +145,7 @@ EXPORT_SYMBOL(overflowgid);
  */
 
 int fs_overflowuid = DEFAULT_FS_OVERFLOWUID;
-int fs_overflowgid = DEFAULT_FS_OVERFLOWUID;
+int fs_overflowgid = DEFAULT_FS_OVERFLOWGID;
 
 EXPORT_SYMBOL(fs_overflowuid);
 EXPORT_SYMBOL(fs_overflowgid);
@@ -185,7 +196,7 @@ out:
 	return error;
 }
 
-SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
+int ksys_setpriority(int which, int who, int niceval)
 {
 	struct task_struct *g, *p;
 	struct user_struct *user;
@@ -249,13 +260,18 @@ out:
 	return error;
 }
 
+SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
+{
+	return ksys_setpriority(which, who, niceval);
+}
+
 /*
  * Ugh. To avoid negative return values, "getpriority()" will
  * not return the normal nice-value, but a negated value that
  * has been offset by 20 (ie it returns 40..1 instead of -20..19)
  * to stay compatible.
  */
-SYSCALL_DEFINE2(getpriority, int, which, int, who)
+int ksys_getpriority(int which, int who)
 {
 	struct task_struct *g, *p;
 	struct user_struct *user;
@@ -320,6 +336,11 @@ out_unlock:
 	return retval;
 }
 
+SYSCALL_DEFINE2(getpriority, int, which, int, who)
+{
+	return ksys_getpriority(which, who);
+}
+
 /*
  * Unprivileged users may change the real gid to the effective gid
  * or vice versa.  (BSD-style)
@@ -339,7 +360,7 @@ out_unlock:
  *      operations (as far as semantic preservation is concerned).
  */
 #ifdef CONFIG_MULTIUSER
-SYSCALL_DEFINE2(setregid, gid_t, rgid, gid_t, egid)
+long __sys_setregid(gid_t rgid, gid_t egid)
 {
 	struct user_namespace *ns = current_user_ns();
 	const struct cred *old;
@@ -391,12 +412,17 @@ error:
 	return retval;
 }
 
+SYSCALL_DEFINE2(setregid, gid_t, rgid, gid_t, egid)
+{
+	return __sys_setregid(rgid, egid);
+}
+
 /*
  * setgid() is implemented like SysV w/ SAVED_IDS
  *
  * SMP: Same implicit races as above.
  */
-SYSCALL_DEFINE1(setgid, gid_t, gid)
+long __sys_setgid(gid_t gid)
 {
 	struct user_namespace *ns = current_user_ns();
 	const struct cred *old;
@@ -426,6 +452,11 @@ SYSCALL_DEFINE1(setgid, gid_t, gid)
 error:
 	abort_creds(new);
 	return retval;
+}
+
+SYSCALL_DEFINE1(setgid, gid_t, gid)
+{
+	return __sys_setgid(gid);
 }
 
 /*
@@ -472,7 +503,7 @@ static int set_user(struct cred *new)
  * 100% compatible with BSD.  A program which uses just setuid() will be
  * 100% compatible with POSIX with saved IDs.
  */
-SYSCALL_DEFINE2(setreuid, uid_t, ruid, uid_t, euid)
+long __sys_setreuid(uid_t ruid, uid_t euid)
 {
 	struct user_namespace *ns = current_user_ns();
 	const struct cred *old;
@@ -532,6 +563,11 @@ error:
 	return retval;
 }
 
+SYSCALL_DEFINE2(setreuid, uid_t, ruid, uid_t, euid)
+{
+	return __sys_setreuid(ruid, euid);
+}
+
 /*
  * setuid() is implemented like SysV with SAVED_IDS
  *
@@ -543,7 +579,7 @@ error:
  * will allow a root program to temporarily drop privileges and be able to
  * regain them by swapping the real and effective uid.
  */
-SYSCALL_DEFINE1(setuid, uid_t, uid)
+long __sys_setuid(uid_t uid)
 {
 	struct user_namespace *ns = current_user_ns();
 	const struct cred *old;
@@ -585,12 +621,17 @@ error:
 	return retval;
 }
 
+SYSCALL_DEFINE1(setuid, uid_t, uid)
+{
+	return __sys_setuid(uid);
+}
+
 
 /*
  * This function implements a generic ability to update ruid, euid,
  * and suid.  This allows you to implement the 4.4 compatible seteuid().
  */
-SYSCALL_DEFINE3(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
+long __sys_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 {
 	struct user_namespace *ns = current_user_ns();
 	const struct cred *old;
@@ -655,6 +696,11 @@ error:
 	return retval;
 }
 
+SYSCALL_DEFINE3(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
+{
+	return __sys_setresuid(ruid, euid, suid);
+}
+
 SYSCALL_DEFINE3(getresuid, uid_t __user *, ruidp, uid_t __user *, euidp, uid_t __user *, suidp)
 {
 	const struct cred *cred = current_cred();
@@ -677,7 +723,7 @@ SYSCALL_DEFINE3(getresuid, uid_t __user *, ruidp, uid_t __user *, euidp, uid_t _
 /*
  * Same as above, but for rgid, egid, sgid.
  */
-SYSCALL_DEFINE3(setresgid, gid_t, rgid, gid_t, egid, gid_t, sgid)
+long __sys_setresgid(gid_t rgid, gid_t egid, gid_t sgid)
 {
 	struct user_namespace *ns = current_user_ns();
 	const struct cred *old;
@@ -729,6 +775,11 @@ error:
 	return retval;
 }
 
+SYSCALL_DEFINE3(setresgid, gid_t, rgid, gid_t, egid, gid_t, sgid)
+{
+	return __sys_setresgid(rgid, egid, sgid);
+}
+
 SYSCALL_DEFINE3(getresgid, gid_t __user *, rgidp, gid_t __user *, egidp, gid_t __user *, sgidp)
 {
 	const struct cred *cred = current_cred();
@@ -756,7 +807,7 @@ SYSCALL_DEFINE3(getresgid, gid_t __user *, rgidp, gid_t __user *, egidp, gid_t _
  * whatever uid it wants to). It normally shadows "euid", except when
  * explicitly set by setfsuid() or for access..
  */
-SYSCALL_DEFINE1(setfsuid, uid_t, uid)
+long __sys_setfsuid(uid_t uid)
 {
 	const struct cred *old;
 	struct cred *new;
@@ -792,10 +843,15 @@ change_okay:
 	return old_fsuid;
 }
 
+SYSCALL_DEFINE1(setfsuid, uid_t, uid)
+{
+	return __sys_setfsuid(uid);
+}
+
 /*
  * Samma på svenska..
  */
-SYSCALL_DEFINE1(setfsgid, gid_t, gid)
+long __sys_setfsgid(gid_t gid)
 {
 	const struct cred *old;
 	struct cred *new;
@@ -828,6 +884,11 @@ SYSCALL_DEFINE1(setfsgid, gid_t, gid)
 change_okay:
 	commit_creds(new);
 	return old_fsgid;
+}
+
+SYSCALL_DEFINE1(setfsgid, gid_t, gid)
+{
+	return __sys_setfsgid(gid);
 }
 #endif /* CONFIG_MULTIUSER */
 
@@ -1026,7 +1087,7 @@ out:
 	return err;
 }
 
-SYSCALL_DEFINE1(getpgid, pid_t, pid)
+static int do_getpgid(pid_t pid)
 {
 	struct task_struct *p;
 	struct pid *grp;
@@ -1054,11 +1115,16 @@ out:
 	return retval;
 }
 
+SYSCALL_DEFINE1(getpgid, pid_t, pid)
+{
+	return do_getpgid(pid);
+}
+
 #ifdef __ARCH_WANT_SYS_GETPGRP
 
 SYSCALL_DEFINE0(getpgrp)
 {
-	return sys_getpgid(0);
+	return do_getpgid(0);
 }
 
 #endif
@@ -1102,7 +1168,7 @@ static void set_special_pids(struct pid *pid)
 		change_pid(curr, PIDTYPE_PGID, pid);
 }
 
-SYSCALL_DEFINE0(setsid)
+int ksys_setsid(void)
 {
 	struct task_struct *group_leader = current->group_leader;
 	struct pid *sid = task_pid(group_leader);
@@ -1135,6 +1201,11 @@ out:
 	return err;
 }
 
+SYSCALL_DEFINE0(setsid)
+{
+	return ksys_setsid();
+}
+
 DECLARE_RWSEM(uts_sem);
 
 #ifdef COMPAT_UTS_MACHINE
@@ -1149,7 +1220,8 @@ DECLARE_RWSEM(uts_sem);
 /*
  * Work around broken programs that cannot handle "Linux 3.0".
  * Instead we map 3.x to 2.6.40+x, so e.g. 3.0 would be 2.6.40
- * And we map 4.x to 2.6.60+x, so 4.0 would be 2.6.60.
+ * And we map 4.x and later versions to 2.6.60+x, so 4.0/5.0/6.0/... would be
+ * 2.6.60.
  */
 static int override_release(char __user *release, size_t len)
 {
@@ -1498,15 +1570,6 @@ int do_prlimit(struct task_struct *tsk, unsigned int resource,
 			retval = -EPERM;
 		if (!retval)
 			retval = security_task_setrlimit(tsk, resource, new_rlim);
-		if (resource == RLIMIT_CPU && new_rlim->rlim_cur == 0) {
-			/*
-			 * The caller is asking for an immediate RLIMIT_CPU
-			 * expiry.  But we use the zero value to mean "it was
-			 * never set".  So let's cheat and make it one second
-			 * instead
-			 */
-			new_rlim->rlim_cur = 1;
-		}
 	}
 	if (!retval) {
 		if (old_rlim)
@@ -1517,10 +1580,9 @@ int do_prlimit(struct task_struct *tsk, unsigned int resource,
 	task_unlock(tsk->group_leader);
 
 	/*
-	 * RLIMIT_CPU handling.   Note that the kernel fails to return an error
-	 * code if it rejected the user's attempt to set RLIMIT_CPU.  This is a
-	 * very long-standing error, and fixing it now risks breakage of
-	 * applications, so we live with it
+	 * RLIMIT_CPU handling. Arm the posix CPU timer if the limit is not
+	 * infite. In case of RLIM_INFINITY the posix CPU timer code
+	 * ignores the rlimit.
 	 */
 	 if (!retval && new_rlim && resource == RLIMIT_CPU &&
 	     new_rlim->rlim_cur != RLIM_INFINITY &&
@@ -1688,6 +1750,7 @@ void getrusage(struct task_struct *p, int who, struct rusage *r)
 
 		if (who == RUSAGE_CHILDREN)
 			break;
+		/* fall through */
 
 	case RUSAGE_SELF:
 		thread_group_cputime_adjusted(p, &tgutime, &tgstime);
@@ -1822,13 +1885,14 @@ exit_err:
 }
 
 /*
+ * Check arithmetic relations of passed addresses.
+ *
  * WARNING: we don't require any capability here so be very careful
  * in what is allowed for modification from userspace.
  */
-static int validate_prctl_map(struct prctl_mm_map *prctl_map)
+static int validate_prctl_map_addr(struct prctl_mm_map *prctl_map)
 {
 	unsigned long mmap_max_addr = TASK_SIZE;
-	struct mm_struct *mm = current->mm;
 	int error = -EINVAL, i;
 
 	static const unsigned char offsets[] = {
@@ -1889,24 +1953,6 @@ static int validate_prctl_map(struct prctl_mm_map *prctl_map)
 			      prctl_map->start_data))
 			goto out;
 
-	/*
-	 * Someone is trying to cheat the auxv vector.
-	 */
-	if (prctl_map->auxv_size) {
-		if (!prctl_map->auxv || prctl_map->auxv_size > sizeof(mm->saved_auxv))
-			goto out;
-	}
-
-	/*
-	 * Finally, make sure the caller has the rights to
-	 * change /proc/pid/exe link: only local sys admin should
-	 * be allowed to.
-	 */
-	if (prctl_map->exe_fd != (u32)-1) {
-		if (!ns_capable(current_user_ns(), CAP_SYS_ADMIN))
-			goto out;
-	}
-
 	error = 0;
 out:
 	return error;
@@ -1933,11 +1979,18 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 	if (copy_from_user(&prctl_map, addr, sizeof(prctl_map)))
 		return -EFAULT;
 
-	error = validate_prctl_map(&prctl_map);
+	error = validate_prctl_map_addr(&prctl_map);
 	if (error)
 		return error;
 
 	if (prctl_map.auxv_size) {
+		/*
+		 * Someone is trying to cheat the auxv vector.
+		 */
+		if (!prctl_map.auxv ||
+				prctl_map.auxv_size > sizeof(mm->saved_auxv))
+			return -EINVAL;
+
 		memset(user_auxv, 0, sizeof(user_auxv));
 		if (copy_from_user(user_auxv,
 				   (const void __user *)prctl_map.auxv,
@@ -1950,12 +2003,24 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 	}
 
 	if (prctl_map.exe_fd != (u32)-1) {
+		/*
+		 * Make sure the caller has the rights to
+		 * change /proc/pid/exe link: only local sys admin should
+		 * be allowed to.
+		 */
+		if (!ns_capable(current_user_ns(), CAP_SYS_ADMIN))
+			return -EINVAL;
+
 		error = prctl_set_mm_exe_file(mm, prctl_map.exe_fd);
 		if (error)
 			return error;
 	}
 
-	down_write(&mm->mmap_sem);
+	/*
+	 * arg_lock protects concurent updates but we still need mmap_sem for
+	 * read to exclude races with sys_brk.
+	 */
+	down_read(&mm->mmap_sem);
 
 	/*
 	 * We don't validate if these members are pointing to
@@ -1969,6 +2034,7 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 	 *    to any problem in kernel itself
 	 */
 
+	spin_lock(&mm->arg_lock);
 	mm->start_code	= prctl_map.start_code;
 	mm->end_code	= prctl_map.end_code;
 	mm->start_data	= prctl_map.start_data;
@@ -1980,6 +2046,7 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 	mm->arg_end	= prctl_map.arg_end;
 	mm->env_start	= prctl_map.env_start;
 	mm->env_end	= prctl_map.env_end;
+	spin_unlock(&mm->arg_lock);
 
 	/*
 	 * Note this update of @saved_auxv is lockless thus
@@ -1992,7 +2059,7 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 	if (prctl_map.auxv_size)
 		memcpy(mm->saved_auxv, user_auxv, sizeof(user_auxv));
 
-	up_write(&mm->mmap_sem);
+	up_read(&mm->mmap_sem);
 	return 0;
 }
 #endif /* CONFIG_CHECKPOINT_RESTORE */
@@ -2031,7 +2098,11 @@ static int prctl_set_mm(int opt, unsigned long addr,
 			unsigned long arg4, unsigned long arg5)
 {
 	struct mm_struct *mm = current->mm;
-	struct prctl_mm_map prctl_map;
+	struct prctl_mm_map prctl_map = {
+		.auxv = NULL,
+		.auxv_size = 0,
+		.exe_fd = -1,
+	};
 	struct vm_area_struct *vma;
 	int error;
 
@@ -2059,9 +2130,15 @@ static int prctl_set_mm(int opt, unsigned long addr,
 
 	error = -EINVAL;
 
-	down_write(&mm->mmap_sem);
+	/*
+	 * arg_lock protects concurent updates of arg boundaries, we need
+	 * mmap_sem for a) concurrent sys_brk, b) finding VMA for addr
+	 * validation.
+	 */
+	down_read(&mm->mmap_sem);
 	vma = find_vma(mm, addr);
 
+	spin_lock(&mm->arg_lock);
 	prctl_map.start_code	= mm->start_code;
 	prctl_map.end_code	= mm->end_code;
 	prctl_map.start_data	= mm->start_data;
@@ -2073,9 +2150,6 @@ static int prctl_set_mm(int opt, unsigned long addr,
 	prctl_map.arg_end	= mm->arg_end;
 	prctl_map.env_start	= mm->env_start;
 	prctl_map.env_end	= mm->env_end;
-	prctl_map.auxv		= NULL;
-	prctl_map.auxv_size	= 0;
-	prctl_map.exe_fd	= -1;
 
 	switch (opt) {
 	case PR_SET_MM_START_CODE:
@@ -2115,7 +2189,7 @@ static int prctl_set_mm(int opt, unsigned long addr,
 		goto out;
 	}
 
-	error = validate_prctl_map(&prctl_map);
+	error = validate_prctl_map_addr(&prctl_map);
 	if (error)
 		goto out;
 
@@ -2152,7 +2226,8 @@ static int prctl_set_mm(int opt, unsigned long addr,
 
 	error = 0;
 out:
-	up_write(&mm->mmap_sem);
+	spin_unlock(&mm->arg_lock);
+	up_read(&mm->mmap_sem);
 	return error;
 }
 
@@ -2184,6 +2259,17 @@ static int propagate_has_child_subreaper(struct task_struct *p, void *data)
 
 	p->signal->has_child_subreaper = 1;
 	return 1;
+}
+
+int __weak arch_prctl_spec_ctrl_get(struct task_struct *t, unsigned long which)
+{
+	return -EINVAL;
+}
+
+int __weak arch_prctl_spec_ctrl_set(struct task_struct *t, unsigned long which,
+				    unsigned long ctrl)
+{
+	return -EINVAL;
 }
 
 #ifdef CONFIG_MMU
@@ -2333,19 +2419,8 @@ static int prctl_set_vma(unsigned long opt, unsigned long start,
 }
 #endif
 
-int __weak arch_prctl_spec_ctrl_get(struct task_struct *t, unsigned long which)
-{
-	return -EINVAL;
-}
-
-int __weak arch_prctl_spec_ctrl_set(struct task_struct *t, unsigned long which,
-				    unsigned long ctrl)
-{
-	return -EINVAL;
-}
-
-SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
-		unsigned long, arg4, unsigned long, arg5)
+int ksys_prctl(int option, unsigned long arg2, unsigned long arg3,
+	       unsigned long arg4, unsigned long arg5)
 {
 	struct task_struct *me = current;
 	unsigned char comm[sizeof(me->comm)];
@@ -2537,20 +2612,20 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		up_write(&me->mm->mmap_sem);
 		break;
 	case PR_MPX_ENABLE_MANAGEMENT:
-		if (arg2 || arg3 || arg4 || arg5)
-			return -EINVAL;
-		error = MPX_ENABLE_MANAGEMENT();
-		break;
 	case PR_MPX_DISABLE_MANAGEMENT:
-		if (arg2 || arg3 || arg4 || arg5)
-			return -EINVAL;
-		error = MPX_DISABLE_MANAGEMENT();
-		break;
+		/* No longer implemented: */
+		return -EINVAL;
 	case PR_SET_FP_MODE:
 		error = SET_FP_MODE(me, arg2);
 		break;
 	case PR_GET_FP_MODE:
 		error = GET_FP_MODE(me);
+		break;
+	case PR_SVE_SET_VL:
+		error = SVE_SET_VL(arg2);
+		break;
+	case PR_SVE_GET_VL:
+		error = SVE_GET_VL();
 		break;
 	case PR_GET_SPECULATION_CTRL:
 		if (arg3 || arg4 || arg5)
@@ -2565,6 +2640,24 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 	case PR_SET_VMA:
 		error = prctl_set_vma(arg2, arg3, arg4, arg5);
 		break;
+	case PR_PAC_RESET_KEYS:
+		if (arg3 || arg4 || arg5)
+			return -EINVAL;
+		error = PAC_RESET_KEYS(me, arg2);
+		break;
+	case PR_SET_TAGGED_ADDR_CTRL:
+		if (arg3 || arg4 || arg5)
+			return -EINVAL;
+		error = SET_TAGGED_ADDR_CTRL(arg2);
+		break;
+	case PR_GET_TAGGED_ADDR_CTRL:
+		if (arg2 || arg3 || arg4 || arg5)
+			return -EINVAL;
+		error = GET_TAGGED_ADDR_CTRL();
+		break;
+	case PR_SET_CORE_SCHED:
+		error = task_set_core_sched(arg2, NULL, 0);
+		break;
 	default:
 		error = -EINVAL;
 		break;
@@ -2572,8 +2665,14 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 	return error;
 }
 
-SYSCALL_DEFINE3(getcpu, unsigned __user *, cpup, unsigned __user *, nodep,
-		struct getcpu_cache __user *, unused)
+SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
+		unsigned long, arg4, unsigned long, arg5)
+{
+	return ksys_prctl(option, arg2, arg3, arg4, arg5);
+}
+
+int ksys_getcpu(unsigned __user *cpup, unsigned __user *nodep,
+		struct getcpu_cache __user *unused)
 {
 	int err = 0;
 	int cpu = raw_smp_processor_id();
@@ -2585,6 +2684,12 @@ SYSCALL_DEFINE3(getcpu, unsigned __user *, cpup, unsigned __user *, nodep,
 	return err ? -EFAULT : 0;
 }
 
+SYSCALL_DEFINE3(getcpu, unsigned __user *, cpup, unsigned __user *, nodep,
+		struct getcpu_cache __user *, unused)
+{
+	return ksys_getcpu(cpup, nodep, unused);
+}
+
 /**
  * do_sysinfo - fill in sysinfo struct
  * @info: pointer to buffer to fill
@@ -2593,11 +2698,11 @@ static int do_sysinfo(struct sysinfo *info)
 {
 	unsigned long mem_total, sav_total;
 	unsigned int mem_unit, bitcount;
-	struct timespec tp;
+	struct timespec64 tp;
 
 	memset(info, 0, sizeof(struct sysinfo));
 
-	get_monotonic_boottime(&tp);
+	ktime_get_boottime_ts64(&tp);
 	info->uptime = tp.tv_sec + (tp.tv_nsec ? 1 : 0);
 
 	get_avenrun(info->loads, 0, SI_LOAD_SHIFT - FSHIFT);
@@ -2708,7 +2813,7 @@ COMPAT_SYSCALL_DEFINE1(sysinfo, struct compat_sysinfo __user *, info)
 		s.freehigh >>= bitcount;
 	}
 
-	if (!access_ok(VERIFY_WRITE, info, sizeof(struct compat_sysinfo)) ||
+	if (!access_ok(info, sizeof(struct compat_sysinfo)) ||
 	    __put_user(s.uptime, &info->uptime) ||
 	    __put_user(s.loads[0], &info->loads[0]) ||
 	    __put_user(s.loads[1], &info->loads[1]) ||

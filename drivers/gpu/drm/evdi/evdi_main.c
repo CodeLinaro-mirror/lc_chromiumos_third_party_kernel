@@ -13,6 +13,7 @@
 
 #include <linux/platform_device.h>
 #include <drm/drmP.h>
+#include <drm/drm_probe_helper.h>
 #include "evdi_drv.h"
 #include "evdi_cursor.h"
 
@@ -101,27 +102,12 @@ void evdi_driver_unload(struct drm_device *dev)
 	kfree(evdi);
 }
 
-void evdi_driver_close(struct drm_device *drm_dev, struct drm_file *file)
-{
-	struct evdi_device *evdi = drm_dev->dev_private;
-
-	if (evdi)
-		evdi_painter_close(evdi, file);
-}
-
 void evdi_driver_preclose(struct drm_device *drm_dev, struct drm_file *file)
 {
-	evdi_driver_close(drm_dev, file);
-}
-
-void evdi_driver_postclose(struct drm_device *drm_dev, struct drm_file *file)
-{
 	struct evdi_device *evdi = drm_dev->dev_private;
 
-	EVDI_DEBUG("(dev=%d) Process tries to close us, postclose\n",
-		   evdi ? evdi->dev_index : -1);
-	evdi_log_process();
-
-	evdi_driver_close(drm_dev, file);
+	EVDI_CHECKPT();
+	if (evdi)
+		evdi_painter_close(evdi, file);
 }
 

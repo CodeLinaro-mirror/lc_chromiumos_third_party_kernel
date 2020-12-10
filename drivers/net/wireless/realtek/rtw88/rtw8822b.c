@@ -1552,15 +1552,17 @@ static void rtw8822b_bf_config_bfee(struct rtw_dev *rtwdev, struct rtw_vif *vif,
 
 static void rtw8822b_adaptivity_init(struct rtw_dev *rtwdev)
 {
-	rtw_phy_set_edcca_th(rtwdev, 0x7f, 0x7f);
-	/* mac edcca state setting */
-	rtw_write32_mask(rtwdev, REG_TX_PTCL_CTRL, BIT_DIS_EDCCA, 0);
-	rtw_write32_mask(rtwdev, REG_RD_CTRL, BIT_EDCCA_MSK_CNTDOWN_EN, 1);
+	rtw_phy_set_edcca_th(rtwdev, RTW8822B_EDCCA_MAX, RTW8822B_EDCCA_MAX);
 
-	rtw_write32_mask(rtwdev, REG_EDCCA_SOURCE, BIT_SOURCE_OPTION, 1);
+	/* mac edcca state setting */
+	rtw_write32_clr(rtwdev, REG_TX_PTCL_CTRL, BIT_DIS_EDCCA);
+	rtw_write32_set(rtwdev, REG_RD_CTRL, BIT_EDCCA_MSK_CNTDOWN_EN);
+	rtw_write32_mask(rtwdev, REG_EDCCA_SOURCE, BIT_SOURCE_OPTION,
+			 RTW8822B_EDCCA_SRC_DEF);
 	rtw_write32_mask(rtwdev, REG_EDCCA_POW_MA, BIT_MA_LEVEL, 0);
-	/* edcca decistion opt */
-	rtw_write32_mask(rtwdev, REG_EDCCA_DECISION, BIT_EDCCA_OPTION, 1);
+
+	/* edcca decision opt */
+	rtw_write32_set(rtwdev, REG_EDCCA_DECISION, BIT_EDCCA_OPTION);
 }
 
 static void rtw8822b_adaptivity(struct rtw_dev *rtwdev)

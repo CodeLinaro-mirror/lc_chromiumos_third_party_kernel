@@ -1,10 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * dice_hwdep.c - a part of driver for DICE based devices
  *
  * Copyright (c) Clemens Ladisch <clemens@ladisch.de>
  * Copyright (c) 2014 Takashi Sakamoto <o-takashi@sakamocchi.jp>
- *
- * Licensed under the terms of the GNU General Public License, version 2.
  */
 
 #include "dice.h"
@@ -62,7 +61,7 @@ static __poll_t hwdep_poll(struct snd_hwdep *hwdep, struct file *file,
 
 	spin_lock_irq(&dice->lock);
 	if (dice->dev_lock_changed || dice->notification_bits != 0)
-		events = POLLIN | POLLRDNORM;
+		events = EPOLLIN | EPOLLRDNORM;
 	else
 		events = 0;
 	spin_unlock_irq(&dice->lock);

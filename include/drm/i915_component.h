@@ -26,11 +26,15 @@
 
 #include "drm_audio_component.h"
 
+enum i915_component_type {
+	I915_COMPONENT_AUDIO = 1,
+	I915_COMPONENT_HDCP,
+};
+
 /* MAX_PORT is the number of port
  * It must be sync with I915_MAX_PORTS defined i915_drv.h
- * 5 should be enough as only HSW, BDW, SKL need such fix.
  */
-#define MAX_PORTS 5
+#define MAX_PORTS 9
 
 /**
  * struct i915_audio_component - Used for direct communication between i915 and hda drivers

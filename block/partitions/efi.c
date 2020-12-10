@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /************************************************************
  * EFI GUID Partition Table handling
  *
@@ -6,21 +7,6 @@
  *
  * efi.[ch] by Matt Domsch <Matt_Domsch@dell.com>
  *   Copyright 2000,2001,2002,2004 Dell Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
  *
  * TODO:
  *
@@ -344,23 +330,33 @@ static gpt_header *alloc_read_gpt_header(struct parsed_partitions *state,
  * @lba: logical block address of the GPT header to test
  * @gpt: GPT header ptr, filled on return.
  * @ptes: PTEs ptr, filled on return.
+ * @ignored is filled on return with 1 if this is an IGNOREME GPT,
+ *     0 otherwise. May be NULL.
  *
  * Description: returns 1 if valid,  0 on error.
  * If valid, returns pointers to newly allocated GPT header and PTEs.
  */
 static int is_gpt_valid(struct parsed_partitions *state, u64 lba,
-			gpt_header **gpt, gpt_entry **ptes)
+			gpt_header **gpt, gpt_entry **ptes, int *ignored)
 {
 	u32 crc, origcrc;
 	u64 lastlba, pt_size;
 
+	if (ignored)
+		*ignored = 0;
 	if (!ptes)
 		return 0;
 	if (!(*gpt = alloc_read_gpt_header(state, lba)))
 		return 0;
 
 	/* Check the GUID Partition Table signature */
-	if (le64_to_cpu((*gpt)->signature) != GPT_HEADER_SIGNATURE) {
+	if (le64_to_cpu((*gpt)->signature) == GPT_HEADER_SIGNATURE_IGNORED) {
+		pr_debug("GUID Partition Table at LBA %llu marked IGNOREME\n",
+			 lba);
+		if (ignored)
+			*ignored = 1;
+		goto fail;
+	} else if (le64_to_cpu((*gpt)->signature) != GPT_HEADER_SIGNATURE) {
 		pr_debug("GUID Partition Table Header signature is wrong:"
 			 "%lld != %lld\n",
 			 (unsigned long long)le64_to_cpu((*gpt)->signature),
@@ -597,7 +593,7 @@ compare_gpts(gpt_header *pgpt, gpt_header *agpt, u64 lastlba)
 static int find_valid_gpt(struct parsed_partitions *state, gpt_header **gpt,
 			  gpt_entry **ptes)
 {
-	int good_pgpt = 0, good_agpt = 0, good_pmbr = 0;
+	int good_pgpt = 0, good_agpt = 0, good_pmbr = 0, pgpt_ignored = 0;
 	gpt_header *pgpt = NULL, *agpt = NULL;
 	gpt_entry *pptes = NULL, *aptes = NULL;
 	legacy_mbr *legacymbr;
@@ -627,19 +623,21 @@ static int find_valid_gpt(struct parsed_partitions *state, gpt_header **gpt,
 	}
 
 	good_pgpt = is_gpt_valid(state, GPT_PRIMARY_PARTITION_TABLE_LBA,
-				 &pgpt, &pptes);
+				 &pgpt, &pptes, &pgpt_ignored);
         if (good_pgpt)
 		good_agpt = is_gpt_valid(state,
 					 le64_to_cpu(pgpt->alternate_lba),
-					 &agpt, &aptes);
-        if (!good_agpt && force_gpt)
-                good_agpt = is_gpt_valid(state, lastlba, &agpt, &aptes);
+					 &agpt, &aptes, NULL);
+
+	if (!good_agpt && (force_gpt || pgpt_ignored))
+		good_agpt = is_gpt_valid(state, lastlba, &agpt, &aptes, NULL);
 
         /* The obviously unsuccessful case */
         if (!good_pgpt && !good_agpt)
                 goto fail;
 
-        compare_gpts(pgpt, agpt, lastlba);
+	if (!pgpt_ignored)
+		compare_gpts(pgpt, agpt, lastlba);
 
         /* The good cases */
         if (good_pgpt) {
@@ -656,7 +654,8 @@ static int find_valid_gpt(struct parsed_partitions *state, gpt_header **gpt,
                 *ptes = aptes;
                 kfree(pgpt);
                 kfree(pptes);
-		pr_warn("Primary GPT is invalid, using alternate GPT.\n");
+		pr_warn("Primary GPT is %s, using alternate GPT.\n",
+			pgpt_ignored ? "being ignored" : "invalid");
                 return 1;
         }
 

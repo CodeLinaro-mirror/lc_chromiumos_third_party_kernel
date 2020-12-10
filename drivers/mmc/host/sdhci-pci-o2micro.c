@@ -1,25 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2013 BayHub Technology Ltd.
  *
  * Authors: Peter Guo <peter.guo@bayhubtech.com>
  *          Adam Lee <adam.lee@canonical.com>
  *          Ernest Zhang <ernest.zhang@bayhubtech.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 
 #include <linux/pci.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/delay.h>
+#include <linux/iopoll.h>
 
 #include "sdhci.h"
 #include "sdhci-pci.h"
@@ -171,36 +163,23 @@ static void o2_pci_set_baseclk(struct sdhci_pci_chip *chip, u32 value)
 			       O2_SD_PLL_SETTING, scratch_32);
 }
 
+static u32 sdhci_o2_pll_dll_wdt_control(struct sdhci_host *host)
+{
+	return sdhci_readl(host, O2_PLL_DLL_WDT_CONTROL1);
+}
+
 /*
  * This function is used to detect dll lock status.
- * Before detect, need wait 5ms for dll status stable.
- * In order to detect the toggle of dll lock status bit,
- * we should fast polling this bit status without delay.
+ * Since the dll lock status bit will toggle randomly
+ * with very short interval which needs to be polled
+ * as fast as possible. Set sleep_us as 1 microsecond.
  */
 static int sdhci_o2_wait_dll_detect_lock(struct sdhci_host *host)
 {
-	ktime_t timeout;
-	u32 scratch32;
+	u32	scratch32 = 0;
 
-	usleep_range(5000, 6000);
-	scratch32 = sdhci_readl(host, O2_PLL_DLL_WDT_CONTROL1);
-	if (!(scratch32 & O2_DLL_LOCK_STATUS)) {
-		pr_warn("%s: DLL is still unlocked after wait 5ms\n",
-			mmc_hostname(host->mmc));
-	}
-
-	/* Detect 1 s */
-	timeout = ktime_add_ms(ktime_get(), 1000);
-	while (1) {
-		bool timedout = ktime_after(ktime_get(), timeout);
-
-		scratch32 = sdhci_readl(host, O2_PLL_DLL_WDT_CONTROL1);
-		if (!(scratch32 & O2_DLL_LOCK_STATUS))
-			return 0;
-
-		if (timedout)
-			return 1;
-	}
+	return readx_poll_timeout(sdhci_o2_pll_dll_wdt_control, host,
+		scratch32, !(scratch32 & O2_DLL_LOCK_STATUS), 1, 1000000);
 }
 
 static void sdhci_o2_set_tuning_mode(struct sdhci_host *host)
@@ -283,6 +262,11 @@ static int sdhci_o2_dll_recovery(struct sdhci_host *host)
 		sdhci_writeb(host, scratch_8, SDHCI_CLOCK_CONTROL);
 
 		if (sdhci_o2_get_cd(host->mmc)) {
+			/*
+			 * need wait at least 5ms for dll status stable,
+			 * after enable internal clock
+			 */
+			usleep_range(5000, 6000);
 			if (sdhci_o2_wait_dll_detect_lock(host)) {
 				scratch_8 |= SDHCI_CLOCK_CARD_EN;
 				sdhci_writeb(host, scratch_8,
@@ -568,7 +552,6 @@ int sdhci_pci_o2_probe_slot(struct sdhci_pci_slot *slot)
 					mmc_hostname(host->mmc));
 				host->flags &= ~SDHCI_SIGNALING_330;
 				host->flags |= SDHCI_SIGNALING_180;
-				host->quirks2 |= SDHCI_QUIRK2_CLEAR_TRANSFERMODE_REG_BEFORE_CMD;
 				host->mmc->caps2 |= MMC_CAP2_NO_SD;
 				host->mmc->caps2 |= MMC_CAP2_NO_SDIO;
 				pci_write_config_dword(chip->pdev,
@@ -576,6 +559,12 @@ int sdhci_pci_o2_probe_slot(struct sdhci_pci_slot *slot)
 			}
 
 			slot->host->mmc_host_ops.get_cd = sdhci_o2_get_cd;
+		}
+
+		if (chip->pdev->device == PCI_DEVICE_ID_O2_SEABIRD1) {
+			slot->host->mmc_host_ops.get_cd = sdhci_o2_get_cd;
+			host->mmc->caps2 |= MMC_CAP2_NO_SDIO;
+			host->quirks2 |= SDHCI_QUIRK2_PRESET_VALUE_BROKEN;
 		}
 
 		host->mmc_host_ops.execute_tuning = sdhci_o2_execute_tuning;
@@ -818,6 +807,7 @@ static const struct sdhci_ops sdhci_pci_o2_ops = {
 const struct sdhci_pci_fixes sdhci_o2 = {
 	.probe = sdhci_pci_o2_probe,
 	.quirks = SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
+	.quirks2 = SDHCI_QUIRK2_CLEAR_TRANSFERMODE_REG_BEFORE_CMD,
 	.probe_slot = sdhci_pci_o2_probe_slot,
 #ifdef CONFIG_PM_SLEEP
 	.resume = sdhci_pci_o2_resume,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Linux driver for M2Tech hiFace compatible devices
  *
@@ -7,11 +8,6 @@
  *           Antonio Ospite <ao2@amarulasolutions.com>
  *
  * The driver is based on the work done in TerraTec DMX 6Fire USB
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 #include <linux/slab.h>
@@ -540,6 +536,8 @@ static int hiface_pcm_init_urb(struct pcm_urb *urb,
 	usb_fill_bulk_urb(&urb->instance, chip->dev,
 			  usb_sndbulkpipe(chip->dev, ep), (void *)urb->buffer,
 			  PCM_PACKET_SIZE, handler, urb);
+	if (usb_urb_ep_type_check(&urb->instance))
+		return -EINVAL;
 	init_usb_anchor(&urb->submitted);
 
 	return 0;
@@ -598,15 +596,17 @@ int hiface_pcm_init(struct hiface_chip *chip, u8 extra_freq)
 	mutex_init(&rt->stream_mutex);
 	spin_lock_init(&rt->playback.lock);
 
-	for (i = 0; i < PCM_N_URBS; i++)
-		hiface_pcm_init_urb(&rt->out_urbs[i], chip, OUT_EP,
+	for (i = 0; i < PCM_N_URBS; i++) {
+		ret = hiface_pcm_init_urb(&rt->out_urbs[i], chip, OUT_EP,
 				    hiface_pcm_out_urb_handler);
+		if (ret < 0)
+			goto error;
+	}
 
 	ret = snd_pcm_new(chip->card, "USB-SPDIF Audio", 0, 1, 0, &pcm);
 	if (ret < 0) {
-		kfree(rt);
 		dev_err(&chip->dev->dev, "Cannot create pcm instance\n");
-		return ret;
+		goto error;
 	}
 
 	pcm->private_data = rt;
@@ -619,4 +619,10 @@ int hiface_pcm_init(struct hiface_chip *chip, u8 extra_freq)
 
 	chip->pcm = rt;
 	return 0;
+
+error:
+	for (i = 0; i < PCM_N_URBS; i++)
+		kfree(rt->out_urbs[i].buffer);
+	kfree(rt);
+	return ret;
 }

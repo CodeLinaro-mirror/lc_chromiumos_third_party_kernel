@@ -99,10 +99,6 @@ static const struct mmc_fixup mmc_blk_fixups[] = {
 	MMC_FIXUP("V10016", CID_MANFID_KINGSTON, CID_OEMID_ANY, add_quirk_mmc,
 		  MMC_QUIRK_TRIM_BROKEN),
 
-	/* Add Hynix specific fixup here */
-	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_HYNIX, CID_OEMID_ANY, add_quirk_mmc,
-		  MMC_QUIRK_NOTIFY_POWEROFF_ON_SLEEP),
-
 	END_FIXUP
 };
 
@@ -143,6 +139,9 @@ static const struct mmc_fixup sdio_fixup_methods[] = {
 	SDIO_FIXUP(SDIO_VENDOR_ID_MARVELL, SDIO_DEVICE_ID_MARVELL_8797_F0,
 		   add_quirk, MMC_QUIRK_BROKEN_IRQ_POLLING),
 
+	SDIO_FIXUP(SDIO_VENDOR_ID_MARVELL, SDIO_DEVICE_ID_MARVELL_8887WLAN,
+		   add_limit_rate_quirk, 150000000),
+
 	END_FIXUP
 };
 
@@ -167,7 +166,7 @@ static inline void mmc_fixup_device(struct mmc_card *card,
 		    (f->ext_csd_rev == EXT_CSD_REV_ANY ||
 		     f->ext_csd_rev == card->ext_csd.rev) &&
 		    rev >= f->rev_start && rev <= f->rev_end) {
-			dev_dbg(&card->dev, "calling %pf\n", f->vendor_fixup);
+			dev_dbg(&card->dev, "calling %ps\n", f->vendor_fixup);
 			f->vendor_fixup(card, f->data);
 		}
 	}

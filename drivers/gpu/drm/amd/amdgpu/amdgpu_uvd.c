@@ -30,7 +30,7 @@
 
 #include <linux/firmware.h>
 #include <linux/module.h>
-#include <drm/drmP.h>
+
 #include <drm/drm.h>
 
 #include "amdgpu.h"
@@ -1073,7 +1073,7 @@ static int amdgpu_uvd_send_msg(struct amdgpu_ring *ring, struct amdgpu_bo *bo,
 	ib->length_dw = 16;
 
 	if (direct) {
-		r = reservation_object_wait_timeout_rcu(bo->tbo.resv,
+		r = dma_resv_wait_timeout_rcu(bo->tbo.base.resv,
 							true, false,
 							msecs_to_jiffies(10));
 		if (r == 0)
@@ -1085,7 +1085,7 @@ static int amdgpu_uvd_send_msg(struct amdgpu_ring *ring, struct amdgpu_bo *bo,
 		if (r)
 			goto err_free;
 	} else {
-		r = amdgpu_sync_resv(adev, &job->sync, bo->tbo.resv,
+		r = amdgpu_sync_resv(adev, &job->sync, bo->tbo.base.resv,
 				     AMDGPU_FENCE_OWNER_UNDEFINED, false);
 		if (r)
 			goto err_free;
@@ -1245,30 +1245,20 @@ int amdgpu_uvd_ring_test_ib(struct amdgpu_ring *ring, long timeout)
 {
 	struct dma_fence *fence;
 	long r;
-	uint32_t ip_instance = ring->me;
 
 	r = amdgpu_uvd_get_create_msg(ring, 1, NULL);
-	if (r) {
-		DRM_ERROR("amdgpu: (%d)failed to get create msg (%ld).\n", ip_instance, r);
+	if (r)
 		goto error;
-	}
 
 	r = amdgpu_uvd_get_destroy_msg(ring, 1, true, &fence);
-	if (r) {
-		DRM_ERROR("amdgpu: (%d)failed to get destroy ib (%ld).\n", ip_instance, r);
+	if (r)
 		goto error;
-	}
 
 	r = dma_fence_wait_timeout(fence, false, timeout);
-	if (r == 0) {
-		DRM_ERROR("amdgpu: (%d)IB test timed out.\n", ip_instance);
+	if (r == 0)
 		r = -ETIMEDOUT;
-	} else if (r < 0) {
-		DRM_ERROR("amdgpu: (%d)fence wait failed (%ld).\n", ip_instance, r);
-	} else {
-		DRM_DEBUG("ib test on (%d)ring %d succeeded\n", ip_instance, ring->idx);
+	else if (r > 0)
 		r = 0;
-	}
 
 	dma_fence_put(fence);
 

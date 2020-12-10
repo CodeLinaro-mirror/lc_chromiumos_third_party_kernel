@@ -232,26 +232,14 @@ failed_to_read:
 	return ret;
 }
 
-#ifdef CONFIG_MTD
-
-struct erase_info_completion {
-	struct erase_info instr;
-	struct completion completion;
-};
-
-static void complete_erase(struct erase_info *instr)
-{
-	struct erase_info_completion *erase = container_of(
-		instr, struct erase_info_completion, instr);
-	complete(&erase->completion);
-}
+#if IS_REACHABLE(CONFIG_MTD)
 
 /* The maximum number of volumes per one UBI device, from ubi-media.h */
 #define UBI_MAX_VOLUMES 128
 
 static int chromeos_invalidate_kernel_nand(struct block_device *root_bdev)
 {
-	struct erase_info_completion erase;
+	struct erase_info instr;
 	int ret;
 	int partnum;
 	struct mtd_info *dev;
@@ -278,20 +266,12 @@ static int chromeos_invalidate_kernel_nand(struct block_device *root_bdev)
 good:
 	/* Erase the first good block of the kernel. This will prevent
 	 * that kernel from booting. */
-	memset(&erase, 0, sizeof(erase));
-	erase.instr.mtd = dev;
-	erase.instr.addr = offset;
-	erase.instr.len = dev->erasesize;
-	erase.instr.callback = complete_erase;
-	init_completion(&erase.completion);
-	ret = mtd_erase(dev, &erase.instr);
+	memset(&instr, 0, sizeof(instr));
+	instr.addr = offset;
+	instr.len = dev->erasesize;
+	ret = mtd_erase(dev, &instr);
 	if (ret)
 		goto out;
-	wait_for_completion(&erase.completion);
-	if (erase.instr.state == MTD_ERASE_FAILED) {
-		ret = -EIO;
-		goto out;
-	}
 	/* Write DMVERROR on the first page. If this fails, still return
 	 * success since we will still be causing the kernel to not be
 	 * selected, so no need to put the device in recovery mode. */
@@ -333,11 +313,10 @@ out:
  */
 static int chromeos_invalidate_kernel(struct block_device *root_bdev)
 {
-#ifdef CONFIG_MTD
+#if IS_REACHABLE(CONFIG_MTD)
 	if (root_bdev && root_bdev->bd_disk) {
-		char name[BDEVNAME_SIZE];
-		disk_name(root_bdev->bd_disk, 0, name);
-		if (strncmp(name, "ubiblock", strlen("ubiblock")) == 0)
+		if (!(strncmp(root_bdev->bd_disk->disk_name, "ubiblock",
+			      strlen("ubiblock"))))
 			return chromeos_invalidate_kernel_nand(root_bdev);
 	}
 #endif

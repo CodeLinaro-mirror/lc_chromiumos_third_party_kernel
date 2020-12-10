@@ -32,6 +32,7 @@
 #define PCI_DEVICE_ID_INTEL_SPT_SDIO	0x9d2c
 #define PCI_DEVICE_ID_INTEL_SPT_SD	0x9d2d
 #define PCI_DEVICE_ID_INTEL_DNV_EMMC	0x19db
+#define PCI_DEVICE_ID_INTEL_CDF_EMMC	0x18db
 #define PCI_DEVICE_ID_INTEL_BXT_SD	0x0aca
 #define PCI_DEVICE_ID_INTEL_BXT_EMMC	0x0acc
 #define PCI_DEVICE_ID_INTEL_BXT_SDIO	0x0ad0
@@ -47,12 +48,30 @@
 #define PCI_DEVICE_ID_INTEL_CNP_EMMC	0x9dc4
 #define PCI_DEVICE_ID_INTEL_CNP_SD	0x9df5
 #define PCI_DEVICE_ID_INTEL_CNPH_SD	0xa375
+#define PCI_DEVICE_ID_INTEL_ICP_EMMC	0x34c4
+#define PCI_DEVICE_ID_INTEL_ICP_SD	0x34f8
+#define PCI_DEVICE_ID_INTEL_EHL_EMMC	0x4b47
+#define PCI_DEVICE_ID_INTEL_EHL_SD	0x4b48
+#define PCI_DEVICE_ID_INTEL_CML_EMMC	0x02c4
+#define PCI_DEVICE_ID_INTEL_CML_SD	0x02f5
+#define PCI_DEVICE_ID_INTEL_CMLH_SD	0x06f5
+#define PCI_DEVICE_ID_INTEL_JSL_EMMC	0x4dc4
+#define PCI_DEVICE_ID_INTEL_JSL_SD	0x4df8
 
 #define PCI_DEVICE_ID_SYSKONNECT_8000	0x8000
 #define PCI_DEVICE_ID_VIA_95D0		0x95d0
 #define PCI_DEVICE_ID_REALTEK_5250	0x5250
 
 #define PCI_SUBDEVICE_ID_NI_7884	0x7884
+#define PCI_SUBDEVICE_ID_NI_78E3	0x78e3
+
+#define PCI_VENDOR_ID_ARASAN		0x16e6
+#define PCI_DEVICE_ID_ARASAN_PHY_EMMC	0x0670
+
+#define PCI_DEVICE_ID_SYNOPSYS_DWC_MSHC 0xc202
+
+#define PCI_DEVICE_ID_GLI_9755		0x9755
+#define PCI_DEVICE_ID_GLI_9750		0x9750
 
 /*
  * PCI device class and mask
@@ -169,13 +188,12 @@ static inline void *sdhci_pci_priv(struct sdhci_pci_slot *slot)
 #ifdef CONFIG_PM_SLEEP
 int sdhci_pci_resume_host(struct sdhci_pci_chip *chip);
 #endif
-extern const struct sdhci_pci_fixes sdhci_o2;
 int sdhci_pci_enable_dma(struct sdhci_host *host);
-int sdhci_pci_o2_probe_slot(struct sdhci_pci_slot *slot);
-int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip);
-#ifdef CONFIG_PM_SLEEP
-int sdhci_pci_o2_resume(struct sdhci_pci_chip *chip);
-#endif
-void sdhci_pci_o2_set_clock(struct sdhci_host *host, unsigned int clock);
+
+extern const struct sdhci_pci_fixes sdhci_arasan;
+extern const struct sdhci_pci_fixes sdhci_snps;
+extern const struct sdhci_pci_fixes sdhci_o2;
+extern const struct sdhci_pci_fixes sdhci_gl9750;
+extern const struct sdhci_pci_fixes sdhci_gl9755;
 
 #endif /* __SDHCI_PCI_H */

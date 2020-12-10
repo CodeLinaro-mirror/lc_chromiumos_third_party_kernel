@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2012 Red Hat
- * Copyright (c) 2015 - 2018 DisplayLink (UK) Ltd.
+ * Copyright (c) 2015 - 2020 DisplayLink (UK) Ltd.
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License v2. See the file COPYING in the main directory of this archive for
@@ -11,6 +11,7 @@
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_probe_helper.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 
@@ -40,6 +41,9 @@ struct drm_ioctl_desc evdi_painter_ioctls[] = {
 				evdi_painter_request_update_ioctl,
 				DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(EVDI_GRABPIX, evdi_painter_grabpix_ioctl,
+				DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(EVDI_DDCCI_RESPONSE,
+				evdi_painter_ddcci_response_ioctl,
 				DRM_UNLOCKED),
 };
 
@@ -75,12 +79,10 @@ static void evdi_disable_vblank(__always_unused struct drm_device *dev,
 }
 
 static struct drm_driver driver = {
-	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME |
-	DRIVER_ATOMIC,
+	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 	.load = evdi_driver_load,
 	.unload = evdi_driver_unload,
 	.preclose = evdi_driver_preclose,
-	.postclose = evdi_driver_postclose,
 
 	/* gem hooks */
 	.gem_free_object = evdi_gem_free_object,
@@ -216,7 +218,7 @@ static int evdi_platform_probe(struct platform_device *pdev)
 	return 0;
 
 err_free:
-	drm_dev_unref(dev);
+	drm_dev_put(dev);
 	return ret;
 }
 

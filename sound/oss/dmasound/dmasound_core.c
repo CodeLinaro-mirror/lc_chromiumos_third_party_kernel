@@ -420,7 +420,7 @@ static int sq_allocate_buffers(struct sound_queue *sq, int num, int size)
 		return 0;
 	sq->numBufs = num;
 	sq->bufSize = size;
-	sq->buffers = kmalloc (num * sizeof(char *), GFP_KERNEL);
+	sq->buffers = kmalloc_array (num, sizeof(char *), GFP_KERNEL);
 	if (!sq->buffers)
 		return -ENOMEM;
 	for (i = 0; i < num; i++) {
@@ -684,7 +684,7 @@ static __poll_t sq_poll(struct file *file, struct poll_table_struct *wait)
 		poll_wait(file, &write_sq.action_queue, wait);
 	if (file->f_mode & FMODE_WRITE)
 		if (write_sq.count < write_sq.max_active || write_sq.block_size - write_sq.rear_size > 0)
-			mask |= POLLOUT | POLLWRNORM;
+			mask |= EPOLLOUT | EPOLLWRNORM;
 	return mask;
 
 }

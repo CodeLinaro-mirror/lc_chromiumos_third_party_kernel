@@ -1,17 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Intel Smart Sound Technology (SST) Core
  *
  * Copyright (C) 2013, Intel Corporation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License version
- * 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 
 #ifndef __SOUND_SOC_SST_DSP_H
@@ -158,11 +149,17 @@
 #define SST_VDRTCTL3		0xaC
 
 /* VDRTCTL0 */
-#define SST_VDRTCL0_APLLSE_MASK		1
-#define SST_VDRTCL0_DSRAMPGE_SHIFT	16
-#define SST_VDRTCL0_DSRAMPGE_MASK	(0xffff << SST_VDRTCL0_DSRAMPGE_SHIFT)
-#define SST_VDRTCL0_ISRAMPGE_SHIFT	6
+#define SST_VDRTCL0_D3PGD		(1 << 0)
+#define SST_VDRTCL0_D3SRAMPGD		(1 << 1)
+#define SST_VDRTCL0_DSRAMPGE_SHIFT	12
+#define SST_VDRTCL0_DSRAMPGE_MASK	(0xfffff << SST_VDRTCL0_DSRAMPGE_SHIFT)
+#define SST_VDRTCL0_ISRAMPGE_SHIFT	2
 #define SST_VDRTCL0_ISRAMPGE_MASK	(0x3ff << SST_VDRTCL0_ISRAMPGE_SHIFT)
+
+/* VDRTCTL2 */
+#define SST_VDRTCL2_DCLCGE		(1 << 1)
+#define SST_VDRTCL2_DTCGE		(1 << 10)
+#define SST_VDRTCL2_APLLSE_MASK		(1 << 31)
 
 /* PMCS */
 #define SST_PMCS		0x84
@@ -271,15 +268,14 @@ void sst_dsp_ipc_msg_tx(struct sst_dsp *dsp, u32 msg);
 u32 sst_dsp_ipc_msg_rx(struct sst_dsp *dsp);
 
 /* Mailbox management */
-int sst_dsp_mailbox_init(struct sst_dsp *dsp, u32 inbox_offset,
+int sst_dsp_mailbox_init(struct sst_dsp *sst, u32 inbox_offset,
 	size_t inbox_size, u32 outbox_offset, size_t outbox_size);
-void sst_dsp_inbox_write(struct sst_dsp *dsp, void *message, size_t bytes);
-void sst_dsp_inbox_read(struct sst_dsp *dsp, void *message, size_t bytes);
-void sst_dsp_outbox_write(struct sst_dsp *dsp, void *message, size_t bytes);
-void sst_dsp_outbox_read(struct sst_dsp *dsp, void *message, size_t bytes);
-void sst_dsp_mailbox_dump(struct sst_dsp *dsp, size_t bytes);
-int sst_dsp_register_poll(struct sst_dsp  *dsp, u32 offset, u32 mask,
-		 u32 expected_value, u32 timeout, char *operation);
+void sst_dsp_inbox_write(struct sst_dsp *sst, void *message, size_t bytes);
+void sst_dsp_inbox_read(struct sst_dsp *sst, void *message, size_t bytes);
+void sst_dsp_outbox_write(struct sst_dsp *sst, void *message, size_t bytes);
+void sst_dsp_outbox_read(struct sst_dsp *sst, void *message, size_t bytes);
+int sst_dsp_register_poll(struct sst_dsp  *ctx, u32 offset, u32 mask,
+		 u32 target, u32 time, char *operation);
 
 /* Debug */
 void sst_dsp_dump(struct sst_dsp *sst);

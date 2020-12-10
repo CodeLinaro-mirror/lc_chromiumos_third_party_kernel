@@ -16,8 +16,10 @@
 
 / {
 	aliases {
+		bluetooth0 = &bluetooth;
 		hsuart0 = &uart6;
 		serial0 = &uart9;
+		wifi0 = &wifi;
 	};
 
 	chosen {
@@ -31,16 +33,6 @@
 		power-supply = <&ppvar_sys>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&ap_edp_bklten>;
-	};
-
-	reserved-memory {
-		rmtfs@88f00000 {
-			compatible = "qcom,rmtfs-mem";
-			reg = <0x0 0x88f00000 0x0 0x200000>;
-			no-map;
-
-			qcom,client-id = <1>;
-		};
 	};
 
 	/* FIXED REGULATORS - parents above children */
@@ -135,6 +127,61 @@
 			linux,code = <SW_PEN_INSERTED>;
 			linux,input-type = <EV_SW>;
 			wakeup-source;
+		};
+	};
+
+	panel: panel {
+		compatible ="innolux,p120zdg-bf1";
+		power-supply = <&pp3300_dx_edp>;
+		backlight = <&backlight>;
+		no-hpd;
+
+		ports {
+			panel_in: port {
+				panel_in_edp: endpoint {
+					remote-endpoint = <&sn65dsi86_out>;
+				};
+			};
+		};
+	};
+};
+
+/*
+ * Reserved memory changes
+ *
+ * Putting this all together (out of order with the rest of the file) to keep
+ * all modifications to the memory map (from sdm845.dtsi) in one place.
+ */
+
+/*
+ * Our mpss_region is 8MB bigger than the default one and that conflicts
+ * with venus_mem and cdsp_mem.
+ *
+ * For venus_mem we'll delete and re-create at a different address.
+ *
+ * cdsp_mem isn't used on cheza right now so we won't bother re-creating it; but
+ * that also means we need to delete cdsp_pas.
+ */
+/delete-node/ &venus_mem;
+/delete-node/ &cdsp_mem;
+/delete-node/ &cdsp_pas;
+/delete-node/ &gpu_mem;
+
+/* Increase the size from 120 MB to 128 MB */
+&mpss_region {
+	reg = <0 0x8e000000 0 0x8000000>;
+};
+
+/* Increase the size from 2MB to 8MB */
+&rmtfs_mem {
+	reg = <0 0x88f00000 0 0x800000>;
+};
+
+/ {
+	reserved-memory {
+		venus_mem: memory@96000000 {
+			reg = <0 0x96000000 0 0x500000>;
+			no-map;
 		};
 	};
 };
@@ -459,9 +506,69 @@
 	};
 };
 
+&dsi0 {
+	status = "okay";
+	vdda-supply = <&vdda_mipi_dsi0_1p2>;
+
+	ports {
+		port@1 {
+			endpoint {
+				remote-endpoint = <&sn65dsi86_in>;
+				data-lanes = <0 1 2 3>;
+			};
+		};
+	};
+};
+
+&dsi0_phy {
+	status = "okay";
+	vdds-supply = <&vdda_mipi_dsi0_pll>;
+};
+
 edp_brij_i2c: &i2c3 {
 	status = "okay";
 	clock-frequency = <400000>;
+
+	sn65dsi86_bridge: bridge@2d {
+		compatible = "ti,sn65dsi86";
+		reg = <0x2d>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&edp_brij_en &edp_brij_irq>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <10 IRQ_TYPE_LEVEL_HIGH>;
+
+		enable-gpios = <&tlmm 102 GPIO_ACTIVE_HIGH>;
+
+		vpll-supply = <&src_pp1800_s4a>;
+		vccio-supply = <&src_pp1800_s4a>;
+		vcca-supply = <&src_pp1200_l2a>;
+		vcc-supply = <&src_pp1200_l2a>;
+
+		clocks = <&rpmhcc RPMH_LN_BB_CLK2>;
+		clock-names = "refclk";
+
+		no-hpd;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				sn65dsi86_in: endpoint {
+					remote-endpoint = <&dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				sn65dsi86_out: endpoint {
+					remote-endpoint = <&panel_in_edp>;
+				};
+			};
+		};
+	};
 };
 
 ap_pen_1v8: &i2c11 {
@@ -509,6 +616,32 @@ ap_ts_i2c: &i2c14 {
 	};
 };
 
+&ipa {
+	status = "okay";
+	modem-init;
+};
+
+&lpasscc {
+	status = "okay";
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_mdp {
+	status = "okay";
+};
+
+&mss_pil {
+	iommus = <&apps_smmu 0x781 0x0>,
+		 <&apps_smmu 0x724 0x3>;
+};
+
+&pm8998_pwrkey {
+	status = "disabled";
+};
+
 &qupv3_id_0 {
 	status = "okay";
 };
@@ -517,15 +650,26 @@ ap_ts_i2c: &i2c14 {
 	status = "okay";
 };
 
+&sdhc_2 {
+	status = "okay";
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&sdc2_clk &sdc2_cmd &sdc2_data &sd_cd_odl>;
+
+	vmmc-supply = <&src_pp2950_l21a>;
+	vqmmc-supply = <&vddpx_2>;
+
+	cd-gpios = <&tlmm 44 GPIO_ACTIVE_LOW>;
+};
+
 &spi0 {
 	status = "okay";
-	spi-max-frequency = <3000000>;  /* TODO: Drop this? */
 };
 
 &spi5 {
 	status = "okay";
-	spi-max-frequency = <800000>; /* TODO: Drop this */
-	cr50@0 {
+
+	tpm@0 {
 		compatible = "google,cr50";
 		reg = <0>;
 		pinctrl-names = "default";
@@ -538,7 +682,6 @@ ap_ts_i2c: &i2c14 {
 
 &spi10 {
 	status = "okay";
-	spi-max-frequency = <3000000>;  /* TODO: Drop this? */
 
 	cros_ec: ec@0 {
 		compatible = "google,cros-ec-spi";
@@ -572,10 +715,36 @@ ap_ts_i2c: &i2c14 {
 
 &uart6 {
 	status = "okay";
+
+	bluetooth: wcn3990-bt {
+		compatible = "qcom,wcn3990-bt";
+		vddio-supply = <&src_pp1800_s4a>;
+		vddxo-supply = <&pp1800_l7a_wcn3990>;
+		vddrf-supply = <&src_pp1300_l17a>;
+		vddch0-supply = <&pp3300_l25a_ch0_wcn3990>;
+		max-speed = <3200000>;
+	};
 };
 
 &uart9 {
 	status = "okay";
+};
+
+&ufs_mem_hc {
+	status = "okay";
+	pinctrl-names = "init", "default";
+	pinctrl-0 = <&ufs_dev_reset_assert>;
+	pinctrl-1 = <&ufs_dev_reset_deassert>;
+
+	vcc-supply = <&src_pp2950_l20a>;
+	vcc-max-microamp = <600000>;
+};
+
+&ufs_mem_phy {
+	status = "okay";
+
+	vdda-phy-supply = <&vdda_ufs1_core>;
+	vdda-pll-supply = <&vdda_ufs1_1p2>;
 };
 
 &usb_1 {
@@ -607,7 +776,7 @@ ap_ts_i2c: &i2c14 {
 	 * All the hardware muxes would allow us to hook things up in different
 	 * ways to some potential benefit for static configurations (you could
 	 * achieve extra USB2 bandwidth by using two different ports for the
-	 * two conenctors or possibly even get USB3 peripheral mode), but in
+	 * two connectors or possibly even get USB3 peripheral mode), but in
 	 * each case you end up forcing to disconnect/reconnect an in-use
 	 * USB session in some cases depending on what you hotplug into the
 	 * other connector.  Thus hardcoding this as peripheral makes sense.
@@ -667,6 +836,15 @@ ap_ts_i2c: &i2c14 {
 
 	vdda-phy-supply = <&vdda_usb2_ss_1p2>;
 	vdda-pll-supply = <&vdda_usb2_ss_core>;
+};
+
+&wifi {
+	status = "okay";
+
+	vdd-0.8-cx-mx-supply = <&src_pp800_l5a >;
+	vdd-1.8-xo-supply = <&pp1800_l7a_wcn3990>;
+	vdd-1.3-rfa-supply = <&src_pp1300_l17a>;
+	vdd-3.3-ch0-supply = <&pp3300_l25a_ch0_wcn3990>;
 };
 
 /* PINCTRL - additions to nodes defined in sdm845.dtsi */
@@ -765,7 +943,16 @@ ap_ts_i2c: &i2c14 {
 		       "gpio47", "gpio48";
 	};
 
-	pinconf-tx {
+	pinconf-cts {
+		/*
+		 * Configure a pull-down on 45 (CTS) to match the pull of
+		 * the Bluetooth module.
+		 */
+		pins = "gpio45";
+		bias-pull-down;
+	};
+
+	pinconf-rts-tx {
 		/* We'll drive 46 (RTS) and 47 (TX), so no pull */
 		pins = "gpio46", "gpio47";
 		drive-strength = <2>;
@@ -774,11 +961,12 @@ ap_ts_i2c: &i2c14 {
 
 	pinconf-rx {
 		/*
-		 * Put a pull on 45 (CTS) and 48 (RX) in case other side
-		 * stop driving.
+		 * Configure a pull-up on 48 (RX). This is needed to avoid
+		 * garbage data when the TX pin of the Bluetooth module is
+		 * in tri-state (module powered off or not driving the
+		 * signal yet).
 		 */
-		pins = "gpio45", "gpio48";
-		drive-strength = <2>;
+		pins = "gpio48";
 		bias-pull-up;
 	};
 };
@@ -803,6 +991,33 @@ ap_ts_i2c: &i2c14 {
 			  "",
 			  "SLB",
 			  "";
+};
+
+&pm8998_adc {
+	adc-chan@4d {
+		reg = <ADC5_AMUX_THM1_100K_PU>;
+		label = "sdm_temp";
+	};
+
+	adc-chan@4e {
+		reg = <ADC5_AMUX_THM2_100K_PU>;
+		label = "quiet_temp";
+	};
+
+	adc-chan@4f {
+		reg = <ADC5_AMUX_THM3_100K_PU>;
+		label = "lte_temp_1";
+	};
+
+	adc-chan@50 {
+		reg = <ADC5_AMUX_THM4_100K_PU>;
+		label = "lte_temp_2";
+	};
+
+	adc-chan@51 {
+		reg = <ADC5_AMUX_THM5_100K_PU>;
+		label = "charger_temp";
+	};
 };
 
 &pm8998_gpio {
@@ -838,8 +1053,22 @@ ap_ts_i2c: &i2c14 {
 	/*
 	 * pinctrl settings for pins that have no real owners.
 	 */
-	pinctrl-names = "default";
-	pinctrl-0 = <&bios_flash_wp_r_l>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&bios_flash_wp_r_l>,
+		    <&ap_suspend_l_deassert>;
+
+	pinctrl-1 = <&bios_flash_wp_r_l>,
+		    <&ap_suspend_l_assert>;
+
+	/*
+	 * Hogs prevent usermode from changing the value. A GPIO can be both
+	 * here and in the pinctrl section.
+	 */
+	ap-suspend-l-hog {
+		gpio-hog;
+		gpios = <126 GPIO_ACTIVE_LOW>;
+		output-low;
+	};
 
 	ap_edp_bklten: ap-edp-bklten {
 		pinmux {
@@ -890,6 +1119,19 @@ ap_ts_i2c: &i2c14 {
 			pins = "gpio102";
 			drive-strength = <2>;
 			bias-disable;
+		};
+	};
+
+	edp_brij_irq: edp-brij-irq {
+		pinmux {
+			pins = "gpio10";
+			function = "gpio";
+		};
+
+		pinconf {
+			pins = "gpio10";
+			drive-strength = <2>;
+			bias-pull-down;
 		};
 	};
 
@@ -981,6 +1223,47 @@ ap_ts_i2c: &i2c14 {
 		};
 	};
 
+	sdc2_clk: sdc2-clk {
+		pinconf {
+			pins = "sdc2_clk";
+			bias-disable;
+
+			/*
+			 * It seems that mmc_test reports errors if drive
+			 * strength is not 16.
+			 */
+			drive-strength = <16>;
+		};
+	};
+
+	sdc2_cmd: sdc2-cmd {
+		pinconf {
+			pins = "sdc2_cmd";
+			bias-pull-up;
+			drive-strength = <16>;
+		};
+	};
+
+	sdc2_data: sdc2-data {
+		pinconf {
+			pins = "sdc2_data";
+			bias-pull-up;
+			drive-strength = <16>;
+		};
+	};
+
+	sd_cd_odl: sd-cd-odl {
+		pinmux {
+			pins = "gpio44";
+			function = "gpio";
+		};
+
+		pinconf {
+			pins = "gpio44";
+			bias-pull-up;
+		};
+	};
+
 	ts_int_l: ts-int-l {
 		pinmux  {
 			pins = "gpio125";
@@ -1004,5 +1287,77 @@ ap_ts_i2c: &i2c14 {
 			bias-disable;
 			drive-strength = <2>;
 		};
+	};
+
+	ufs_dev_reset_assert: ufs_dev_reset_assert {
+		config {
+			pins = "ufs_reset";
+			bias-pull-down;		/* default: pull down */
+			/*
+			 * UFS_RESET driver strengths are having
+			 * different values/steps compared to typical
+			 * GPIO drive strengths.
+			 *
+			 * Following table clarifies:
+			 *
+			 * HDRV value | UFS_RESET | Typical GPIO
+			 *   (dec)    |   (mA)    |    (mA)
+			 *     0      |   0.8     |    2
+			 *     1      |   1.55    |    4
+			 *     2      |   2.35    |    6
+			 *     3      |   3.1     |    8
+			 *     4      |   3.9     |    10
+			 *     5      |   4.65    |    12
+			 *     6      |   5.4     |    14
+			 *     7      |   6.15    |    16
+			 *
+			 * POR value for UFS_RESET HDRV is 3 which means
+			 * 3.1mA and we want to use that. Hence just
+			 * specify 8mA to "drive-strength" binding and
+			 * that should result into writing 3 to HDRV
+			 * field.
+			 */
+			drive-strength = <8>;	/* default: 3.1 mA */
+			output-low; /* active low reset */
+		};
+	};
+
+	ufs_dev_reset_deassert: ufs_dev_reset_deassert {
+		config {
+			pins = "ufs_reset";
+			bias-pull-down;		/* default: pull down */
+			/*
+			 * default: 3.1 mA
+			 * check comments under ufs_dev_reset_assert
+			 */
+			drive-strength = <8>;
+			output-high; /* active low reset */
+		};
+	};
+
+	ap_suspend_l_assert: ap_suspend_l_assert {
+		config {
+			pins = "gpio126";
+			function = "gpio";
+			bias-no-pull;
+			drive-strength = <2>;
+			output-low;
+		};
+	};
+
+	ap_suspend_l_deassert: ap_suspend_l_deassert {
+		config {
+			pins = "gpio126";
+			function = "gpio";
+			bias-no-pull;
+			drive-strength = <2>;
+			output-high;
+		};
+	};
+};
+
+&venus {
+	video-firmware {
+		iommus = <&apps_smmu 0x10b2 0x0>;
 	};
 };

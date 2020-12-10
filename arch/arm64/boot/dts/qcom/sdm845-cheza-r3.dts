@@ -11,13 +11,7 @@
 
 / {
 	model = "Google Cheza (rev3+)";
-	compatible = "google,cheza-rev15", "google,cheza-rev14",
-		     "google,cheza-rev13", "google,cheza-rev12",
-		     "google,cheza-rev11", "google,cheza-rev10",
-		     "google,cheza-rev9", "google,cheza-rev8",
-		     "google,cheza-rev7", "google,cheza-rev6",
-		     "google,cheza-rev5", "google,cheza-rev4",
-		     "google,cheza-rev3", "google,cheza", "qcom,sdm845";
+	compatible = "google,cheza", "qcom,sdm845";
 };
 
 /* PINCTRL - board-specific pinctrl */
@@ -151,7 +145,11 @@
 			  "TS_INT_L",
 			  "AP_SUSPEND_L",
 			  "SDM_GRFC_3",
-			  "BIOS_FLASH_WP_R_L",
+			  /*
+			   * AP_FLASH_WP_L is crossystem ABI. Rev3 schematics
+			   * call it BIOS_FLASH_WP_R_L.
+			   */
+			  "AP_FLASH_WP_L",
 			  "H1_AP_INT_ODL",
 			  "QLINK_REQ",
 			  "QLINK_EN",

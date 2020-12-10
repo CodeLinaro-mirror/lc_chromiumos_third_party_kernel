@@ -1196,6 +1196,7 @@ struct rtw_chip_info {
 	const struct coex_rf_para *wl_rf_para_tx;
 	const struct coex_rf_para *wl_rf_para_rx;
 	const struct coex_5g_afh_map *afh_5g;
+	const struct rtw_hw_reg *btg_reg;
 	const struct rtw_reg_domain *coex_info_hw_regs;
 };
 
@@ -1443,16 +1444,6 @@ struct rtw_pkt_count {
 DECLARE_EWMA(evm, 10, 4);
 DECLARE_EWMA(snr, 10, 4);
 
-struct rtw_iqk_info {
-	bool done;
-	struct {
-		u32 s1_x;
-		u32 s1_y;
-		u32 s0_x;
-		u32 s0_y;
-	} result;
-};
-
 #define EDCCA_TH_L2H_IDX 0
 #define EDCCA_TH_H2L_IDX 1
 #define EDCCA_TH_L2H_LB 48
@@ -1465,6 +1456,16 @@ struct rtw_iqk_info {
 enum rtw_edcca_mode {
 	RTW_EDCCA_NORMAL	= 0,
 	RTW_EDCCA_ADAPTIVITY	= 1,
+};
+
+struct rtw_iqk_info {
+	bool done;
+	struct {
+		u32 s1_x;
+		u32 s1_y;
+		u32 s0_x;
+		u32 s0_y;
+	} result;
 };
 
 struct rtw_dm_info {
@@ -1530,9 +1531,9 @@ struct rtw_dm_info {
 	struct ewma_evm ewma_evm[RTW_EVM_NUM];
 	struct ewma_snr ewma_snr[RTW_SNR_NUM];
 
-	struct rtw_iqk_info iqk;
 	s8 l2h_th_ini;
 	enum rtw_edcca_mode edcca_mode;
+	struct rtw_iqk_info iqk;
 };
 
 struct rtw_efuse {

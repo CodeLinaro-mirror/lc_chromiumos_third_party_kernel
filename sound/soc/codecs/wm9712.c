@@ -1,13 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * wm9712.c  --  ALSA Soc WM9712 codec support
  *
  * Copyright 2006-12 Wolfson Microelectronics PLC.
  * Author: Liam Girdwood <lrg@slimlogic.co.uk>
- *
- *  This program is free software; you can redistribute  it and/or modify it
- *  under  the terms of  the GNU General  Public License as published by the
- *  Free Software Foundation;  either version 2 of the  License, or (at your
- *  option) any later version.
  */
 
 #include <linux/init.h>
@@ -226,7 +222,7 @@ static int wm9712_hp_mixer_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 	unsigned int mixer, mask, shift, old;
-	struct snd_soc_dapm_update update = { 0 };
+	struct snd_soc_dapm_update update = {};
 	bool change;
 
 	mixer = mc->shift >> 8;
@@ -718,7 +714,7 @@ static int wm9712_probe(struct platform_device *pdev)
 
 static struct platform_driver wm9712_component_driver = {
 	.driver = {
-		.name = "wm9712-component",
+		.name = "wm9712-codec",
 	},
 
 	.probe = wm9712_probe,

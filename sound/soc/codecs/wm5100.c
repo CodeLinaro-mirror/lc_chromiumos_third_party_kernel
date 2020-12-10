@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * wm5100.c  --  WM5100 ALSA SoC Audio driver
  *
  * Copyright 2011-2 Wolfson Microelectronics plc
  *
  * Author: Mark Brown <broonie@opensource.wolfsonmicro.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
@@ -140,7 +137,7 @@ static int wm5100_alloc_sr(struct snd_soc_component *component, int rate)
 				sr_free = i;
 				continue;
 			}
-			if ((snd_soc_component_read32(component, wm5100_sr_regs[i]) &
+			if ((snd_soc_component_read(component, wm5100_sr_regs[i]) &
 			     WM5100_SAMPLE_RATE_1_MASK) == sr_code)
 				break;
 		}
@@ -192,7 +189,7 @@ static void wm5100_free_sr(struct snd_soc_component *component, int rate)
 		if (!wm5100->sr_ref[i])
 			continue;
 
-		if ((snd_soc_component_read32(component, wm5100_sr_regs[i]) &
+		if ((snd_soc_component_read(component, wm5100_sr_regs[i]) &
 		     WM5100_SAMPLE_RATE_1_MASK) == sr_code)
 			break;
 	}
@@ -573,10 +570,10 @@ SND_SOC_BYTES_MASK("EQ4 Coefficients", WM5100_EQ4_1, 20, WM5100_EQ4_ENA),
 SND_SOC_BYTES_MASK("DRC Coefficients", WM5100_DRC1_CTRL1, 5,
 		   WM5100_DRCL_ENA | WM5100_DRCR_ENA),
 
-SND_SOC_BYTES("LHPF1 Coefficeints", WM5100_HPLPF1_2, 1),
-SND_SOC_BYTES("LHPF2 Coefficeints", WM5100_HPLPF2_2, 1),
-SND_SOC_BYTES("LHPF3 Coefficeints", WM5100_HPLPF3_2, 1),
-SND_SOC_BYTES("LHPF4 Coefficeints", WM5100_HPLPF4_2, 1),
+SND_SOC_BYTES("LHPF1 Coefficients", WM5100_HPLPF1_2, 1),
+SND_SOC_BYTES("LHPF2 Coefficients", WM5100_HPLPF2_2, 1),
+SND_SOC_BYTES("LHPF3 Coefficients", WM5100_HPLPF3_2, 1),
+SND_SOC_BYTES("LHPF4 Coefficients", WM5100_HPLPF4_2, 1),
 
 SOC_SINGLE("HPOUT1 High Performance Switch", WM5100_OUT_VOLUME_1L,
 	   WM5100_OUT1_OSR_SHIFT, 1, 0),
@@ -741,9 +738,9 @@ static void wm5100_seq_notifier(struct snd_soc_component *component,
 
 	/* Wait for the outputs to flag themselves as enabled */
 	if (wm5100->out_ena[0]) {
-		expect = snd_soc_component_read32(component, WM5100_CHANNEL_ENABLES_1);
+		expect = snd_soc_component_read(component, WM5100_CHANNEL_ENABLES_1);
 		for (i = 0; i < 200; i++) {
-			val = snd_soc_component_read32(component, WM5100_OUTPUT_STATUS_1);
+			val = snd_soc_component_read(component, WM5100_OUTPUT_STATUS_1);
 			if (val == expect) {
 				wm5100->out_ena[0] = false;
 				break;
@@ -756,9 +753,9 @@ static void wm5100_seq_notifier(struct snd_soc_component *component,
 	}
 
 	if (wm5100->out_ena[1]) {
-		expect = snd_soc_component_read32(component, WM5100_OUTPUT_ENABLES_2);
+		expect = snd_soc_component_read(component, WM5100_OUTPUT_ENABLES_2);
 		for (i = 0; i < 200; i++) {
-			val = snd_soc_component_read32(component, WM5100_OUTPUT_STATUS_2);
+			val = snd_soc_component_read(component, WM5100_OUTPUT_STATUS_2);
 			if (val == expect) {
 				wm5100->out_ena[1] = false;
 				break;
@@ -844,13 +841,13 @@ static int wm5100_post_ev(struct snd_soc_dapm_widget *w,
 	struct wm5100_priv *wm5100 = snd_soc_component_get_drvdata(component);
 	int ret;
 
-	ret = snd_soc_component_read32(component, WM5100_INTERRUPT_RAW_STATUS_3);
+	ret = snd_soc_component_read(component, WM5100_INTERRUPT_RAW_STATUS_3);
 	ret &= WM5100_SPK_SHUTDOWN_WARN_STS |
 		WM5100_SPK_SHUTDOWN_STS | WM5100_CLKGEN_ERR_STS |
 		WM5100_CLKGEN_ERR_ASYNC_STS;
 	wm5100_log_status3(wm5100, ret);
 
-	ret = snd_soc_component_read32(component, WM5100_INTERRUPT_RAW_STATUS_4);
+	ret = snd_soc_component_read(component, WM5100_INTERRUPT_RAW_STATUS_4);
 	wm5100_log_status4(wm5100, ret);
 
 	return 0;
@@ -1851,7 +1848,7 @@ static int wm5100_set_fll(struct snd_soc_component *component, int fll_id, int s
 			msleep(1);
 		}
 
-		ret = snd_soc_component_read32(component,
+		ret = snd_soc_component_read(component,
 				   WM5100_INTERRUPT_RAW_STATUS_3);
 		if (ret < 0) {
 			dev_err(component->dev,
@@ -2620,6 +2617,7 @@ static int wm5100_i2c_probe(struct i2c_client *i2c,
 	return ret;
 
 err_reset:
+	pm_runtime_disable(&i2c->dev);
 	if (i2c->irq)
 		free_irq(i2c->irq, wm5100);
 	wm5100_free_gpio(i2c);
@@ -2643,6 +2641,7 @@ static int wm5100_i2c_remove(struct i2c_client *i2c)
 {
 	struct wm5100_priv *wm5100 = i2c_get_clientdata(i2c);
 
+	pm_runtime_disable(&i2c->dev);
 	if (i2c->irq)
 		free_irq(i2c->irq, wm5100);
 	wm5100_free_gpio(i2c);

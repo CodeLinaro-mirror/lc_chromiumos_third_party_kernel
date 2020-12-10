@@ -3562,12 +3562,14 @@ static void rtw8822c_pwr_track(struct rtw_dev *rtwdev)
 
 static void rtw8822c_adaptivity_init(struct rtw_dev *rtwdev)
 {
-	rtw_phy_set_edcca_th(rtwdev, 0x7f, 0x7f);
+	rtw_phy_set_edcca_th(rtwdev, RTW8822C_EDCCA_MAX, RTW8822C_EDCCA_MAX);
+
 	/* mac edcca state setting */
-	rtw_write32_mask(rtwdev, REG_TX_PTCL_CTRL, BIT_DIS_EDCCA, 0);
-	rtw_write32_mask(rtwdev, REG_RD_CTRL, BIT_EDCCA_MSK_CNTDOWN_EN, 1);
+	rtw_write32_clr(rtwdev, REG_TX_PTCL_CTRL, BIT_DIS_EDCCA);
+	rtw_write32_set(rtwdev, REG_RD_CTRL, BIT_EDCCA_MSK_CNTDOWN_EN);
+
 	/* edcca decistion opt */
-	rtw_write32_mask(rtwdev, REG_EDCCA_DECISION, BIT_EDCCA_OPTION, 0);
+	rtw_write32_clr(rtwdev, REG_EDCCA_DECISION, BIT_EDCCA_OPTION);
 }
 
 static void rtw8822c_adaptivity(struct rtw_dev *rtwdev)
@@ -3930,6 +3932,7 @@ static const struct rtw_rfe_def rtw8822c_rfe_defs[] = {
 	[1] = RTW_DEF_RFE(8822c, 0, 0),
 	[2] = RTW_DEF_RFE(8822c, 0, 0),
 	[5] = RTW_DEF_RFE(8822c, 0, 5),
+	[6] = RTW_DEF_RFE(8822c, 0, 0),
 };
 
 static const struct rtw_hw_reg rtw8822c_dig[] = {

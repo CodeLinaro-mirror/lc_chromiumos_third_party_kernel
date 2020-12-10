@@ -239,8 +239,6 @@ void dml1_extract_rq_regs(
 	extract_rq_sizing_regs(mode_lib, &(rq_regs->rq_regs_l), rq_param.sizing.rq_l);
 	if (rq_param.yuv420)
 		extract_rq_sizing_regs(mode_lib, &(rq_regs->rq_regs_c), rq_param.sizing.rq_c);
-	else
-		memset(&(rq_regs->rq_regs_c), 0, sizeof(rq_regs->rq_regs_c));
 
 	rq_regs->rq_regs_l.swath_height = dml_log2(rq_param.dlg.rq_l.swath_height);
 	rq_regs->rq_regs_c.swath_height = dml_log2(rq_param.dlg.rq_c.swath_height);
@@ -461,7 +459,7 @@ static void dml1_rq_dlg_get_row_heights(
 	/* dpte   */
 	/* ------ */
 	log2_vmpg_bytes = dml_log2(mode_lib->soc.vmm_page_size_bytes);
-	dpte_buf_in_pte_reqs = mode_lib->ip.dpte_buffer_size_in_pte_reqs;
+	dpte_buf_in_pte_reqs = mode_lib->ip.dpte_buffer_size_in_pte_reqs_luma;
 
 	log2_vmpg_height = 0;
 	log2_vmpg_width = 0;
@@ -778,7 +776,7 @@ static void get_surf_rq_param(
 	/* dpte   */
 	/* ------ */
 	log2_vmpg_bytes = dml_log2(mode_lib->soc.vmm_page_size_bytes);
-	dpte_buf_in_pte_reqs = mode_lib->ip.dpte_buffer_size_in_pte_reqs;
+	dpte_buf_in_pte_reqs = mode_lib->ip.dpte_buffer_size_in_pte_reqs_luma;
 
 	log2_vmpg_height = 0;
 	log2_vmpg_width = 0;

@@ -1,9 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * bebob_hwdep.c - a part of driver for BeBoB based devices
  *
  * Copyright (c) 2013-2014 Takashi Sakamoto
- *
- * Licensed under the terms of the GNU General Public License, version 2.
  */
 
 /*
@@ -63,7 +62,7 @@ hwdep_poll(struct snd_hwdep *hwdep, struct file *file, poll_table *wait)
 
 	spin_lock_irq(&bebob->lock);
 	if (bebob->dev_lock_changed)
-		events = POLLIN | POLLRDNORM;
+		events = EPOLLIN | EPOLLRDNORM;
 	else
 		events = 0;
 	spin_unlock_irq(&bebob->lock);

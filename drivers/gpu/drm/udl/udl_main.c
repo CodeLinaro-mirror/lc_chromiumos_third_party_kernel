@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2012 Red Hat
  *
@@ -5,13 +6,12 @@
  * Copyright (C) 2009 Roberto De Ioris <roberto@unbit.it>
  * Copyright (C) 2009 Jaya Kumar <jayakumar.lkml@gmail.com>
  * Copyright (C) 2009 Bernie Thompson <bernie@plugable.com>
- *
- * This file is subject to the terms and conditions of the GNU General Public
- * License v2. See the file COPYING in the main directory of this archive for
- * more details.
  */
-#include <drm/drmP.h>
-#include <drm/drm_crtc_helper.h>
+
+#include <drm/drm.h>
+#include <drm/drm_print.h>
+#include <drm/drm_probe_helper.h>
+
 #include "udl_drv.h"
 #include "udl_cursor.h"
 
@@ -171,7 +171,6 @@ static void udl_free_urb_list(struct drm_device *dev)
 	struct list_head *node;
 	struct urb_node *unode;
 	struct urb *urb;
-	unsigned long flags;
 
 	DRM_DEBUG("Waiting for completes and freeing all render urbs\n");
 
@@ -179,12 +178,12 @@ static void udl_free_urb_list(struct drm_device *dev)
 	while (count--) {
 		down(&udl->urbs.limit_sem);
 
-		spin_lock_irqsave(&udl->urbs.lock, flags);
+		spin_lock_irq(&udl->urbs.lock);
 
 		node = udl->urbs.list.next; /* have reserved one with sem */
 		list_del_init(node);
 
-		spin_unlock_irqrestore(&udl->urbs.lock, flags);
+		spin_unlock_irq(&udl->urbs.lock);
 
 		unode = list_entry(node, struct urb_node, entry);
 		urb = unode->urb;
@@ -269,7 +268,6 @@ struct urb *udl_get_urb(struct drm_device *dev)
 	struct list_head *entry;
 	struct urb_node *unode;
 	struct urb *urb = NULL;
-	unsigned long flags;
 
 	/* Wait for an in-flight buffer to complete and get re-queued */
 	ret = down_timeout(&udl->urbs.limit_sem, GET_URB_TIMEOUT);
@@ -280,14 +278,14 @@ struct urb *udl_get_urb(struct drm_device *dev)
 		goto error;
 	}
 
-	spin_lock_irqsave(&udl->urbs.lock, flags);
+	spin_lock_irq(&udl->urbs.lock);
 
 	BUG_ON(list_empty(&udl->urbs.list)); /* reserved one with limit_sem */
 	entry = udl->urbs.list.next;
 	list_del_init(entry);
 	udl->urbs.available--;
 
-	spin_unlock_irqrestore(&udl->urbs.lock, flags);
+	spin_unlock_irq(&udl->urbs.lock);
 
 	unode = list_entry(entry, struct urb_node, entry);
 	urb = unode->urb;
@@ -320,7 +318,7 @@ int udl_init(struct udl_device *udl)
 
 	DRM_DEBUG("\n");
 
-	mutex_init(&udl->transfer_lock);
+	mutex_init(&udl->gem_lock);
 
 	if (!udl_parse_vendor_descriptor(dev, udl->udev)) {
 		ret = -ENODEV;
@@ -349,15 +347,10 @@ int udl_init(struct udl_device *udl)
 	if (ret)
 		goto err;
 
-	ret = drm_vblank_init(dev, 1);
-	if (ret)
-		goto err_fb;
-
 	drm_kms_helper_poll_init(dev);
 
 	return 0;
-err_fb:
-	udl_fbdev_cleanup(dev);
+
 err:
 	if (udl->urbs.count)
 		udl_free_urb_list(dev);
@@ -386,5 +379,4 @@ void udl_fini(struct drm_device *dev)
 		udl_cursor_free(udl->cursor);
 
 	udl_fbdev_cleanup(dev);
-	mutex_destroy(&udl->transfer_lock);
 }

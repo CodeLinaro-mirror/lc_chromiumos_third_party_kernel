@@ -10,6 +10,7 @@
 
 static const struct nla_policy
 rtw_sar_rule_policy[REALTEK_VNDCMD_SAR_RULE_ATTR_MAX + 1] = {
+	[REALTEK_VNDCMD_ATTR_SAR_RULES] = { .type = NLA_NESTED_ARRAY },
 	[REALTEK_VNDCMD_ATTR_SAR_BAND]	= { .type = NLA_U32 },
 	[REALTEK_VNDCMD_ATTR_SAR_POWER]	= { .type = NLA_U8 },
 };
@@ -118,6 +119,8 @@ static const struct wiphy_vendor_command rtw88_vendor_commands[] = {
 		},
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV,
 		.doit = rtw_vndcmd_set_sar,
+		.policy = rtw_sar_rule_policy,
+		.maxattr = REALTEK_VNDCMD_SAR_RULE_ATTR_MAX,
 	}
 };
 

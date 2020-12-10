@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-#include <drm/drmP.h>
+#include <drm/drm_debugfs.h>
 #include <drm/drm_dp_mst_helper.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_file.h>
+#include <drm/drm_probe_helper.h>
 
-#include "radeon.h"
 #include "atom.h"
 #include "ni_reg.h"
+#include "radeon.h"
 
 static struct radeon_encoder *radeon_dp_create_fake_mst_encoder(struct radeon_connector *connector);
 
@@ -320,19 +322,10 @@ static void radeon_dp_destroy_mst_connector(struct drm_dp_mst_topology_mgr *mgr,
 	DRM_DEBUG_KMS("\n");
 }
 
-static void radeon_dp_mst_hotplug(struct drm_dp_mst_topology_mgr *mgr)
-{
-	struct radeon_connector *master = container_of(mgr, struct radeon_connector, mst_mgr);
-	struct drm_device *dev = master->base.dev;
-
-	drm_kms_helper_hotplug_event(dev);
-}
-
-const struct drm_dp_mst_topology_cbs mst_cbs = {
+static const struct drm_dp_mst_topology_cbs mst_cbs = {
 	.add_connector = radeon_dp_add_mst_connector,
 	.register_connector = radeon_dp_register_mst_connector,
 	.destroy_connector = radeon_dp_destroy_mst_connector,
-	.hotplug = radeon_dp_mst_hotplug,
 };
 
 static struct
@@ -718,7 +711,7 @@ radeon_dp_mst_check_status(struct radeon_connector *radeon_connector)
 				       DP_SINK_COUNT_ESI, esi, 8);
 go_again:
 		if (dret == 8) {
-			DRM_DEBUG_KMS("got esi %02x %02x %02x\n", esi[0], esi[1], esi[2]);
+			DRM_DEBUG_KMS("got esi %3ph\n", esi);
 			ret = drm_dp_mst_hpd_irq(&radeon_connector->mst_mgr, esi, &handled);
 
 			if (handled) {
@@ -733,7 +726,7 @@ go_again:
 				dret = drm_dp_dpcd_read(&radeon_connector->ddc_bus->aux,
 							DP_SINK_COUNT_ESI, esi, 8);
 				if (dret == 8) {
-					DRM_DEBUG_KMS("got esi2 %02x %02x %02x\n", esi[0], esi[1], esi[2]);
+					DRM_DEBUG_KMS("got esi2 %3ph\n", esi);
 					goto go_again;
 				}
 			} else

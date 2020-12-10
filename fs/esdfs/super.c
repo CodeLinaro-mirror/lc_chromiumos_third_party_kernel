@@ -171,7 +171,7 @@ static struct inode *esdfs_alloc_inode(struct super_block *sb)
 	/* memset everything up to the inode to 0 */
 	memset(i, 0, offsetof(struct esdfs_inode_info, vfs_inode));
 
-	i->vfs_inode.i_version = 1;
+	inode_set_iversion(&i->vfs_inode, 1);
 	return &i->vfs_inode;
 }
 

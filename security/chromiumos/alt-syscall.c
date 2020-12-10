@@ -10,6 +10,7 @@
 
 #include <linux/alt-syscall.h>
 #include <linux/compat.h>
+#include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -19,6 +20,7 @@
 #include <linux/socket.h>
 #include <linux/syscalls.h>
 #include <linux/timex.h>
+#include <uapi/linux/sched/types.h>
 
 #include <asm/unistd.h>
 
@@ -29,10 +31,9 @@
 #include "third_party_whitelists.h"
 
 /* Intercept and log blocked syscalls. */
-static asmlinkage long block_syscall(void)
+static asmlinkage long block_syscall(struct pt_regs *regs)
 {
 	struct task_struct *task = current;
-	struct pt_regs *regs = task_pt_regs(task);
 
 	pr_warn_ratelimited("[%d] %s: blocked syscall %d\n", task_pid_nr(task),
 		task->comm, syscall_get_nr(task, regs));
@@ -40,63 +41,49 @@ static asmlinkage long block_syscall(void)
 	return -ENOSYS;
 }
 
-typedef asmlinkage long (*raw_sys_call_ptr_t)(unsigned long, unsigned long,
-					      unsigned long, unsigned long,
-					      unsigned long, unsigned long);
-
 /*
  * In permissive mode, warn that the syscall was blocked, but still allow
  * it to go through.  Note that since we don't have an easy way to map from
  * syscall to number of arguments, we pass the maximum (6).
  */
-static long do_syscall(raw_sys_call_ptr_t fn)
+static asmlinkage long warn_syscall(struct pt_regs *regs)
 {
 	struct task_struct *task = current;
-	struct pt_regs *regs = task_pt_regs(task);
-	unsigned long args[6];
-
-	syscall_get_arguments(task, regs, 0, ARRAY_SIZE(args), args);
-
-	return fn(args[0], args[1], args[2], args[3], args[4], args[5]);
-}
-
-static asmlinkage long warn_syscall(void)
-{
-	struct task_struct *task = current;
-	struct pt_regs *regs = task_pt_regs(task);
 	int nr = syscall_get_nr(task, regs);
-	raw_sys_call_ptr_t fn = (raw_sys_call_ptr_t)default_table.table[nr];
+	sys_call_ptr_t fn = (sys_call_ptr_t)default_table.table[nr];
 
 	pr_warn_ratelimited("[%d] %s: syscall %d not whitelisted\n",
 			    task_pid_nr(task), task->comm, nr);
 
-	return do_syscall(fn);
+	return fn(regs);
 }
 
 #ifdef CONFIG_COMPAT
-static asmlinkage long warn_compat_syscall(void)
+static asmlinkage long warn_compat_syscall(struct pt_regs *regs)
 {
 	struct task_struct *task = current;
-	struct pt_regs *regs = task_pt_regs(task);
 	int nr = syscall_get_nr(task, regs);
-	raw_sys_call_ptr_t fn = (raw_sys_call_ptr_t)default_table.compat_table[nr];
+	sys_call_ptr_t fn = (sys_call_ptr_t)default_table.compat_table[nr];
 
 	pr_warn_ratelimited("[%d] %s: compat syscall %d not whitelisted\n",
 			    task_pid_nr(task), task->comm, nr);
 
-	return do_syscall(fn);
+	return fn(regs);
 }
 #endif /* CONFIG_COMPAT */
 
-static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
-				     unsigned long arg3, unsigned long arg4,
-				     unsigned long arg5)
+static asmlinkage long alt_sys_prctl(struct pt_regs *regs)
 {
-	if (option == PR_ALT_SYSCALL &&
-	    arg2 == PR_ALT_SYSCALL_SET_SYSCALL_TABLE)
+	struct task_struct *task = current;
+	unsigned long args[6];
+
+	syscall_get_arguments(task, regs, args);
+
+	if (args[0] == PR_ALT_SYSCALL &&
+	    args[1] == PR_ALT_SYSCALL_SET_SYSCALL_TABLE)
 		return -EPERM;
 
-	return sys_prctl(option, arg2, arg3, arg4, arg5);
+	return ksys_prctl(args[0], args[1], args[2], args[3], args[4]);
 }
 
 /* Thread priority used by Android. */
@@ -119,11 +106,18 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
  * TODO(mortonm): Move the implementation of these Android-specific
  * alt-syscalls (starting with android_*) to their own .c file.
  */
-static asmlinkage long android_getpriority(int which, int who)
+static asmlinkage long android_getpriority(struct pt_regs *regs)
 {
+	struct task_struct *task = current;
 	long prio, nice;
+	unsigned long args[6];
+	int which, who;
 
-	prio = sys_getpriority(which, who);
+	syscall_get_arguments(task, regs, args);
+	which = args[0];
+	who = args[1];
+
+	prio = ksys_getpriority(which, who);
 	if (prio <= 20)
 		return prio;
 
@@ -152,22 +146,29 @@ static asmlinkage long android_getpriority(int which, int who)
 	return -nice + 20;
 }
 
-static asmlinkage long android_keyctl(int cmd, unsigned long arg2,
-				      unsigned long arg3, unsigned long arg4,
-				      unsigned long arg5)
+static asmlinkage long android_keyctl(struct pt_regs *regs)
 {
 	return -EACCES;
 }
 
 
-static asmlinkage long android_setpriority(int which, int who, int niceval)
+static asmlinkage long android_setpriority(struct pt_regs *regs)
 {
+	struct task_struct *task = current;
+	unsigned long args[6];
+	int which, who, niceval;
+
+	syscall_get_arguments(task, regs, args);
+	which = args[0];
+	who = args[1];
+	niceval = args[2];
+
 	if (niceval < 0) {
 		if (niceval < -20)
 			niceval = -20;
 		niceval = niceval / 2;
 	}
-	return sys_setpriority(which, who, niceval);
+	return ksys_setpriority(which, who, niceval);
 }
 
 static asmlinkage long
@@ -186,7 +187,11 @@ do_android_sched_setscheduler(pid_t pid, int policy,
 	rcu_read_lock();
 	retval = -ESRCH;
 	p = pid ? find_task_by_vpid(pid) : current;
-	if (p != NULL) {
+	if (likely(p))
+		get_task_struct(p);
+	rcu_read_unlock();
+
+	if (likely(p)) {
 		const struct cred *cred = current_cred();
 		kuid_t android_root_uid, android_system_uid;
 
@@ -206,16 +211,26 @@ do_android_sched_setscheduler(pid_t pid, int policy,
 			retval = sched_setscheduler_nocheck(p, policy, &lparam);
 		else
 			retval = sched_setscheduler(p, policy, &lparam);
+		put_task_struct(p);
 	}
-	rcu_read_unlock();
 
 	return retval;
 }
 
 static asmlinkage long
-android_sched_setscheduler(pid_t pid, int policy,
-			   struct sched_param __user *param)
+android_sched_setscheduler(struct pt_regs *regs)
 {
+	struct task_struct *task = current;
+	unsigned long args[6];
+	pid_t pid;
+	int policy;
+	struct sched_param __user *param;
+
+	syscall_get_arguments(task, regs, args);
+	pid = args[0];
+	policy = args[1];
+	param = (struct sched_param __user *)args[2];
+
 	/* negative values for policy are not valid */
 	if (policy < 0)
 		return -EINVAL;
@@ -228,89 +243,152 @@ android_sched_setscheduler(pid_t pid, int policy,
  */
 #define SETPARAM_POLICY -1
 
-static asmlinkage long android_sched_setparam(pid_t pid,
-                                              struct sched_param __user *param)
+static asmlinkage long android_sched_setparam(struct pt_regs *regs)
 {
+	struct task_struct *task = current;
+	unsigned long args[6];
+	pid_t pid;
+	struct sched_param __user *param;
+
+	syscall_get_arguments(task, regs, args);
+	pid = args[0];
+	param = (struct sched_param __user *)args[1];
+
         return do_android_sched_setscheduler(pid, SETPARAM_POLICY, param);
 }
 
-static asmlinkage int __maybe_unused
-android_socket(int domain, int type, int socket)
+static asmlinkage long __maybe_unused android_socket(struct pt_regs *regs)
 {
+	struct task_struct *task = current;
+	unsigned long args[6];
+	int domain, type, socket;
+
+	syscall_get_arguments(task, regs, args);
+	domain = args[0];
+	type = args[1];
+	socket = args[2];
+
 	if (domain == AF_VSOCK)
 	       return -EACCES;
-	return sys_socket(domain, type, socket);
+	return __sys_socket(domain, type, socket);
 }
 
-static asmlinkage long
-android_perf_event_open(struct perf_event_attr __user *attr_uptr,
-			pid_t pid, int cpu, int group_fd, unsigned long flags)
+static asmlinkage long android_perf_event_open(struct pt_regs *regs)
 {
+	struct task_struct *task = current;
+	unsigned long args[6];
+	struct perf_event_attr __user *attr_uptr;
+	pid_t pid;
+	int cpu, group_fd;
+	unsigned long flags;
+
 	if (!allow_devmode_syscalls)
 		return -EACCES;
 
-	return sys_perf_event_open(attr_uptr, pid, cpu, group_fd, flags);
+	syscall_get_arguments(task, regs, args);
+	attr_uptr = (struct perf_event_attr __user *)args[0];
+	pid = args[1];
+	cpu = args[2];
+	group_fd = args[3];
+	flags = args[4];
+
+	return ksys_perf_event_open(attr_uptr, pid, cpu, group_fd, flags);
 }
 
-static asmlinkage long android_adjtimex(struct timex __user *buf)
+static asmlinkage long android_adjtimex(struct pt_regs *regs)
 {
-	struct timex kbuf;
+	struct task_struct *task = current;
+	struct __kernel_timex kbuf;
+	struct __kernel_timex __user *buf;
+	unsigned long args[6];
+
+	syscall_get_arguments(task, regs, args);
+	buf = (struct __kernel_timex __user *)args[0];
 
 	/* adjtimex() is allowed only for read. */
-	if (copy_from_user(&kbuf, buf, sizeof(struct timex)))
+	if (copy_from_user(&kbuf, buf, sizeof(struct __kernel_timex)))
 		return -EFAULT;
 	if (kbuf.modes != 0)
 		return -EPERM;
-	return sys_adjtimex(buf);
+	return ksys_adjtimex(buf);
 }
 
-static asmlinkage long android_clock_adjtime(const clockid_t which_clock,
-					     struct timex __user *buf)
+static asmlinkage long android_clock_adjtime(struct pt_regs *regs)
 {
-	struct timex kbuf;
+	struct task_struct *task = current;
+	struct __kernel_timex kbuf;
+	unsigned long args[6];
+	clockid_t which_clock;
+	struct __kernel_timex __user *buf;
+
+	syscall_get_arguments(task, regs, args);
+	which_clock = args[0];
+	buf = (struct __kernel_timex __user *)args[1];
 
 	/* clock_adjtime() is allowed only for read. */
-	if (copy_from_user(&kbuf, buf, sizeof(struct timex)))
+	if (copy_from_user(&kbuf, buf, sizeof(struct __kernel_timex)))
 		return -EFAULT;
 	if (kbuf.modes != 0)
 		return -EPERM;
-	return sys_clock_adjtime(which_clock, buf);
+	return ksys_clock_adjtime(which_clock, buf);
 }
 
-static asmlinkage long android_getcpu(unsigned __user *cpu,
-				      unsigned __user *node,
-				      struct getcpu_cache __user *tcache)
+static asmlinkage long android_getcpu(struct pt_regs *regs)
 {
+	struct task_struct *task = current;
+	unsigned long args[6];
+	unsigned __user *cpu;
+	unsigned __user *node;
+	struct getcpu_cache __user *tcache;
+
+	syscall_get_arguments(task, regs, args);
+	cpu = (unsigned __user *)args[0];
+	node = (unsigned __user *)args[1];
+	tcache = (struct getcpu_cache __user *)args[2];
+
 	if (node || tcache)
 		return -EPERM;
-	return sys_getcpu(cpu, node, tcache);
+	return ksys_getcpu(cpu, node, tcache);
 }
 
 #ifdef CONFIG_COMPAT
-static asmlinkage long android_compat_adjtimex(struct compat_timex __user *buf)
+static asmlinkage long android_compat_adjtimex(struct pt_regs *regs)
 {
-	struct compat_timex kbuf;
+	struct task_struct *task = current;
+	struct old_timex32 kbuf;
+	struct old_timex32 __user *buf;
+	unsigned long args[6];
+
+	syscall_get_arguments(task, regs, args);
+	buf = (struct old_timex32 __user *)args[0];
 
 	/* adjtimex() is allowed only for read. */
-	if (copy_from_user(&kbuf, buf, sizeof(struct compat_timex)))
+	if (copy_from_user(&kbuf, buf, sizeof(struct old_timex32)))
 		return -EFAULT;
 	if (kbuf.modes != 0)
 		return -EPERM;
-	return compat_sys_adjtimex(buf);
+	return ksys_adjtimex_time32(buf);
 }
 
 static asmlinkage long
-android_compat_clock_adjtime(const clockid_t which_clock,
-			     struct compat_timex __user *buf)
+android_compat_clock_adjtime(struct pt_regs *regs)
 {
-	struct compat_timex kbuf;
+	struct task_struct *task = current;
+	struct old_timex32 kbuf;
+	unsigned long args[6];
+	clockid_t which_clock;
+	struct old_timex32 __user *buf;
+
+	syscall_get_arguments(task, regs, args);
+	which_clock = args[0];
+	buf = (struct old_timex32 __user *)args[1];
 
 	/* clock_adjtime() is allowed only for read. */
-	if (copy_from_user(&kbuf, buf, sizeof(struct compat_timex)))
+	if (copy_from_user(&kbuf, buf, sizeof(struct old_timex32)))
 		return -EFAULT;
 	if (kbuf.modes != 0)
 		return -EPERM;
-	return compat_sys_clock_adjtime(which_clock, buf);
+	return ksys_clock_adjtime32(which_clock, buf);
 }
 #endif /* CONFIG_COMPAT */
 
@@ -328,14 +406,19 @@ static int alt_syscall_apply_whitelist(const struct syscall_whitelist *wl,
 				       struct alt_sys_call_table *t)
 {
 	unsigned int i;
-	DECLARE_BITMAP(whitelist, t->size);
+	unsigned long *whitelist = kcalloc(BITS_TO_LONGS(t->size),
+					   sizeof(unsigned long), GFP_KERNEL);
 
-	bitmap_zero(whitelist, t->size);
+	if (!whitelist)
+		return -ENOMEM;
+
 	for (i = 0; i < wl->nr_whitelist; i++) {
 		unsigned int nr = wl->whitelist[i].nr;
 
-		if (nr >= t->size)
+		if (nr >= t->size) {
+			kfree(whitelist);
 			return -EINVAL;
+		}
 		bitmap_set(whitelist, nr, 1);
 		if (wl->whitelist[i].alt)
 			t->table[nr] = wl->whitelist[i].alt;
@@ -349,6 +432,7 @@ static int alt_syscall_apply_whitelist(const struct syscall_whitelist *wl,
 		}
 	}
 
+	kfree(whitelist);
 	return 0;
 }
 
@@ -358,14 +442,19 @@ alt_syscall_apply_compat_whitelist(const struct syscall_whitelist *wl,
 				   struct alt_sys_call_table *t)
 {
 	unsigned int i;
-	DECLARE_BITMAP(whitelist, t->compat_size);
+	unsigned long *whitelist = kcalloc(BITS_TO_LONGS(t->compat_size),
+					   sizeof(unsigned long), GFP_KERNEL);
 
-	bitmap_zero(whitelist, t->compat_size);
+	if (!whitelist)
+		return -ENOMEM;
+
 	for (i = 0; i < wl->nr_compat_whitelist; i++) {
 		unsigned int nr = wl->compat_whitelist[i].nr;
 
-		if (nr >= t->compat_size)
+		if (nr >= t->compat_size) {
+			kfree(whitelist);
 			return -EINVAL;
+		}
 		bitmap_set(whitelist, nr, 1);
 		if (wl->compat_whitelist[i].alt)
 			t->compat_table[nr] = wl->compat_whitelist[i].alt;
@@ -379,6 +468,7 @@ alt_syscall_apply_compat_whitelist(const struct syscall_whitelist *wl,
 		}
 	}
 
+	kfree(whitelist);
 	return 0;
 }
 #else

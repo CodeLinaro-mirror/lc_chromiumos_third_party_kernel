@@ -1,16 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * cros_ec_baro - Driver for barometer sensor behind CrosEC.
  *
  * Copyright (C) 2017 Google, Inc
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/device.h>
@@ -22,10 +14,10 @@
 #include <linux/iio/triggered_buffer.h>
 #include <linux/iio/trigger_consumer.h>
 #include <linux/kernel.h>
-#include <linux/mfd/cros_ec.h>
-#include <linux/mfd/cros_ec_commands.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/platform_data/cros_ec_commands.h>
+#include <linux/platform_data/cros_ec_proto.h>
 #include <linux/platform_device.h>
 
 /*
@@ -47,26 +39,29 @@ static int cros_ec_baro_read(struct iio_dev *indio_dev,
 {
 	struct cros_ec_baro_state *st = iio_priv(indio_dev);
 	u16 data = 0;
-	int ret = IIO_VAL_INT;
+	int ret;
 	int idx = chan->scan_index;
 
 	mutex_lock(&st->core.cmd_lock);
 
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		if (cros_ec_sensors_read_cmd(indio_dev, 1 << idx,
-					     (s16 *)&data) < 0)
-			ret = -EIO;
+		ret = cros_ec_sensors_read_cmd(indio_dev, 1 << idx,
+					     (s16 *)&data);
+		if (ret)
+			break;
+
 		*val = data;
+		ret = IIO_VAL_INT;
 		break;
 	case IIO_CHAN_INFO_SCALE:
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
 		st->core.param.sensor_range.data = EC_MOTION_SENSE_NO_VALUE;
 
-		if (cros_ec_motion_send_host_cmd(&st->core, 0)) {
-			ret = -EIO;
+		ret = cros_ec_motion_send_host_cmd(&st->core, 0);
+		if (ret)
 			break;
-		}
+
 		*val = st->core.resp->sensor_range.ret;
 
 		/* scale * in_pressure_raw --> kPa */
@@ -101,8 +96,11 @@ static int cros_ec_baro_write(struct iio_dev *indio_dev,
 		/* Always roundup, so caller gets at least what it asks for. */
 		st->core.param.sensor_range.roundup = 1;
 
-		if (cros_ec_motion_send_host_cmd(&st->core, 0))
-			ret = -EIO;
+		ret = cros_ec_motion_send_host_cmd(&st->core, 0);
+		if (ret == 0) {
+			st->core.range_updated = true;
+			st->core.curr_range = val;
+		}
 		break;
 	default:
 		ret = cros_ec_sensors_core_write(&st->core, chan, val, val2,
@@ -118,7 +116,6 @@ static int cros_ec_baro_write(struct iio_dev *indio_dev,
 static const struct iio_info cros_ec_baro_info = {
 	.read_raw = &cros_ec_baro_read,
 	.write_raw = &cros_ec_baro_write,
-	.driver_module = THIS_MODULE,
 	.read_avail = &cros_ec_sensors_core_read_avail,
 };
 
@@ -126,7 +123,6 @@ static int cros_ec_baro_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct cros_ec_dev *ec_dev = dev_get_drvdata(dev->parent);
-	struct cros_ec_device *ec_device;
 	struct iio_dev *indio_dev;
 	struct cros_ec_baro_state *state;
 	struct iio_chan_spec *channel;
@@ -136,7 +132,6 @@ static int cros_ec_baro_probe(struct platform_device *pdev)
 		dev_warn(dev, "No CROS EC device found.\n");
 		return -EINVAL;
 	}
-	ec_device = ec_dev->ec_dev;
 
 	indio_dev = devm_iio_device_alloc(dev, sizeof(*state));
 	if (!indio_dev)
@@ -168,8 +163,6 @@ static int cros_ec_baro_probe(struct platform_device *pdev)
 	channel->scan_index = 0;
 	channel->ext_info = cros_ec_sensors_ext_info;
 	channel->scan_type.sign = 'u';
-
-	state->core.calib[0] = 0;
 
 	/* Sensor specific */
 	switch (state->core.type) {
@@ -209,6 +202,7 @@ MODULE_DEVICE_TABLE(platform, cros_ec_baro_ids);
 static struct platform_driver cros_ec_baro_platform_driver = {
 	.driver = {
 		.name	= "cros-ec-baro",
+		.pm	= &cros_ec_sensors_pm_ops,
 	},
 	.probe		= cros_ec_baro_probe,
 	.id_table	= cros_ec_baro_ids,

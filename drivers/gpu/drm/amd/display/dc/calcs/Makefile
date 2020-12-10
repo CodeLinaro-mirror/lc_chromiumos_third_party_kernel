@@ -26,17 +26,24 @@
 
 calcs_ccflags := -mhard-float -msse
 
-ifneq ($(cc-name),clang)
-calcs_ccflags += -mpreferred-stack-boundary=4
+ifdef CONFIG_CC_IS_GCC
+ifeq ($(call cc-ifversion, -lt, 0701, y), y)
+IS_OLD_GCC = 1
+endif
 endif
 
-ifeq ($(cc-name),clang)
+ifdef IS_OLD_GCC
+# Stack alignment mismatch, proceed with caution.
+# GCC < 7.1 cannot compile code using `double` and -mpreferred-stack-boundary=3
+# (8B stack alignment).
+calcs_ccflags += -mpreferred-stack-boundary=4
+else
 calcs_ccflags += -msse2
 endif
 
-CFLAGS_dcn_calcs.o := $(calcs_ccflags)
-CFLAGS_dcn_calc_auto.o := $(calcs_ccflags)
-CFLAGS_dcn_calc_math.o := $(calcs_ccflags) -Wno-tautological-compare
+CFLAGS_$(AMDDALPATH)/dc/calcs/dcn_calcs.o := $(calcs_ccflags)
+CFLAGS_$(AMDDALPATH)/dc/calcs/dcn_calc_auto.o := $(calcs_ccflags)
+CFLAGS_$(AMDDALPATH)/dc/calcs/dcn_calc_math.o := $(calcs_ccflags) -Wno-tautological-compare
 
 BW_CALCS = dce_calcs.o bw_fixed.o custom_float.o
 

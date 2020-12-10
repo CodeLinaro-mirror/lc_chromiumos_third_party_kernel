@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #include <linux/export.h>
 #include <linux/bitops.h>
 #include <linux/elf.h>
@@ -7,13 +8,16 @@
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <linux/random.h>
+#include <linux/topology.h>
 #include <asm/processor.h>
 #include <asm/apic.h>
+#include <asm/cacheinfo.h>
 #include <asm/cpu.h>
 #include <asm/spec-ctrl.h>
 #include <asm/smp.h>
 #include <asm/pci-direct.h>
 #include <asm/delay.h>
+#include <asm/debugreg.h>
 
 #ifdef CONFIG_X86_64
 # include <asm/mmconfig.h>
@@ -24,6 +28,7 @@
 
 static const int amd_erratum_383[];
 static const int amd_erratum_400[];
+static const int amd_erratum_1054[];
 static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum);
 
 /*
@@ -80,11 +85,14 @@ static inline int wrmsrl_amd_safe(unsigned msr, unsigned long long val)
  *	performance at the same time..
  */
 
+#ifdef CONFIG_X86_32
 extern __visible void vide(void);
-__asm__(".globl vide\n"
+__asm__(".text\n"
+	".globl vide\n"
 	".type vide, @function\n"
 	".align 4\n"
 	"vide: ret\n");
+#endif
 
 static void init_amd_k5(struct cpuinfo_x86 *c)
 {
@@ -332,6 +340,7 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 
 	/* get information required for multi-node processors */
 	if (boot_cpu_has(X86_FEATURE_TOPOEXT)) {
+		int err;
 		u32 eax, ebx, ecx, edx;
 
 		cpuid(0x8000001e, &eax, &ebx, &ecx, &edx);
@@ -349,21 +358,15 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 		}
 
 		/*
-		 * We may have multiple LLCs if L3 caches exist, so check if we
-		 * have an L3 cache by looking at the L3 cache CPUID leaf.
+		 * In case leaf B is available, use it to derive
+		 * topology information.
 		 */
-		if (cpuid_edx(0x80000006)) {
-			if (c->x86 == 0x17) {
-				/*
-				 * LLC is at the core complex level.
-				 * Core complex id is ApicId[3].
-				 */
-				per_cpu(cpu_llc_id, cpu) = c->apicid >> 3;
-			} else {
-				/* LLC is at the node level. */
-				per_cpu(cpu_llc_id, cpu) = node_id;
-			}
-		}
+		err = detect_extended_topology(c);
+		if (!err)
+			c->x86_coreid_bits = get_count_order(c->x86_max_cores);
+
+		cacheinfo_amd_init_llc_id(c, cpu, node_id);
+
 	} else if (cpu_has(c, X86_FEATURE_NODEID_MSR)) {
 		u64 value;
 
@@ -396,7 +399,6 @@ static void amd_detect_cmp(struct cpuinfo_x86 *c)
 	c->phys_proc_id = c->initial_apicid >> bits;
 	/* use socket ID also for last level cache */
 	per_cpu(cpu_llc_id, cpu) = c->phys_proc_id;
-	amd_get_topology(c);
 }
 
 u16 amd_get_nb_id(int cpu)
@@ -575,6 +577,51 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 	}
 }
 
+static void early_detect_mem_encrypt(struct cpuinfo_x86 *c)
+{
+	u64 msr;
+
+	/*
+	 * BIOS support is required for SME and SEV.
+	 *   For SME: If BIOS has enabled SME then adjust x86_phys_bits by
+	 *	      the SME physical address space reduction value.
+	 *	      If BIOS has not enabled SME then don't advertise the
+	 *	      SME feature (set in scattered.c).
+	 *   For SEV: If BIOS has not enabled SEV then don't advertise the
+	 *            SEV feature (set in scattered.c).
+	 *
+	 *   In all cases, since support for SME and SEV requires long mode,
+	 *   don't advertise the feature under CONFIG_X86_32.
+	 */
+	if (cpu_has(c, X86_FEATURE_SME) || cpu_has(c, X86_FEATURE_SEV)) {
+		/* Check if memory encryption is enabled */
+		rdmsrl(MSR_K8_SYSCFG, msr);
+		if (!(msr & MSR_K8_SYSCFG_MEM_ENCRYPT))
+			goto clear_all;
+
+		/*
+		 * Always adjust physical address bits. Even though this
+		 * will be a value above 32-bits this is still done for
+		 * CONFIG_X86_32 so that accurate values are reported.
+		 */
+		c->x86_phys_bits -= (cpuid_ebx(0x8000001f) >> 6) & 0x3f;
+
+		if (IS_ENABLED(CONFIG_X86_32))
+			goto clear_all;
+
+		rdmsrl(MSR_K7_HWCR, msr);
+		if (!(msr & MSR_K7_HWCR_SMMLOCK))
+			goto clear_sev;
+
+		return;
+
+clear_all:
+		setup_clear_cpu_cap(X86_FEATURE_SME);
+clear_sev:
+		setup_clear_cpu_cap(X86_FEATURE_SEV);
+	}
+}
+
 static void early_init_amd(struct cpuinfo_x86 *c)
 {
 	u64 value;
@@ -655,26 +702,7 @@ static void early_init_amd(struct cpuinfo_x86 *c)
 	if (cpu_has_amd_erratum(c, amd_erratum_400))
 		set_cpu_bug(c, X86_BUG_AMD_E400);
 
-	/*
-	 * BIOS support is required for SME. If BIOS has enabled SME then
-	 * adjust x86_phys_bits by the SME physical address space reduction
-	 * value. If BIOS has not enabled SME then don't advertise the
-	 * feature (set in scattered.c). Also, since the SME support requires
-	 * long mode, don't advertise the feature under CONFIG_X86_32.
-	 */
-	if (cpu_has(c, X86_FEATURE_SME)) {
-		u64 msr;
-
-		/* Check if SME is enabled */
-		rdmsrl(MSR_K8_SYSCFG, msr);
-		if (msr & MSR_K8_SYSCFG_MEM_ENCRYPT) {
-			c->x86_phys_bits -= (cpuid_ebx(0x8000001f) >> 6) & 0x3f;
-			if (IS_ENABLED(CONFIG_X86_32))
-				clear_cpu_cap(c, X86_FEATURE_SME);
-		} else {
-			clear_cpu_cap(c, X86_FEATURE_SME);
-		}
-	}
+	early_detect_mem_encrypt(c);
 
 	/* Re-enable TopologyExtensions if switched off by BIOS */
 	if (c->x86 == 0x15 &&
@@ -734,7 +762,7 @@ static void init_amd_k8(struct cpuinfo_x86 *c)
 
 static void init_amd_gh(struct cpuinfo_x86 *c)
 {
-#ifdef CONFIG_X86_64
+#ifdef CONFIG_MMCONF_FAM10H
 	/* do this for boot cpu */
 	if (c == &boot_cpu_data)
 		check_enable_amd_mmconf_dmi();
@@ -863,6 +891,10 @@ static void init_amd_zn(struct cpuinfo_x86 *c)
 {
 	set_cpu_cap(c, X86_FEATURE_ZEN);
 
+#ifdef CONFIG_NUMA
+	node_reclaim_distance = 32;
+#endif
+
 	/*
 	 * Fix erratum 1076: CPB feature bit not being set in CPUID.
 	 * Always set it, except when running under a hypervisor.
@@ -913,17 +945,14 @@ static void init_amd(struct cpuinfo_x86 *c)
 	cpu_detect_cache_sizes(c);
 
 	amd_detect_cmp(c);
+	amd_get_topology(c);
 	srat_detect_node(c);
 
 	init_amd_cacheinfo(c);
 
 	if (cpu_has(c, X86_FEATURE_XMM2)) {
-		unsigned long long val;
-		int ret;
-
 		/*
-		 * A serializing LFENCE has less overhead than MFENCE, so
-		 * use it for execution serialization.  On families which
+		 * Use LFENCE for execution serialization.  On families which
 		 * don't have that MSR, LFENCE is already serializing.
 		 * msr_set_bit() uses the safe accessors, too, even if the MSR
 		 * is not present.
@@ -931,19 +960,8 @@ static void init_amd(struct cpuinfo_x86 *c)
 		msr_set_bit(MSR_F10H_DECFG,
 			    MSR_F10H_DECFG_LFENCE_SERIALIZE_BIT);
 
-		/*
-		 * Verify that the MSR write was successful (could be running
-		 * under a hypervisor) and only then assume that LFENCE is
-		 * serializing.
-		 */
-		ret = rdmsrl_safe(MSR_F10H_DECFG, &val);
-		if (!ret && (val & MSR_F10H_DECFG_LFENCE_SERIALIZE)) {
-			/* A serializing LFENCE stops RDTSC speculation */
-			set_cpu_cap(c, X86_FEATURE_LFENCE_RDTSC);
-		} else {
-			/* MFENCE stops RDTSC speculation */
-			set_cpu_cap(c, X86_FEATURE_MFENCE_RDTSC);
-		}
+		/* A serializing LFENCE stops RDTSC speculation */
+		set_cpu_cap(c, X86_FEATURE_LFENCE_RDTSC);
 	}
 
 	/*
@@ -961,13 +979,22 @@ static void init_amd(struct cpuinfo_x86 *c)
 	/* AMD CPUs don't reset SS attributes on SYSRET, Xen does. */
 	if (!cpu_has(c, X86_FEATURE_XENPV))
 		set_cpu_bug(c, X86_BUG_SYSRET_SS_ATTRS);
+
+	/*
+	 * Turn on the Instructions Retired free counter on machines not
+	 * susceptible to erratum #1054 "Instructions Retired Performance
+	 * Counter May Be Inaccurate".
+	 */
+	if (cpu_has(c, X86_FEATURE_IRPERF) &&
+	    !cpu_has_amd_erratum(c, amd_erratum_1054))
+		msr_set_bit(MSR_K7_HWCR, MSR_K7_HWCR_IRPERF_EN_BIT);
 }
 
 #ifdef CONFIG_X86_32
 static unsigned int amd_size_cache(struct cpuinfo_x86 *c, unsigned int size)
 {
 	/* AMD errata T13 (order #21922) */
-	if ((c->x86 == 6)) {
+	if (c->x86 == 6) {
 		/* Duron Rev A0 */
 		if (c->x86_model == 3 && c->x86_stepping == 0)
 			size = 64;
@@ -1088,6 +1115,9 @@ static const int amd_erratum_400[] =
 static const int amd_erratum_383[] =
 	AMD_OSVW_ERRATUM(3, AMD_MODEL_RANGE(0x10, 0, 0, 0xff, 0xf));
 
+/* #1054: Instructions Retired Performance Counter May Be Inaccurate */
+static const int amd_erratum_1054[] =
+	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x17, 0, 0, 0x2f, 0xf));
 
 static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum)
 {

@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * cs43130.c  --  CS43130 ALSA Soc Audio driver
  *
  * Copyright 2017 Cirrus Logic, Inc.
  *
  * Authors: Li Xu <li.xu@cirrus.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -909,6 +906,7 @@ static int cs43130_hw_params(struct snd_pcm_substream *substream,
 		regmap_update_bits(cs43130->regmap, CS43130_DSD_PATH_CTL_2,
 				   CS43130_DSD_SRC_MASK, CS43130_DSD_SRC_XSP <<
 				   CS43130_DSD_SRC_SHIFT);
+		break;
 	}
 
 	if (!sclk && cs43130->dais[dai->id].dai_mode == SND_SOC_DAIFMT_CBM_CFM)
@@ -1039,6 +1037,7 @@ static int cs43130_pcm_ch_put(struct snd_kcontrol *kcontrol,
 		else
 			regmap_multi_reg_write(cs43130->regmap, pcm_ch_dis_seq,
 					       ARRAY_SIZE(pcm_ch_dis_seq));
+		break;
 	}
 
 	return snd_soc_put_enum_double(kcontrol, ucontrol);
@@ -1152,6 +1151,7 @@ static int cs43130_dsd_event(struct snd_soc_dapm_widget *w,
 		case CS4399_CHIP_ID:
 			regmap_multi_reg_write(cs43130->regmap, dsd_seq,
 					       ARRAY_SIZE(dsd_seq));
+			break;
 		}
 		break;
 	case SND_SOC_DAPM_POST_PMU:
@@ -1162,6 +1162,7 @@ static int cs43130_dsd_event(struct snd_soc_dapm_widget *w,
 		case CS4399_CHIP_ID:
 			regmap_multi_reg_write(cs43130->regmap, unmute_seq,
 					       ARRAY_SIZE(unmute_seq));
+			break;
 		}
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
@@ -1184,6 +1185,7 @@ static int cs43130_dsd_event(struct snd_soc_dapm_widget *w,
 			regmap_update_bits(cs43130->regmap,
 					   CS43130_DSD_PATH_CTL_1,
 					   CS43130_MUTE_MASK, CS43130_MUTE_EN);
+			break;
 		}
 		break;
 	default:
@@ -1206,6 +1208,7 @@ static int cs43130_pcm_event(struct snd_soc_dapm_widget *w,
 		case CS4399_CHIP_ID:
 			regmap_multi_reg_write(cs43130->regmap, pcm_seq,
 					       ARRAY_SIZE(pcm_seq));
+			break;
 		}
 		break;
 	case SND_SOC_DAPM_POST_PMU:
@@ -1216,6 +1219,7 @@ static int cs43130_pcm_event(struct snd_soc_dapm_widget *w,
 		case CS4399_CHIP_ID:
 			regmap_multi_reg_write(cs43130->regmap, unmute_seq,
 					       ARRAY_SIZE(unmute_seq));
+			break;
 		}
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
@@ -1238,6 +1242,7 @@ static int cs43130_pcm_event(struct snd_soc_dapm_widget *w,
 			regmap_update_bits(cs43130->regmap,
 					   CS43130_PCM_PATH_CTL_1,
 					   CS43130_MUTE_MASK, CS43130_MUTE_EN);
+			break;
 		}
 		break;
 	default:
@@ -1277,6 +1282,7 @@ static int cs43130_dac_event(struct snd_soc_dapm_widget *w,
 		case CS43198_CHIP_ID:
 			regmap_multi_reg_write(cs43130->regmap, pop_free_seq2,
 					       ARRAY_SIZE(pop_free_seq2));
+			break;
 		}
 		break;
 	case SND_SOC_DAPM_POST_PMU:
@@ -1301,6 +1307,7 @@ static int cs43130_dac_event(struct snd_soc_dapm_widget *w,
 		case CS43198_CHIP_ID:
 			usleep_range(12000, 12010);
 			regmap_write(cs43130->regmap, CS43130_DXD13, 0);
+			break;
 		}
 
 		regmap_write(cs43130->regmap, CS43130_DXD1, 0);
@@ -1311,6 +1318,7 @@ static int cs43130_dac_event(struct snd_soc_dapm_widget *w,
 		case CS4399_CHIP_ID:
 			regmap_multi_reg_write(cs43130->regmap, dac_postpmd_seq,
 					       ARRAY_SIZE(dac_postpmd_seq));
+			break;
 		}
 		break;
 	default:
@@ -1722,10 +1730,10 @@ static ssize_t cs43130_show_ac_r(struct device *dev,
 	return cs43130_show_ac(dev, buf, HP_RIGHT);
 }
 
-static DEVICE_ATTR(hpload_dc_l, S_IRUGO, cs43130_show_dc_l, NULL);
-static DEVICE_ATTR(hpload_dc_r, S_IRUGO, cs43130_show_dc_r, NULL);
-static DEVICE_ATTR(hpload_ac_l, S_IRUGO, cs43130_show_ac_l, NULL);
-static DEVICE_ATTR(hpload_ac_r, S_IRUGO, cs43130_show_ac_r, NULL);
+static DEVICE_ATTR(hpload_dc_l, 0444, cs43130_show_dc_l, NULL);
+static DEVICE_ATTR(hpload_dc_r, 0444, cs43130_show_dc_r, NULL);
+static DEVICE_ATTR(hpload_ac_l, 0444, cs43130_show_ac_l, NULL);
+static DEVICE_ATTR(hpload_ac_r, 0444, cs43130_show_ac_r, NULL);
 
 static struct reg_sequence hp_en_cal_seq[] = {
 	{CS43130_INT_MASK_4, CS43130_INT_MASK_ALL},
@@ -2133,6 +2141,7 @@ exit:
 		cs43130_hpload_proc(cs43130, hp_dis_cal_seq2,
 				    ARRAY_SIZE(hp_dis_cal_seq2),
 				    CS43130_HPLOAD_OFF_INT, ac_idx);
+		break;
 	}
 
 	regmap_multi_reg_write(cs43130->regmap, hp_cln_seq,
@@ -2310,6 +2319,8 @@ static int cs43130_probe(struct snd_soc_component *component)
 			return ret;
 
 		cs43130->wq = create_singlethread_workqueue("cs43130_hp");
+		if (!cs43130->wq)
+			return -ENOMEM;
 		INIT_WORK(&cs43130->work, cs43130_imp_meas);
 	}
 
@@ -2350,7 +2361,9 @@ static const struct regmap_config cs43130_regmap = {
 	.precious_reg		= cs43130_precious_register,
 	.volatile_reg		= cs43130_volatile_register,
 	.cache_type		= REGCACHE_RBTREE,
-	.use_single_rw		= true, /* needed for regcache_sync */
+	/* needed for regcache_sync */
+	.use_single_read	= true,
+	.use_single_write	= true,
 };
 
 static u16 const cs43130_dc_threshold[CS43130_DC_THRESHOLD] = {
@@ -2545,6 +2558,7 @@ static int cs43130_i2c_probe(struct i2c_client *client,
 			digital_hp_routes;
 		soc_component_dev_cs43130.num_dapm_routes =
 			ARRAY_SIZE(digital_hp_routes);
+		break;
 	}
 
 	ret = devm_snd_soc_register_component(&client->dev,
@@ -2589,8 +2603,7 @@ static int cs43130_i2c_remove(struct i2c_client *client)
 		device_remove_file(&client->dev, &dev_attr_hpload_ac_r);
 	}
 
-	if (cs43130->reset_gpio)
-		gpiod_set_value_cansleep(cs43130->reset_gpio, 0);
+	gpiod_set_value_cansleep(cs43130->reset_gpio, 0);
 
 	pm_runtime_disable(&client->dev);
 	regulator_bulk_disable(CS43130_NUM_SUPPLIES, cs43130->supplies);

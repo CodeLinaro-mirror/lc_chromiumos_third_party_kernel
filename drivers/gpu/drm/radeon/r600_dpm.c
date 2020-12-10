@@ -22,7 +22,6 @@
  * Authors: Alex Deucher
  */
 
-#include <drm/drmP.h>
 #include "radeon.h"
 #include "radeon_asic.h"
 #include "r600d.h"
@@ -991,7 +990,7 @@ int r600_parse_extended_power_table(struct radeon_device *rdev)
 			ATOM_PPLIB_PhaseSheddingLimits_Record *entry;
 
 			rdev->pm.dpm.dyn_state.phase_shedding_limits_table.entries =
-				kzalloc(psl->ucNumEntries *
+				kcalloc(psl->ucNumEntries,
 					sizeof(struct radeon_phase_shedding_limits_entry),
 					GFP_KERNEL);
 			if (!rdev->pm.dpm.dyn_state.phase_shedding_limits_table.entries) {

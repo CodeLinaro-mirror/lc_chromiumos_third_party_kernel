@@ -234,12 +234,14 @@ static struct ext4_new_flex_group_data *alloc_flex_gd(unsigned long flexbg_size)
 		goto out2;
 	flex_gd->count = flexbg_size;
 
-	flex_gd->groups = kmalloc(sizeof(struct ext4_new_group_data) *
-				  flexbg_size, GFP_NOFS);
+	flex_gd->groups = kmalloc_array(flexbg_size,
+					sizeof(struct ext4_new_group_data),
+					GFP_NOFS);
 	if (flex_gd->groups == NULL)
 		goto out2;
 
-	flex_gd->bg_flags = kmalloc(flexbg_size * sizeof(__u16), GFP_NOFS);
+	flex_gd->bg_flags = kmalloc_array(flexbg_size, sizeof(__u16),
+					  GFP_NOFS);
 	if (flex_gd->bg_flags == NULL)
 		goto out1;
 
@@ -1005,7 +1007,7 @@ static int reserve_backup_gdb(handle_t *handle, struct inode *inode,
 	int res, i;
 	int err;
 
-	primary = kmalloc(reserved_gdb * sizeof(*primary), GFP_NOFS);
+	primary = kmalloc_array(reserved_gdb, sizeof(*primary), GFP_NOFS);
 	if (!primary)
 		return -ENOMEM;
 
@@ -1521,7 +1523,7 @@ static int ext4_flex_group_add(struct super_block *sb,
 		goto exit_journal;
 
 	group = flex_gd->groups[0].group;
-	BUG_ON(group != EXT4_SB(sb)->s_groups_count);
+	BUG_ON(group != sbi->s_groups_count);
 	err = ext4_add_new_descs(handle, sb, group,
 				resize_inode, flex_gd->count);
 	if (err)
@@ -1795,8 +1797,6 @@ int ext4_group_extend(struct super_block *sb, struct ext4_super_block *es,
 		ext4_msg(sb, KERN_ERR,
 			 "filesystem too large to resize to %llu blocks safely",
 			 n_blocks_count);
-		if (sizeof(sector_t) < 8)
-			ext4_warning(sb, "CONFIG_LBDAF not enabled");
 		return -EINVAL;
 	}
 

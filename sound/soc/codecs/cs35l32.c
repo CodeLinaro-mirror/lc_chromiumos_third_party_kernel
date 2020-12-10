@@ -1,14 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * cs35l32.c -- CS35L32 ALSA SoC audio driver
  *
  * Copyright 2014 CirrusLogic, Inc.
  *
  * Author: Brian Austin <brian.austin@cirrus.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
  */
 
 #include <linux/module.h>
@@ -356,13 +352,9 @@ static int cs35l32_i2c_probe(struct i2c_client *i2c_client,
 	unsigned int devid = 0;
 	unsigned int reg;
 
-
-	cs35l32 = devm_kzalloc(&i2c_client->dev, sizeof(struct cs35l32_private),
-			       GFP_KERNEL);
-	if (!cs35l32) {
-		dev_err(&i2c_client->dev, "could not allocate codec\n");
+	cs35l32 = devm_kzalloc(&i2c_client->dev, sizeof(*cs35l32), GFP_KERNEL);
+	if (!cs35l32)
 		return -ENOMEM;
-	}
 
 	i2c_set_clientdata(i2c_client, cs35l32);
 
@@ -376,13 +368,11 @@ static int cs35l32_i2c_probe(struct i2c_client *i2c_client,
 	if (pdata) {
 		cs35l32->pdata = *pdata;
 	} else {
-		pdata = devm_kzalloc(&i2c_client->dev,
-				     sizeof(struct cs35l32_platform_data),
-				GFP_KERNEL);
-		if (!pdata) {
-			dev_err(&i2c_client->dev, "could not allocate pdata\n");
+		pdata = devm_kzalloc(&i2c_client->dev, sizeof(*pdata),
+				     GFP_KERNEL);
+		if (!pdata)
 			return -ENOMEM;
-		}
+
 		if (i2c_client->dev.of_node) {
 			ret = cs35l32_handle_of_data(i2c_client,
 						     &cs35l32->pdata);

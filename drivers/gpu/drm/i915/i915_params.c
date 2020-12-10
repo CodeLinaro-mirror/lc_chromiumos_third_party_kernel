@@ -22,6 +22,8 @@
  * IN THE SOFTWARE.
  */
 
+#include <drm/drm_print.h>
+
 #include "i915_params.h"
 #include "i915_drv.h"
 
@@ -33,7 +35,7 @@
 	MODULE_PARM_DESC(name, desc)
 
 struct i915_params i915_modparams __read_mostly = {
-#define MEMBER(T, member, value) .member = (value),
+#define MEMBER(T, member, value, ...) .member = (value),
 	I915_PARAMS_FOR_EACH(MEMBER)
 #undef MEMBER
 };
@@ -42,28 +44,13 @@ i915_param_named(modeset, int, 0400,
 	"Use kernel modesetting [KMS] (0=disable, "
 	"1=on, -1=force vga console preference [default])");
 
-i915_param_named_unsafe(panel_ignore_lid, int, 0600,
-	"Override lid status (0=autodetect, 1=autodetect disabled [default], "
-	"-1=force lid closed, -2=force lid open)");
-
-i915_param_named_unsafe(semaphores, int, 0400,
-	"Use semaphores for inter-ring sync "
-	"(default: -1 (use per-chip defaults))");
-
-i915_param_named_unsafe(enable_rc6, int, 0400,
-	"Enable power-saving render C-state 6. "
-	"Different stages can be selected via bitmask values "
-	"(0 = disable; 1 = enable rc6; 2 = enable deep rc6; 4 = enable deepest rc6). "
-	"For example, 3 would enable rc6 and deep rc6, and 7 would enable everything. "
-	"default: -1 (use per-chip default)");
-
 i915_param_named_unsafe(enable_dc, int, 0400,
 	"Enable power-saving display C-states. "
-	"(-1=auto [default]; 0=disable; 1=up to DC5; 2=up to DC6)");
+	"(-1=auto [default]; 0=disable; 1=up to DC5; 2=up to DC6; "
+	"3=up to DC5 with DC3CO; 4=up to DC6 with DC3CO)");
 
 i915_param_named_unsafe(enable_fbc, int, 0600,
 	"Enable frame buffer compression for power savings "
-	"(0 = disable; 1 = enable fbc). "
 	"(default: -1 (use per-chip default))");
 
 i915_param_named_unsafe(lvds_channel_mode, int, 0400,
@@ -91,27 +78,22 @@ i915_param_named(error_capture, bool, 0600,
 	"triaging and debugging hangs.");
 #endif
 
-i915_param_named_unsafe(enable_hangcheck, bool, 0644,
+i915_param_named_unsafe(enable_hangcheck, bool, 0600,
 	"Periodically check GPU activity for detecting hangs. "
 	"WARNING: Disabling this can cause system wide hangs. "
 	"(default: true)");
 
-i915_param_named_unsafe(enable_ppgtt, int, 0400,
-	"Override PPGTT usage. "
-	"(-1=auto [default], 0=disabled, 1=aliasing, 2=full, 3=full with extended address space)");
-
-i915_param_named_unsafe(enable_execlists, int, 0400,
-	"Override execlists usage. "
-	"(-1=auto [default], 0=disabled, 1=enabled)");
-
-i915_param_named(enable_psr, int, 0600,
+i915_param_named_unsafe(enable_psr, int, 0600,
 	"Enable PSR "
-	"(0=disabled, 1=enabled - link mode chosen per-platform, 2=force link-standby mode, 3=force link-off mode) "
+	"(0=disabled, 1=enabled) "
 	"Default: -1 (use per-chip default)");
 
+i915_param_named_unsafe(force_probe, charp, 0400,
+	"Force probe the driver for specified devices. "
+	"See CONFIG_DRM_I915_FORCE_PROBE for details.");
+
 i915_param_named_unsafe(alpha_support, bool, 0400,
-	"Enable alpha quality driver support for latest hardware. "
-	"See also CONFIG_DRM_I915_ALPHA_SUPPORT.");
+	"Deprecated. See i915.force_probe.");
 
 i915_param_named_unsafe(disable_power_well, int, 0400,
 	"Disable display power wells when possible "
@@ -119,8 +101,10 @@ i915_param_named_unsafe(disable_power_well, int, 0400,
 
 i915_param_named_unsafe(enable_ips, int, 0600, "Enable IPS (default: true)");
 
-i915_param_named(fastboot, bool, 0600,
-	"Try to skip unnecessary mode sets at boot time (default: false)");
+i915_param_named(fastboot, int, 0600,
+	"Try to skip unnecessary mode sets at boot time "
+	"(0=disabled, 1=enabled) "
+	"Default: -1 (use per-chip default)");
 
 i915_param_named_unsafe(prefault_disable, bool, 0600,
 	"Disable page prefaulting for pread/pwrite/reloc (default:false). "
@@ -144,12 +128,6 @@ i915_param_named_unsafe(invert_brightness, int, 0600,
 i915_param_named(disable_display, bool, 0400,
 	"Disable display (default: false)");
 
-i915_param_named_unsafe(enable_cmd_parser, bool, 0400,
-	"Enable command parsing (true=enabled [default], false=disabled)");
-
-i915_param_named_unsafe(use_mmio_flip, int, 0600,
-	"use MMIO flips (-1=never, 0=driver discretion [default], 1=always)");
-
 i915_param_named(mmio_debug, int, 0600,
 	"Enable the MMIO debug code for the first N failures (default: off). "
 	"This may negatively affect performance.");
@@ -166,16 +144,14 @@ i915_param_named_unsafe(edp_vswing, int, 0400,
 	"(0=use value from vbt [default], 1=low power swing(200mV),"
 	"2=default swing(400mV))");
 
-i915_param_named_unsafe(enable_guc_loading, int, 0400,
-	"Enable GuC firmware loading "
-	"(-1=auto, 0=never [default], 1=if available, 2=required)");
-
-i915_param_named_unsafe(enable_guc_submission, int, 0400,
-	"Enable GuC submission "
-	"(-1=auto, 0=never [default], 1=if available, 2=required)");
+i915_param_named_unsafe(enable_guc, int, 0400,
+	"Enable GuC load for GuC submission and/or HuC load. "
+	"Required functionality can be selected using bitmask values. "
+	"(-1=auto, 0=disable [default], 1=GuC submission, 2=HuC load)");
 
 i915_param_named(guc_log_level, int, 0400,
-	"GuC firmware logging level (-1:disabled (default), 0-3:enabled)");
+	"GuC firmware logging level. Requires GuC to be loaded. "
+	"(-1=auto [default], 0=disable, 1..4=enable with verbosity min..max)");
 
 i915_param_named_unsafe(guc_firmware_path, charp, 0400,
 	"GuC firmware path to use instead of the default one");
@@ -183,14 +159,94 @@ i915_param_named_unsafe(guc_firmware_path, charp, 0400,
 i915_param_named_unsafe(huc_firmware_path, charp, 0400,
 	"HuC firmware path to use instead of the default one");
 
+i915_param_named_unsafe(dmc_firmware_path, charp, 0400,
+	"DMC firmware path to use instead of the default one");
+
 i915_param_named_unsafe(enable_dp_mst, bool, 0600,
 	"Enable multi-stream transport (MST) for new DisplayPort sinks. (default: true)");
 
-i915_param_named_unsafe(inject_load_failure, uint, 0400,
+#if IS_ENABLED(CONFIG_DRM_I915_DEBUG)
+i915_param_named_unsafe(inject_probe_failure, uint, 0400,
 	"Force an error after a number of failure check points (0:disabled (default), N:force failure at the Nth failure check point)");
+#endif
 
-i915_param_named(enable_dpcd_backlight, bool, 0600,
-	"Enable support for DPCD backlight control (default:false)");
+i915_param_named(enable_dpcd_backlight, int, 0600,
+	"Enable support for DPCD backlight control"
+	"(-1=use per-VBT LFP backlight type setting, 0=disabled [default], 1=enabled)");
 
+i915_param_named(enable_dbc, bool, 0600,
+	"Enable support for dynamic backlight control (default:false)");
+
+#if IS_ENABLED(CONFIG_DRM_I915_GVT)
 i915_param_named(enable_gvt, bool, 0400,
 	"Enable support for Intel GVT-g graphics virtualization host support(default:false)");
+#endif
+
+#if IS_ENABLED(CONFIG_DRM_I915_UNSTABLE_FAKE_LMEM)
+i915_param_named_unsafe(fake_lmem_start, ulong, 0400,
+	"Fake LMEM start offset (default: 0)");
+#endif
+
+static __always_inline void _print_param(struct drm_printer *p,
+					 const char *name,
+					 const char *type,
+					 const void *x)
+{
+	if (!__builtin_strcmp(type, "bool"))
+		drm_printf(p, "i915.%s=%s\n", name, yesno(*(const bool *)x));
+	else if (!__builtin_strcmp(type, "int"))
+		drm_printf(p, "i915.%s=%d\n", name, *(const int *)x);
+	else if (!__builtin_strcmp(type, "unsigned int"))
+		drm_printf(p, "i915.%s=%u\n", name, *(const unsigned int *)x);
+	else if (!__builtin_strcmp(type, "unsigned long"))
+		drm_printf(p, "i915.%s=%lu\n", name, *(const unsigned long *)x);
+	else if (!__builtin_strcmp(type, "char *"))
+		drm_printf(p, "i915.%s=%s\n", name, *(const char **)x);
+	else
+		WARN_ONCE(1, "no printer defined for param type %s (i915.%s)\n",
+			  type, name);
+}
+
+/**
+ * i915_params_dump - dump i915 modparams
+ * @params: i915 modparams
+ * @p: the &drm_printer
+ *
+ * Pretty printer for i915 modparams.
+ */
+void i915_params_dump(const struct i915_params *params, struct drm_printer *p)
+{
+#define PRINT(T, x, ...) _print_param(p, #x, #T, &params->x);
+	I915_PARAMS_FOR_EACH(PRINT);
+#undef PRINT
+}
+
+static __always_inline void dup_param(const char *type, void *x)
+{
+	if (!__builtin_strcmp(type, "char *"))
+		*(void **)x = kstrdup(*(void **)x, GFP_ATOMIC);
+}
+
+void i915_params_copy(struct i915_params *dest, const struct i915_params *src)
+{
+	*dest = *src;
+#define DUP(T, x, ...) dup_param(#T, &dest->x);
+	I915_PARAMS_FOR_EACH(DUP);
+#undef DUP
+}
+
+static __always_inline void free_param(const char *type, void *x)
+{
+	if (!__builtin_strcmp(type, "char *")) {
+		kfree(*(void **)x);
+		*(void **)x = NULL;
+	}
+}
+
+/* free the allocated members, *not* the passed in params itself */
+void i915_params_free(struct i915_params *params)
+{
+#define FREE(T, x, ...) free_param(#T, &params->x);
+	I915_PARAMS_FOR_EACH(FREE);
+#undef FREE
+}

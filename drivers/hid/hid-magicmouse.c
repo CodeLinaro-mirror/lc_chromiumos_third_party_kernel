@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *   Apple "Magic" Wireless Mouse driver
  *
@@ -6,10 +7,6 @@
  */
 
 /*
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -34,7 +31,8 @@ module_param(emulate_scroll_wheel, bool, 0644);
 MODULE_PARM_DESC(emulate_scroll_wheel, "Emulate a scroll wheel");
 
 static unsigned int scroll_speed = 32;
-static int param_set_scroll_speed(const char *val, struct kernel_param *kp) {
+static int param_set_scroll_speed(const char *val,
+				  const struct kernel_param *kp) {
 	unsigned long speed;
 	if (!val || kstrtoul(val, 0, &speed) || speed > 63)
 		return -EINVAL;
@@ -632,19 +630,19 @@ static int magicmouse_probe(struct hid_device *hdev,
 
 	if (id->product == USB_DEVICE_ID_APPLE_MAGICMOUSE)
 		report = hid_register_report(hdev, HID_INPUT_REPORT,
-			MOUSE_REPORT_ID);
+			MOUSE_REPORT_ID, 0);
 	else if (id->product == USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) {
 		if (id->vendor == BT_VENDOR_ID_APPLE)
 			report = hid_register_report(hdev, HID_INPUT_REPORT,
-				TRACKPAD2_BT_REPORT_ID);
+				TRACKPAD2_BT_REPORT_ID, 0);
 		else /* USB_VENDOR_ID_APPLE */
 			report = hid_register_report(hdev, HID_INPUT_REPORT,
-				TRACKPAD2_USB_REPORT_ID);
+				TRACKPAD2_USB_REPORT_ID, 0);
 	} else { /* USB_DEVICE_ID_APPLE_MAGICTRACKPAD */
 		report = hid_register_report(hdev, HID_INPUT_REPORT,
-			TRACKPAD_REPORT_ID);
+			TRACKPAD_REPORT_ID, 0);
 		report = hid_register_report(hdev, HID_INPUT_REPORT,
-			DOUBLE_REPORT_ID);
+			DOUBLE_REPORT_ID, 0);
 	}
 
 	if (!report) {

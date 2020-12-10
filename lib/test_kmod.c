@@ -779,12 +779,11 @@ static int kmod_config_sync_info(struct kmod_test_device *test_dev)
 	struct test_config *config = &test_dev->config;
 
 	free_test_dev_info(test_dev);
-	test_dev->info = vzalloc(config->num_threads *
-				 sizeof(struct kmod_test_device_info));
-	if (!test_dev->info) {
-		dev_err(test_dev->dev, "Cannot alloc test_dev info\n");
+	test_dev->info =
+		vzalloc(array_size(sizeof(struct kmod_test_device_info),
+				   config->num_threads));
+	if (!test_dev->info)
 		return -ENOMEM;
-	}
 
 	return 0;
 }
@@ -1085,10 +1084,8 @@ static struct kmod_test_device *alloc_test_dev_kmod(int idx)
 	struct miscdevice *misc_dev;
 
 	test_dev = vzalloc(sizeof(struct kmod_test_device));
-	if (!test_dev) {
-		pr_err("Cannot alloc test_dev\n");
+	if (!test_dev)
 		goto err_out;
-	}
 
 	mutex_init(&test_dev->config_mutex);
 	mutex_init(&test_dev->trigger_mutex);

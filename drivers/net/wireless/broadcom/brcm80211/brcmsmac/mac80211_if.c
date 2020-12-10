@@ -108,7 +108,7 @@ MODULE_DEVICE_TABLE(bcma, brcms_coreid_table);
  * flags are specified by the BRCM_DL_* macros in
  * drivers/net/wireless/brcm80211/include/defs.h.
  */
-module_param_named(debug, brcm_msg_level, uint, S_IRUGO | S_IWUSR);
+module_param_named(debug, brcm_msg_level, uint, 0644);
 #endif
 
 static struct ieee80211_channel brcms_2ghz_chantable[] = {
@@ -850,8 +850,7 @@ brcms_ops_ampdu_action(struct ieee80211_hw *hw,
 				     "START: tid %d is not agg\'able\n", tid);
 			return -EINVAL;
 		}
-		ieee80211_start_tx_ba_cb_irqsafe(vif, sta->addr, tid);
-		break;
+		return IEEE80211_AMPDU_TX_START_IMMEDIATE;
 
 	case IEEE80211_AMPDU_TX_STOP_CONT:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
@@ -1589,7 +1588,7 @@ void brcms_free_timer(struct brcms_timer *t)
 }
 
 /*
- * precondition: perimeter lock has been acquired
+ * precondition: no locking required
  */
 int brcms_ucode_init_buf(struct brcms_info *wl, void **pbuf, u32 idx)
 {
@@ -1604,10 +1603,10 @@ int brcms_ucode_init_buf(struct brcms_info *wl, void **pbuf, u32 idx)
 			if (le32_to_cpu(hdr->idx) == idx) {
 				pdata = wl->fw.fw_bin[i]->data +
 					le32_to_cpu(hdr->offset);
-				*pbuf = kmemdup(pdata, len, GFP_ATOMIC);
+				*pbuf = kvmalloc(len, GFP_KERNEL);
 				if (*pbuf == NULL)
 					goto fail;
-
+				memcpy(*pbuf, pdata, len);
 				return 0;
 			}
 		}
@@ -1655,7 +1654,7 @@ int brcms_ucode_init_uint(struct brcms_info *wl, size_t *n_bytes, u32 idx)
  */
 void brcms_ucode_free_buf(void *p)
 {
-	kfree(p);
+	kvfree(p);
 }
 
 /*

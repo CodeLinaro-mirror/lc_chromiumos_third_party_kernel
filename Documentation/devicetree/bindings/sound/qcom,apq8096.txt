@@ -35,7 +35,7 @@ This binding describes the APQ8096 sound card, which uses qdsp for audio.
 			"Digital Mic3"
 
 		Audio pins and MicBias on WCD9335 Codec:
-			"MIC_BIAS1
+			"MIC_BIAS1"
 			"MIC_BIAS2"
 			"MIC_BIAS3"
 			"MIC_BIAS4"
@@ -54,6 +54,14 @@ This binding describes the APQ8096 sound card, which uses qdsp for audio.
 	Usage: required
 	Value type: <stringlist>
 	Definition: The user-visible name of this sound card.
+
+- aux-devs
+	Usage: optional
+	Value type: <array of phandles>
+	Definition: A list of phandles for auxiliary devices (e.g. analog
+		    amplifiers) that do not appear directly within the DAI
+		    links. Should be connected to another audio component
+		    using "audio-routing".
 
 = dailinks
 Each subnode of sndcard represents either a dailink, and subnodes of each

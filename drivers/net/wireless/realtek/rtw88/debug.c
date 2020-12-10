@@ -792,13 +792,17 @@ static ssize_t rtw_debugfs_set_edcca_enable(struct file *filp,
 					    const char __user *buffer,
 					    size_t count, loff_t *loff)
 {
-	struct rtw_debugfs_priv *debugfs_priv = filp->private_data;
+	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
 	char tmp[32 + 1];
+	int err;
 
 	rtw_debugfs_copy_from_user(tmp, sizeof(tmp), buffer, count, 1);
 
-	kstrtobool(tmp, &rtw_edcca_enabled);
+	err = kstrtobool(tmp, &rtw_edcca_enabled);
+	if (err)
+		return err;
 	rtw_phy_adaptivity_set_mode(rtwdev);
 
 	return count;

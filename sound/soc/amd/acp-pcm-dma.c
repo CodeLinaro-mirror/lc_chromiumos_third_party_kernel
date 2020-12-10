@@ -1,16 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * AMD ALSA SoC PCM Driver for ACP 2.x
  *
  * Copyright 2014-2015 Advanced Micro Devices, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 
 #include <linux/module.h>
@@ -44,7 +36,7 @@
 #define ST_MIN_BUFFER ST_MAX_BUFFER
 
 #define DRV_NAME "acp_audio_dma"
-bool bt_uart_enable = false;
+bool bt_uart_enable = true;
 EXPORT_SYMBOL(bt_uart_enable);
 
 static const struct snd_pcm_hardware acp_pcm_hardware_playback = {
@@ -123,9 +115,6 @@ static const struct snd_pcm_hardware acp_st_pcm_hardware_capture = {
 	.periods_max = CAPTURE_MAX_NUM_PERIODS,
 };
 
-/* Lock to protect access to registers */
-static DEFINE_SPINLOCK(lock);
-
 static u32 acp_reg_read(void __iomem *acp_mmio, u32 reg)
 {
 	return readl(acp_mmio + (reg * 4));
@@ -134,31 +123,6 @@ static u32 acp_reg_read(void __iomem *acp_mmio, u32 reg)
 static void acp_reg_write(u32 val, void __iomem *acp_mmio, u32 reg)
 {
 	writel(val, acp_mmio + (reg * 4));
-}
-
-static void acp_reg_write_srbm_targ(void __iomem *acp_mmio,
-				    u32 addr, u32 data)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&lock, flags);
-	acp_reg_write(addr, acp_mmio, mmACP_SRBM_Targ_Idx_Addr);
-	acp_reg_write(data, acp_mmio, mmACP_SRBM_Targ_Idx_Data);
-	spin_unlock_irqrestore(&lock, flags);
-}
-
-static void acp_reg_read_mod_write(void __iomem *acp_mmio, u32 addr,
-				   u32 mask, u32 value)
-{
-	u32 val;
-	unsigned long flags;
-
-	spin_lock_irqsave(&lock, flags);
-	val = acp_reg_read(acp_mmio, addr);
-	val &= ~mask;
-	val |= (mask & value);
-	acp_reg_write(val, acp_mmio, addr);
-	spin_unlock_irqrestore(&lock, flags);
 }
 
 /*
@@ -202,12 +166,15 @@ static void config_dma_descriptor_in_sram(void __iomem *acp_mmio,
 	sram_offset = (descr_idx * sizeof(acp_dma_dscr_transfer_t));
 
 	/* program the source base address. */
-	acp_reg_write_srbm_targ(acp_mmio, sram_offset, descr_info->src);
+	acp_reg_write(sram_offset, acp_mmio, mmACP_SRBM_Targ_Idx_Addr);
+	acp_reg_write(descr_info->src,	acp_mmio, mmACP_SRBM_Targ_Idx_Data);
 	/* program the destination base address. */
-	acp_reg_write_srbm_targ(acp_mmio, sram_offset + 4, descr_info->dest);
+	acp_reg_write(sram_offset + 4,	acp_mmio, mmACP_SRBM_Targ_Idx_Addr);
+	acp_reg_write(descr_info->dest, acp_mmio, mmACP_SRBM_Targ_Idx_Data);
+
 	/* program the number of bytes to be transferred for this descriptor. */
-	acp_reg_write_srbm_targ(acp_mmio, sram_offset + 8,
-				descr_info->xfer_val);
+	acp_reg_write(sram_offset + 8,	acp_mmio, mmACP_SRBM_Targ_Idx_Addr);
+	acp_reg_write(descr_info->xfer_val, acp_mmio, mmACP_SRBM_Targ_Idx_Data);
 }
 
 static void pre_config_reset(void __iomem *acp_mmio, u16 ch_num)
@@ -337,21 +304,23 @@ static void acp_pte_config(void __iomem *acp_mmio, dma_addr_t addr,
 	u32 offset;
 
 	offset	= ACP_DAGB_GRP_SRBM_SRAM_BASE_OFFSET + (pte_offset * 8);
-
 	for (page_idx = 0; page_idx < (num_of_pages); page_idx++) {
 		/* Load the low address of page int ACP SRAM through SRBM */
+		acp_reg_write((offset + (page_idx * 8)),
+			      acp_mmio, mmACP_SRBM_Targ_Idx_Addr);
 
 		low = lower_32_bits(addr);
 		high = upper_32_bits(addr);
 
-		acp_reg_write_srbm_targ(acp_mmio, (offset + (page_idx * 8)),
-					low);
+		acp_reg_write(low, acp_mmio, mmACP_SRBM_Targ_Idx_Data);
 
 		/* Load the High address of page int ACP SRAM through SRBM */
+		acp_reg_write((offset + (page_idx * 8) + 4),
+			      acp_mmio, mmACP_SRBM_Targ_Idx_Addr);
+
 		/* page enable in ACP */
 		high |= BIT(31);
-		acp_reg_write_srbm_targ(acp_mmio, (offset + (page_idx * 8) + 4),
-					high);
+		acp_reg_write(high, acp_mmio, mmACP_SRBM_Targ_Idx_Data);
 
 		/* Move to next physically contiguos page */
 		addr += PAGE_SIZE;
@@ -790,13 +759,12 @@ static irqreturn_t dma_irq_handler(int irq, void *arg)
 		return IRQ_NONE;
 }
 
-static int acp_dma_open(struct snd_pcm_substream *substream)
+static int acp_dma_open(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream)
 {
 	u16 bank;
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct snd_soc_pcm_runtime *prtd = substream->private_data;
-	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd, DRV_NAME);
 	struct audio_drv_data *intr_data = dev_get_drvdata(component->dev);
 	struct audio_substream_data *adata =
 		kzalloc(sizeof(struct audio_substream_data), GFP_KERNEL);
@@ -864,16 +832,15 @@ static int acp_dma_open(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int acp_dma_hw_params(struct snd_pcm_substream *substream,
+static int acp_dma_hw_params(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *params)
 {
-	int status;
 	uint64_t size;
 	u32 val = 0;
 	struct snd_pcm_runtime *runtime;
 	struct audio_substream_data *rtd;
 	struct snd_soc_pcm_runtime *prtd = substream->private_data;
-	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd, DRV_NAME);
 	struct audio_drv_data *adata = dev_get_drvdata(component->dev);
 	struct snd_soc_card *card = prtd->card;
 	struct acp_platform_info *pinfo = snd_soc_card_get_drvdata(card);
@@ -893,28 +860,29 @@ static int acp_dma_hw_params(struct snd_pcm_substream *substream,
 		}
 	}
 	if (adata->asic_type == CHIP_STONEY) {
+		val = acp_reg_read(adata->acp_mmio,
+				   mmACP_I2S_16BIT_RESOLUTION_EN);
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 			switch (rtd->i2s_instance) {
 			case I2S_BT_INSTANCE:
-				val = ACP_I2S_BT_16BIT_RESOLUTION_EN;
+				val |= ACP_I2S_BT_16BIT_RESOLUTION_EN;
 				break;
 			case I2S_SP_INSTANCE:
 			default:
-				val = ACP_I2S_SP_16BIT_RESOLUTION_EN;
+				val |= ACP_I2S_SP_16BIT_RESOLUTION_EN;
 			}
 		} else {
 			switch (rtd->i2s_instance) {
 			case I2S_BT_INSTANCE:
-				val = ACP_I2S_BT_16BIT_RESOLUTION_EN;
+				val |= ACP_I2S_BT_16BIT_RESOLUTION_EN;
 				break;
 			case I2S_SP_INSTANCE:
 			default:
-				val = ACP_I2S_MIC_16BIT_RESOLUTION_EN;
+				val |= ACP_I2S_MIC_16BIT_RESOLUTION_EN;
 			}
 		}
-		acp_reg_read_mod_write(adata->acp_mmio,
-				       mmACP_I2S_16BIT_RESOLUTION_EN,
-				       val, val);
+		acp_reg_write(val, adata->acp_mmio,
+			      mmACP_I2S_16BIT_RESOLUTION_EN);
 	}
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
@@ -998,34 +966,19 @@ static int acp_dma_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	size = params_buffer_bytes(params);
-	status = snd_pcm_lib_malloc_pages(substream, size);
-	if (status < 0)
-		return status;
 
-	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
+	acp_set_sram_bank_state(rtd->acp_mmio, 0, true);
+	/* Save for runtime private data */
+	rtd->dma_addr = substream->dma_buffer.addr;
+	rtd->order = get_order(size);
 
-	if (substream->dma_buffer.area) {
-		acp_set_sram_bank_state(rtd->acp_mmio, 0, true);
-		/* Save for runtime private data */
-		rtd->dma_addr = substream->dma_buffer.addr;
-		rtd->order = get_order(size);
+	/* Fill the page table entries in ACP SRAM */
+	rtd->size = size;
+	rtd->num_of_pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
+	rtd->direction = substream->stream;
 
-		/* Fill the page table entries in ACP SRAM */
-		rtd->size = size;
-		rtd->num_of_pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
-		rtd->direction = substream->stream;
-
-		config_acp_dma(rtd->acp_mmio, rtd, adata->asic_type);
-		status = 0;
-	} else {
-		status = -ENOMEM;
-	}
-	return status;
-}
-
-static int acp_dma_hw_free(struct snd_pcm_substream *substream)
-{
-	return snd_pcm_lib_free_pages(substream);
+	config_acp_dma(rtd->acp_mmio, rtd, adata->asic_type);
+	return 0;
 }
 
 static u64 acp_get_byte_count(struct audio_substream_data *rtd)
@@ -1039,7 +992,8 @@ static u64 acp_get_byte_count(struct audio_substream_data *rtd)
 	return byte_count.bytescount;
 }
 
-static snd_pcm_uframes_t acp_dma_pointer(struct snd_pcm_substream *substream)
+static snd_pcm_uframes_t acp_dma_pointer(struct snd_soc_component *component,
+					 struct snd_pcm_substream *substream)
 {
 	u32 buffersize;
 	u32 pos = 0;
@@ -1081,13 +1035,15 @@ static snd_pcm_uframes_t acp_dma_pointer(struct snd_pcm_substream *substream)
 	return bytes_to_frames(runtime, pos);
 }
 
-static int acp_dma_mmap(struct snd_pcm_substream *substream,
+static int acp_dma_mmap(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream,
 			struct vm_area_struct *vma)
 {
 	return snd_pcm_lib_default_mmap(substream, vma);
 }
 
-static int acp_dma_prepare(struct snd_pcm_substream *substream)
+static int acp_dma_prepare(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct audio_substream_data *rtd = runtime->private_data;
@@ -1114,7 +1070,8 @@ static int acp_dma_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int acp_dma_trigger(struct snd_pcm_substream *substream, int cmd)
+static int acp_dma_trigger(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream, int cmd)
 {
 	int ret;
 
@@ -1160,42 +1117,37 @@ static int acp_dma_trigger(struct snd_pcm_substream *substream, int cmd)
 	return ret;
 }
 
-static int acp_dma_new(struct snd_soc_pcm_runtime *rtd)
+static int acp_dma_new(struct snd_soc_component *component,
+		       struct snd_soc_pcm_runtime *rtd)
 {
-	int ret;
-	struct snd_soc_component *component = snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	struct audio_drv_data *adata = dev_get_drvdata(component->dev);
 	struct device *parent = component->dev->parent;
 
 	switch (adata->asic_type) {
 	case CHIP_STONEY:
-		ret = snd_pcm_lib_preallocate_pages_for_all(rtd->pcm,
-							    SNDRV_DMA_TYPE_DEV,
-							    parent,
-							    ST_MIN_BUFFER,
-							    ST_MAX_BUFFER);
+		snd_pcm_set_managed_buffer_all(rtd->pcm,
+					       SNDRV_DMA_TYPE_DEV,
+					       parent,
+					       ST_MIN_BUFFER,
+					       ST_MAX_BUFFER);
 		break;
 	default:
-		ret = snd_pcm_lib_preallocate_pages_for_all(rtd->pcm,
-							    SNDRV_DMA_TYPE_DEV,
-							    parent,
-							    MIN_BUFFER,
-							    MAX_BUFFER);
+		snd_pcm_set_managed_buffer_all(rtd->pcm,
+					       SNDRV_DMA_TYPE_DEV,
+					       parent,
+					       MIN_BUFFER,
+					       MAX_BUFFER);
 		break;
 	}
-	if (ret < 0)
-		dev_err(component->dev,
-			"buffer preallocation failer error:%d\n", ret);
-	return ret;
+	return 0;
 }
 
-static int acp_dma_close(struct snd_pcm_substream *substream)
+static int acp_dma_close(struct snd_soc_component *component,
+			 struct snd_pcm_substream *substream)
 {
 	u16 bank;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct audio_substream_data *rtd = runtime->private_data;
-	struct snd_soc_pcm_runtime *prtd = substream->private_data;
-	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd, DRV_NAME);
 	struct audio_drv_data *adata = dev_get_drvdata(component->dev);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
@@ -1246,22 +1198,16 @@ static int acp_dma_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static const struct snd_pcm_ops acp_dma_ops = {
-	.open = acp_dma_open,
-	.close = acp_dma_close,
-	.ioctl = snd_pcm_lib_ioctl,
-	.hw_params = acp_dma_hw_params,
-	.hw_free = acp_dma_hw_free,
-	.trigger = acp_dma_trigger,
-	.pointer = acp_dma_pointer,
-	.mmap = acp_dma_mmap,
-	.prepare = acp_dma_prepare,
-};
-
 static const struct snd_soc_component_driver acp_asoc_platform = {
-	.name = DRV_NAME,
-	.ops = &acp_dma_ops,
-	.pcm_new = acp_dma_new,
+	.name		= DRV_NAME,
+	.open		= acp_dma_open,
+	.close		= acp_dma_close,
+	.hw_params	= acp_dma_hw_params,
+	.trigger	= acp_dma_trigger,
+	.pointer	= acp_dma_pointer,
+	.mmap		= acp_dma_mmap,
+	.prepare	= acp_dma_prepare,
+	.pcm_construct	= acp_dma_new,
 };
 
 static int acp_audio_probe(struct platform_device *pdev)
@@ -1281,8 +1227,7 @@ static int acp_audio_probe(struct platform_device *pdev)
 	if (!audio_drv_data)
 		return -ENOMEM;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	audio_drv_data->acp_mmio = devm_ioremap_resource(&pdev->dev, res);
+	audio_drv_data->acp_mmio = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(audio_drv_data->acp_mmio))
 		return PTR_ERR(audio_drv_data->acp_mmio);
 
@@ -1322,7 +1267,7 @@ static int acp_audio_probe(struct platform_device *pdev)
 	}
 
 	status = devm_snd_soc_register_component(&pdev->dev,
-						&acp_asoc_platform, NULL, 0);
+						 &acp_asoc_platform, NULL, 0);
 	if (status != 0) {
 		dev_err(&pdev->dev, "Fail to register ALSA platform device\n");
 		return status;

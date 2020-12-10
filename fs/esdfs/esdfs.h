@@ -17,9 +17,11 @@
 #include <linux/dcache.h>
 #include <linux/file.h>
 #include <linux/fs.h>
+#include <linux/iversion.h>
 #include <linux/aio.h>
 #include <linux/mm.h>
 #include <linux/mount.h>
+#include <uapi/linux/mount.h>
 #include <linux/namei.h>
 #include <linux/seq_file.h>
 #include <linux/statfs.h>
@@ -32,6 +34,8 @@
 #include <linux/uidgid.h>
 #include <linux/user_namespace.h>
 #include <linux/pkglist.h>
+
+#include "../internal.h"
 
 /* the file system name */
 #define ESDFS_NAME "esdfs"

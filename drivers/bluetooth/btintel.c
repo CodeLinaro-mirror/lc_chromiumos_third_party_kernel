@@ -1,29 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *
  *  Bluetooth support for Intel devices
  *
  *  Copyright (C) 2015  Intel Corporation
- *
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
  */
 
 #include <linux/module.h>
 #include <linux/firmware.h>
 #include <linux/regmap.h>
+#include <asm/unaligned.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
@@ -75,7 +61,7 @@ EXPORT_SYMBOL_GPL(btintel_check_bdaddr);
 
 int btintel_enter_mfg(struct hci_dev *hdev)
 {
-	const u8 param[] = { 0x01, 0x00 };
+	static const u8 param[] = { 0x01, 0x00 };
 	struct sk_buff *skb;
 
 	skb = __hci_cmd_sync(hdev, 0xfc11, 2, param, HCI_CMD_TIMEOUT);
@@ -312,15 +298,7 @@ EXPORT_SYMBOL_GPL(btintel_load_ddc_config);
 
 int btintel_set_event_mask(struct hci_dev *hdev, bool debug)
 {
-	/* Three events are enabled by default in the event mask as they are
-	 * used during the startup sequence of the device and debugging purpose.
-	 * The remaining events are thereby disabled by default but can be
-	 * enabled as desired. Enabled events are
-	 * 0000000000000001H HCI_Intel_Bootup ,
-	 * 0000000000000400H HCI_Intel_Fatal_Exception Event and
-	 * 0000000000000800H HCI_Intel_System_Exception Event
-	 */
-	u8 mask[8] = { 0x01, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	u8 mask[8] = { 0x87, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 	struct sk_buff *skb;
 	int err;
 
@@ -381,45 +359,6 @@ int btintel_read_version(struct hci_dev *hdev, struct intel_version *ver)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(btintel_read_version);
-
-void btintel_retry_fw_download(struct hci_dev *hdev)
-{
-	/* Send Intel Reset command. This will result in
-	 * re-enumeration of BT controller.
-	 *
-	 * Intel Reset parameter description:
-	 * reset_param[0] => reset_type : 0x00 (Soft reset),
-					  0x01 (Hard reset)
-	 * reset_param[1] => patch_enable : 0x00 (Do not enable),
-	 *				    0x01 (Enable)
-	 * reset_param[2] => ddc_reload : 0x00 (Do not reload),
-	 *				  0x01 (Reload)
-	 * reset_param[3] => boot_option: 0x00 (Current image),
-					  0x01 (Specified boot address)
-	 * reset_param[4] to reset_param[7] => Boot address
-	 *
-	 */
-	static const u8 reset_param[] = { 0x01, 0x01, 0x01, 0x00,
-					0x00, 0x00, 0x00, 0x00 };
-	struct sk_buff *skb;
-
-	skb = __hci_cmd_sync(hdev, 0xfc01, sizeof(reset_param),
-				reset_param, HCI_INIT_TIMEOUT);
-	if (IS_ERR(skb)) {
-		bt_dev_err(hdev, "FW download error recovery failed (%ld)",
-				PTR_ERR(skb));
-		return;
-	}
-	bt_dev_info(hdev, "Intel reset sent to retry FW download");
-	kfree_skb(skb);
-	/* Current Intel BT controllers(ThP/JfP) hold the USB reset
-	 * lines for 2ms when it receives Intel Reset in bootloader mode.
-	 * Whereas, the upcoming Intel BT controllers will hold USB reset
-	 * for 150ms. To keep the delay generic, 150ms is chosen here.
-	 */
-	msleep(150);
-}
-EXPORT_SYMBOL_GPL(btintel_retry_fw_download);
 
 /* ------- REGMAP IBT SUPPORT ------- */
 
@@ -615,6 +554,205 @@ struct regmap *btintel_regmap_init(struct hci_dev *hdev, u16 opcode_read,
 	return regmap_init(&hdev->dev, &regmap_ibt, ctx, &regmap_ibt_cfg);
 }
 EXPORT_SYMBOL_GPL(btintel_regmap_init);
+
+int btintel_send_intel_reset(struct hci_dev *hdev, u32 boot_param)
+{
+	struct intel_reset params = { 0x00, 0x01, 0x00, 0x01, 0x00000000 };
+	struct sk_buff *skb;
+
+	params.boot_param = cpu_to_le32(boot_param);
+
+	skb = __hci_cmd_sync(hdev, 0xfc01, sizeof(params), &params,
+			     HCI_INIT_TIMEOUT);
+	if (IS_ERR(skb)) {
+		bt_dev_err(hdev, "Failed to send Intel Reset command");
+		return PTR_ERR(skb);
+	}
+
+	kfree_skb(skb);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(btintel_send_intel_reset);
+
+int btintel_read_boot_params(struct hci_dev *hdev,
+			     struct intel_boot_params *params)
+{
+	struct sk_buff *skb;
+
+	skb = __hci_cmd_sync(hdev, 0xfc0d, 0, NULL, HCI_INIT_TIMEOUT);
+	if (IS_ERR(skb)) {
+		bt_dev_err(hdev, "Reading Intel boot parameters failed (%ld)",
+			   PTR_ERR(skb));
+		return PTR_ERR(skb);
+	}
+
+	if (skb->len != sizeof(*params)) {
+		bt_dev_err(hdev, "Intel boot parameters size mismatch");
+		kfree_skb(skb);
+		return -EILSEQ;
+	}
+
+	memcpy(params, skb->data, sizeof(*params));
+
+	kfree_skb(skb);
+
+	if (params->status) {
+		bt_dev_err(hdev, "Intel boot parameters command failed (%02x)",
+			   params->status);
+		return -bt_to_errno(params->status);
+	}
+
+	bt_dev_info(hdev, "Device revision is %u",
+		    le16_to_cpu(params->dev_revid));
+
+	bt_dev_info(hdev, "Secure boot is %s",
+		    params->secure_boot ? "enabled" : "disabled");
+
+	bt_dev_info(hdev, "OTP lock is %s",
+		    params->otp_lock ? "enabled" : "disabled");
+
+	bt_dev_info(hdev, "API lock is %s",
+		    params->api_lock ? "enabled" : "disabled");
+
+	bt_dev_info(hdev, "Debug lock is %s",
+		    params->debug_lock ? "enabled" : "disabled");
+
+	bt_dev_info(hdev, "Minimum firmware build %u week %u %u",
+		    params->min_fw_build_nn, params->min_fw_build_cw,
+		    2000 + params->min_fw_build_yy);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(btintel_read_boot_params);
+
+int btintel_download_firmware(struct hci_dev *hdev, const struct firmware *fw,
+			      u32 *boot_param)
+{
+	int err;
+	const u8 *fw_ptr;
+	u32 frag_len;
+
+	/* Start the firmware download transaction with the Init fragment
+	 * represented by the 128 bytes of CSS header.
+	 */
+	err = btintel_secure_send(hdev, 0x00, 128, fw->data);
+	if (err < 0) {
+		bt_dev_err(hdev, "Failed to send firmware header (%d)", err);
+		goto done;
+	}
+
+	/* Send the 256 bytes of public key information from the firmware
+	 * as the PKey fragment.
+	 */
+	err = btintel_secure_send(hdev, 0x03, 256, fw->data + 128);
+	if (err < 0) {
+		bt_dev_err(hdev, "Failed to send firmware pkey (%d)", err);
+		goto done;
+	}
+
+	/* Send the 256 bytes of signature information from the firmware
+	 * as the Sign fragment.
+	 */
+	err = btintel_secure_send(hdev, 0x02, 256, fw->data + 388);
+	if (err < 0) {
+		bt_dev_err(hdev, "Failed to send firmware signature (%d)", err);
+		goto done;
+	}
+
+	fw_ptr = fw->data + 644;
+	frag_len = 0;
+
+	while (fw_ptr - fw->data < fw->size) {
+		struct hci_command_hdr *cmd = (void *)(fw_ptr + frag_len);
+
+		/* Each SKU has a different reset parameter to use in the
+		 * HCI_Intel_Reset command and it is embedded in the firmware
+		 * data. So, instead of using static value per SKU, check
+		 * the firmware data and save it for later use.
+		 */
+		if (le16_to_cpu(cmd->opcode) == 0xfc0e) {
+			/* The boot parameter is the first 32-bit value
+			 * and rest of 3 octets are reserved.
+			 */
+			*boot_param = get_unaligned_le32(fw_ptr + sizeof(*cmd));
+
+			bt_dev_dbg(hdev, "boot_param=0x%x", *boot_param);
+		}
+
+		frag_len += sizeof(*cmd) + cmd->plen;
+
+		/* The parameter length of the secure send command requires
+		 * a 4 byte alignment. It happens so that the firmware file
+		 * contains proper Intel_NOP commands to align the fragments
+		 * as needed.
+		 *
+		 * Send set of commands with 4 byte alignment from the
+		 * firmware data buffer as a single Data fragement.
+		 */
+		if (!(frag_len % 4)) {
+			err = btintel_secure_send(hdev, 0x01, frag_len, fw_ptr);
+			if (err < 0) {
+				bt_dev_err(hdev,
+					   "Failed to send firmware data (%d)",
+					   err);
+				goto done;
+			}
+
+			fw_ptr += frag_len;
+			frag_len = 0;
+		}
+	}
+
+done:
+	return err;
+}
+EXPORT_SYMBOL_GPL(btintel_download_firmware);
+
+void btintel_reset_to_bootloader(struct hci_dev *hdev)
+{
+	struct intel_reset params;
+	struct sk_buff *skb;
+
+	/* Send Intel Reset command. This will result in
+	 * re-enumeration of BT controller.
+	 *
+	 * Intel Reset parameter description:
+	 * reset_type :   0x00 (Soft reset),
+	 *		  0x01 (Hard reset)
+	 * patch_enable : 0x00 (Do not enable),
+	 *		  0x01 (Enable)
+	 * ddc_reload :   0x00 (Do not reload),
+	 *		  0x01 (Reload)
+	 * boot_option:   0x00 (Current image),
+	 *                0x01 (Specified boot address)
+	 * boot_param:    Boot address
+	 *
+	 */
+	params.reset_type = 0x01;
+	params.patch_enable = 0x01;
+	params.ddc_reload = 0x01;
+	params.boot_option = 0x00;
+	params.boot_param = cpu_to_le32(0x00000000);
+
+	skb = __hci_cmd_sync(hdev, 0xfc01, sizeof(params),
+			     &params, HCI_INIT_TIMEOUT);
+	if (IS_ERR(skb)) {
+		bt_dev_err(hdev, "FW download error recovery failed (%ld)",
+			   PTR_ERR(skb));
+		return;
+	}
+	bt_dev_info(hdev, "Intel reset sent to retry FW download");
+	kfree_skb(skb);
+
+	/* Current Intel BT controllers(ThP/JfP) hold the USB reset
+	 * lines for 2ms when it receives Intel Reset in bootloader mode.
+	 * Whereas, the upcoming Intel BT controllers will hold USB reset
+	 * for 150ms. To keep the delay generic, 150ms is chosen here.
+	 */
+	msleep(150);
+}
+EXPORT_SYMBOL_GPL(btintel_reset_to_bootloader);
 
 MODULE_AUTHOR("Marcel Holtmann <marcel@holtmann.org>");
 MODULE_DESCRIPTION("Bluetooth support for Intel devices ver " VERSION);

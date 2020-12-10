@@ -1,16 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * cros_ec_sensors_core - Common function for Chrome OS EC sensor driver.
  *
  * Copyright (C) 2016 Google, Inc
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/delay.h>
@@ -23,10 +15,10 @@
 #include <linux/iio/trigger_consumer.h>
 #include <linux/iio/triggered_buffer.h>
 #include <linux/kernel.h>
-#include <linux/mfd/cros_ec.h>
-#include <linux/mfd/cros_ec_commands.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/platform_data/cros_ec_commands.h>
+#include <linux/platform_data/cros_ec_proto.h>
 #include <linux/platform_data/cros_ec_sensorhub.h>
 #include <linux/platform_device.h>
 
@@ -100,6 +92,14 @@ static void get_default_min_max_freq(enum motionsensor_type type,
 	case MOTIONSENSE_TYPE_BARO:
 		*min_freq = 250;
 		*max_freq = 20000;
+		break;
+	case MOTIONSENSE_TYPE_SYNC:
+		/*
+		 * Frequency for sync/counter sensors is overloaded for
+		 * enable/disable.
+		 */
+		*min_freq = 0;
+		*max_freq = 1;
 		break;
 	case MOTIONSENSE_TYPE_ACTIVITY:
 	default:
@@ -327,15 +327,19 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 	if (physical_device) {
 		state->param.cmd = MOTIONSENSE_CMD_INFO;
 		state->param.info.sensor_num = sensor_platform->sensor_num;
-		if (cros_ec_motion_send_host_cmd(state, 0)) {
+		ret = cros_ec_motion_send_host_cmd(state, 0);
+		if (ret) {
 			dev_warn(dev, "Can not access sensor info\n");
-			return -EIO;
+			return ret;
 		}
 		state->type = state->resp->info.type;
 		state->loc = state->resp->info.location;
 
 		/* Set sign vector, only used for backward compatibility. */
 		memset(state->sign, 1, CROS_EC_SENSOR_MAX_AXIS);
+
+		for (i = CROS_EC_SENSOR_X; i < CROS_EC_SENSOR_MAX_AXIS; i++)
+			state->calib[i].scale = MOTION_SENSE_DEFAULT_SCALE;
 
 		/* 0 is a correct value used to stop the device */
 		if (state->msg->version < 3) {
@@ -420,6 +424,16 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensors_core_init);
 
+/**
+ * cros_ec_motion_send_host_cmd() - send motion sense host command
+ * @state:		pointer to state information for device
+ * @opt_length:	optional length to reduce the response size, useful on the data
+ *		path. Otherwise, the maximal allowed response size is used
+ *
+ * When called, the sub-command is assumed to be set in param->cmd.
+ *
+ * Return: 0 on success, -errno on failure.
+ */
 int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state,
 				 u16 opt_length)
 {
@@ -434,7 +448,7 @@ int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state,
 
 	ret = cros_ec_cmd_xfer_status(state->ec, state->msg);
 	if (ret < 0)
-		return -EIO;
+		return ret;
 
 	if (ret &&
 	    state->resp != (struct ec_response_motion_sense *)state->msg->data)
@@ -455,11 +469,10 @@ static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
 	ret = strtobool(buf, &calibrate);
 	if (ret < 0)
 		return ret;
-	if (!calibrate)
-		return -EINVAL;
 
 	mutex_lock(&st->cmd_lock);
 	st->param.cmd = MOTIONSENSE_CMD_PERFORM_CALIB;
+	st->param.perform_calib.enable = calibrate;
 	ret = cros_ec_motion_send_host_cmd(st, 0);
 	if (ret != 0) {
 		dev_warn(&indio_dev->dev, "Unable to calibrate sensor: %d\n",
@@ -467,7 +480,7 @@ static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
 	} else {
 		/* Save values */
 		for (i = CROS_EC_SENSOR_X; i < CROS_EC_SENSOR_MAX_AXIS; i++)
-			st->calib[i] = st->resp->perform_calib.offset[i];
+			st->calib[i].offset = st->resp->perform_calib.offset[i];
 	}
 	mutex_unlock(&st->cmd_lock);
 
@@ -475,12 +488,12 @@ static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
 }
 
 static ssize_t cros_ec_sensors_id(struct iio_dev *indio_dev,
-		uintptr_t private, const struct iio_chan_spec *chan,
-		char *buf)
+				  uintptr_t private,
+				  const struct iio_chan_spec *chan, char *buf)
 {
 	struct cros_ec_sensors_core_state *st = iio_priv(indio_dev);
 
-	return sprintf(buf, "%d\n", st->param.info.sensor_num);
+	return snprintf(buf, PAGE_SIZE, "%d\n", st->param.info.sensor_num);
 }
 
 static ssize_t cros_ec_sensors_loc(struct iio_dev *indio_dev,
@@ -639,16 +652,16 @@ static int cros_ec_sensors_read_data_unsafe(struct iio_dev *indio_dev,
 	return 0;
 }
 
-/*
- * cros_ec_sensors_read_lpc - read acceleration data from EC shared memory.
- *
- * @st Pointer to state information for device.
- * @scan_mask Bitmap of the sensor indices to scan.
- * @data Location to store data.
- * @return 0 if ok, -ve on error
+/**
+ * cros_ec_sensors_read_lpc() - read acceleration data from EC shared memory.
+ * @indio_dev: pointer to IIO device.
+ * @scan_mask: bitmap of the sensor indices to scan.
+ * @data: location to store data.
  *
  * Note: this is the safe function for reading the EC data. It guarantees
  * that the data sampled was not modified by the EC while being read.
+ *
+ * Return: 0 on success, -errno on failure.
  */
 int cros_ec_sensors_read_lpc(struct iio_dev *indio_dev,
 			     unsigned long scan_mask, s16 *data)
@@ -698,6 +711,14 @@ int cros_ec_sensors_read_lpc(struct iio_dev *indio_dev,
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensors_read_lpc);
 
+/**
+ * cros_ec_sensors_read_cmd() - retrieve data using the EC command protocol
+ * @indio_dev:	pointer to IIO device
+ * @scan_mask:	bitmap of the sensor indices to scan
+ * @data:	location to store data
+ *
+ * Return: 0 on success, -errno on failure.
+ */
 int cros_ec_sensors_read_cmd(struct iio_dev *indio_dev,
 			     unsigned long scan_mask, s16 *data)
 {
@@ -722,6 +743,18 @@ int cros_ec_sensors_read_cmd(struct iio_dev *indio_dev,
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensors_read_cmd);
 
+/**
+ * cros_ec_sensors_capture() - the trigger handler function
+ * @irq:	the interrupt number.
+ * @p:		a pointer to the poll function.
+ *
+ * On a trigger event occurring, if the pollfunc is attached then this
+ * handler is called as a threaded interrupt (and hence may sleep). It
+ * is responsible for grabbing data from the device and pushing it into
+ * the associated buffer.
+ *
+ * Return: IRQ_HANDLED
+ */
 irqreturn_t cros_ec_sensors_capture(int irq, void *p)
 {
 	struct iio_poll_func *pf = p;
@@ -757,6 +790,16 @@ done:
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensors_capture);
 
+/**
+ * cros_ec_sensors_core_read() - function to request a value from the sensor
+ * @st:		pointer to state information for device
+ * @chan:	channel specification structure table
+ * @val:	will contain one element making up the returned value
+ * @val2:	will contain another element making up the returned value
+ * @mask:	specifies which values to be requested
+ *
+ * Return:	the type of value returned by the device
+ */
 int cros_ec_sensors_core_read(struct cros_ec_sensors_core_state *st,
 			  struct iio_chan_spec const *chan,
 			  int *val, int *val2, long mask)
@@ -787,6 +830,17 @@ int cros_ec_sensors_core_read(struct cros_ec_sensors_core_state *st,
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensors_core_read);
 
+/**
+ * cros_ec_sensors_core_read_avail() - get available values
+ * @indio_dev:		pointer to state information for device
+ * @chan:	channel specification structure table
+ * @vals:	list of available values
+ * @type:	type of data returned
+ * @length:	number of data returned in the array
+ * @mask:	specifies which values to be requested
+ *
+ * Return:	an error code, IIO_AVAIL_RANGE or IIO_AVAIL_LIST
+ */
 int cros_ec_sensors_core_read_avail(struct iio_dev *indio_dev,
 				    struct iio_chan_spec const *chan,
 				    const int **vals,
@@ -808,11 +862,21 @@ int cros_ec_sensors_core_read_avail(struct iio_dev *indio_dev,
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensors_core_read_avail);
 
+/**
+ * cros_ec_sensors_core_write() - function to write a value to the sensor
+ * @st:		pointer to state information for device
+ * @chan:	channel specification structure table
+ * @val:	first part of value to write
+ * @val2:	second part of value to write
+ * @mask:	specifies which values to write
+ *
+ * Return:	the type of value returned by the device
+ */
 int cros_ec_sensors_core_write(struct cros_ec_sensors_core_state *st,
 			       struct iio_chan_spec const *chan,
 			       int val, int val2, long mask)
 {
-	int ret = 0, frequency;
+	int ret, frequency;
 
 	switch (mask) {
 	case IIO_CHAN_INFO_SAMP_FREQ:
@@ -823,8 +887,7 @@ int cros_ec_sensors_core_write(struct cros_ec_sensors_core_state *st,
 		/* Always roundup, so caller gets at least what it asks for. */
 		st->param.sensor_odr.roundup = 1;
 
-		if (cros_ec_motion_send_host_cmd(st, 0))
-			ret = -EIO;
+		ret = cros_ec_motion_send_host_cmd(st, 0);
 		break;
 	default:
 		ret = -EINVAL;
@@ -833,6 +896,27 @@ int cros_ec_sensors_core_write(struct cros_ec_sensors_core_state *st,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensors_core_write);
+
+static int __maybe_unused cros_ec_sensors_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
+	struct cros_ec_sensors_core_state *st = iio_priv(indio_dev);
+	int ret = 0;
+
+	if (st->range_updated) {
+		mutex_lock(&st->cmd_lock);
+		st->param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
+		st->param.sensor_range.data = st->curr_range;
+		st->param.sensor_range.roundup = 1;
+		ret = cros_ec_motion_send_host_cmd(st, 0);
+		mutex_unlock(&st->cmd_lock);
+	}
+	return ret;
+}
+
+SIMPLE_DEV_PM_OPS(cros_ec_sensors_pm_ops, NULL, cros_ec_sensors_resume);
+EXPORT_SYMBOL_GPL(cros_ec_sensors_pm_ops);
 
 MODULE_DESCRIPTION("ChromeOS EC sensor hub core functions");
 MODULE_LICENSE("GPL v2");

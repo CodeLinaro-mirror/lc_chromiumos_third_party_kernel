@@ -574,8 +574,7 @@ static int rtw_ops_ampdu_action(struct ieee80211_hw *hw,
 
 	switch (params->action) {
 	case IEEE80211_AMPDU_TX_START:
-		ieee80211_start_tx_ba_cb_irqsafe(vif, sta->addr, tid);
-		break;
+		return IEEE80211_AMPDU_TX_START_IMMEDIATE;
 	case IEEE80211_AMPDU_TX_STOP_CONT:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
@@ -656,7 +655,8 @@ static void rtw_ops_sw_scan_complete(struct ieee80211_hw *hw,
 }
 
 static void rtw_ops_mgd_prepare_tx(struct ieee80211_hw *hw,
-				   struct ieee80211_vif *vif)
+				   struct ieee80211_vif *vif,
+				   u16 duration)
 {
 	struct rtw_dev *rtwdev = hw->priv;
 

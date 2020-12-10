@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * cs42l73.c  --  CS42L73 ALSA Soc Audio driver
  *
@@ -5,11 +6,6 @@
  *
  * Authors: Georgi Vlaev, Nucleus Systems Ltd, <joe@nucleusys.com>
  *	    Brian Austin, Cirrus Logic Inc, <brian.austin@cirrus.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
  */
 
 #include <linux/module.h>
@@ -276,12 +272,6 @@ static SOC_ENUM_SINGLE_DECL(vsp_output_mux_enum,
 static SOC_ENUM_SINGLE_DECL(xsp_output_mux_enum,
 			    CS42L73_MIXERCTL, 4,
 			    cs42l73_spo_mixer_text);
-
-static const struct snd_kcontrol_new vsp_output_mux =
-	SOC_DAPM_ENUM("Route", vsp_output_mux_enum);
-
-static const struct snd_kcontrol_new xsp_output_mux =
-	SOC_DAPM_ENUM("Route", xsp_output_mux_enum);
 
 static const struct snd_kcontrol_new hp_amp_ctl =
 	SOC_DAPM_SINGLE("Switch", CS42L73_PWRCTL3, 0, 1, 1);
@@ -948,8 +938,8 @@ static int cs42l73_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
 	unsigned int inv, format;
 	u8 spc, mmcc;
 
-	spc = snd_soc_component_read32(component, CS42L73_SPC(id));
-	mmcc = snd_soc_component_read32(component, CS42L73_MMCC(id));
+	spc = snd_soc_component_read(component, CS42L73_SPC(id));
+	mmcc = snd_soc_component_read(component, CS42L73_MMCC(id));
 
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
 	case SND_SOC_DAIFMT_CBM_CFM:
@@ -1290,8 +1280,7 @@ static int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 	unsigned int reg;
 	u32 val32;
 
-	cs42l73 = devm_kzalloc(&i2c_client->dev, sizeof(struct cs42l73_private),
-			       GFP_KERNEL);
+	cs42l73 = devm_kzalloc(&i2c_client->dev, sizeof(*cs42l73), GFP_KERNEL);
 	if (!cs42l73)
 		return -ENOMEM;
 
@@ -1305,13 +1294,11 @@ static int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 	if (pdata) {
 		cs42l73->pdata = *pdata;
 	} else {
-		pdata = devm_kzalloc(&i2c_client->dev,
-				     sizeof(struct cs42l73_platform_data),
-				GFP_KERNEL);
-		if (!pdata) {
-			dev_err(&i2c_client->dev, "could not allocate pdata\n");
+		pdata = devm_kzalloc(&i2c_client->dev, sizeof(*pdata),
+				     GFP_KERNEL);
+		if (!pdata)
 			return -ENOMEM;
-		}
+
 		if (i2c_client->dev.of_node) {
 			if (of_property_read_u32(i2c_client->dev.of_node,
 				"chgfreq", &val32) >= 0)
@@ -1359,7 +1346,7 @@ static int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 	ret = regmap_read(cs42l73->regmap, CS42L73_REVID, &reg);
 	if (ret < 0) {
 		dev_err(&i2c_client->dev, "Get Revision ID failed\n");
-		return ret;;
+		return ret;
 	}
 
 	dev_info(&i2c_client->dev,

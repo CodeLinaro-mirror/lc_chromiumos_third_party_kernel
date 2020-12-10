@@ -1,17 +1,7 @@
-/* Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
+// SPDX-License-Identifier: GPL-2.0-only
+/* Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
  *
  * RMNET Data virtual network driver
- *
  */
 
 #include <linux/etherdevice.h>
@@ -210,7 +200,7 @@ void rmnet_vnd_setup(struct net_device *rmnet_dev)
 	rmnet_dev->netdev_ops = &rmnet_vnd_ops;
 	rmnet_dev->mtu = RMNET_DFLT_PACKET_SIZE;
 	rmnet_dev->needed_headroom = RMNET_NEEDED_HEADROOM;
-	random_ether_addr(rmnet_dev->dev_addr);
+	eth_random_addr(rmnet_dev->dev_addr);
 	rmnet_dev->tx_queue_len = RMNET_TX_QUEUE_LEN;
 
 	/* Raw IP mode */
@@ -274,14 +264,6 @@ int rmnet_vnd_dellink(u8 id, struct rmnet_port *port,
 	ep->egress_dev = NULL;
 	port->nr_rmnet_devs--;
 	return 0;
-}
-
-u8 rmnet_vnd_get_mux(struct net_device *rmnet_dev)
-{
-	struct rmnet_priv *priv;
-
-	priv = netdev_priv(rmnet_dev);
-	return priv->mux_id;
 }
 
 int rmnet_vnd_do_flow_control(struct net_device *rmnet_dev, int enable)

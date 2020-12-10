@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
+// Copyright (c) 2016, The Linux Foundation. All rights reserved.
+
 #include <linux/module.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
@@ -16,8 +19,8 @@
 
 #define CDC_D_REVISION1			(0xf000)
 #define CDC_D_PERPH_SUBTYPE		(0xf005)
-#define CDC_D_INT_EN_SET		(0x015)
-#define CDC_D_INT_EN_CLR		(0x016)
+#define CDC_D_INT_EN_SET		(0xf015)
+#define CDC_D_INT_EN_CLR		(0xf016)
 #define MBHC_SWITCH_INT			BIT(7)
 #define MBHC_MIC_ELECTRICAL_INS_REM_DET	BIT(6)
 #define MBHC_BUTTON_PRESS_DET		BIT(5)
@@ -388,9 +391,6 @@ static int pm8916_wcd_analog_enable_micbias_int(struct snd_soc_component
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		snd_soc_component_update_bits(component, CDC_A_MICB_1_INT_RBIAS,
-				    MICB_1_INT_TX2_INT_RBIAS_EN_MASK,
-				    MICB_1_INT_TX2_INT_RBIAS_EN_ENABLE);
 		snd_soc_component_update_bits(component, reg, MICB_1_EN_PULL_DOWN_EN_MASK, 0);
 		snd_soc_component_update_bits(component, CDC_A_MICB_1_EN,
 				    MICB_1_EN_OPA_STG2_TAIL_CURR_MASK,
@@ -439,6 +439,14 @@ static int pm8916_wcd_analog_enable_micbias_int1(struct
 {
 	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
 	struct pm8916_wcd_analog_priv *wcd = snd_soc_component_get_drvdata(component);
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_component_update_bits(component, CDC_A_MICB_1_INT_RBIAS,
+				    MICB_1_INT_TX1_INT_RBIAS_EN_MASK,
+				    MICB_1_INT_TX1_INT_RBIAS_EN_ENABLE);
+		break;
+	}
 
 	return pm8916_wcd_analog_enable_micbias_int(component, event, w->reg,
 						     wcd->micbias1_cap_mode);
@@ -526,7 +534,7 @@ static void pm8916_wcd_setup_mbhc(struct pm8916_wcd_analog_priv *wcd)
 			    DIG_CLK_CTL_D_MBHC_CLK_EN_MASK,
 			    DIG_CLK_CTL_D_MBHC_CLK_EN);
 
-	if (snd_soc_component_read32(component, CDC_A_MICB_2_EN) & CDC_A_MICB_2_EN_ENABLE)
+	if (snd_soc_component_read(component, CDC_A_MICB_2_EN) & CDC_A_MICB_2_EN_ENABLE)
 		micbias_enabled = true;
 
 	pm8916_mbhc_configure_bias(wcd, micbias_enabled);
@@ -550,6 +558,11 @@ static int pm8916_wcd_analog_enable_micbias_int2(struct
 	struct pm8916_wcd_analog_priv *wcd = snd_soc_component_get_drvdata(component);
 
 	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_component_update_bits(component, CDC_A_MICB_1_INT_RBIAS,
+				    MICB_1_INT_TX2_INT_RBIAS_EN_MASK,
+				    MICB_1_INT_TX2_INT_RBIAS_EN_ENABLE);
+		break;
 	case SND_SOC_DAPM_POST_PMU:
 		pm8916_mbhc_configure_bias(wcd, true);
 		break;
@@ -621,6 +634,7 @@ static int pm8916_wcd_analog_enable_adc(struct snd_soc_dapm_widget *w,
 		case CDC_A_TX_2_EN:
 			snd_soc_component_update_bits(component, CDC_A_MICB_1_CTL,
 					    MICB_1_CTL_CFILT_REF_SEL_MASK, 0);
+			/* fall through */
 		case CDC_A_TX_3_EN:
 			snd_soc_component_update_bits(component, CDC_D_CDC_CONN_TX2_CTL,
 					    CONN_TX2_SERIAL_TX2_MUX,
@@ -714,8 +728,8 @@ static int pm8916_wcd_analog_probe(struct snd_soc_component *component)
 	snd_soc_component_init_regmap(component,
 				  dev_get_regmap(component->dev->parent, NULL));
 	snd_soc_component_set_drvdata(component, priv);
-	priv->pmic_rev = snd_soc_component_read32(component, CDC_D_REVISION1);
-	priv->codec_version = snd_soc_component_read32(component, CDC_D_PERPH_SUBTYPE);
+	priv->pmic_rev = snd_soc_component_read(component, CDC_D_REVISION1);
+	priv->codec_version = snd_soc_component_read(component, CDC_D_PERPH_SUBTYPE);
 
 	dev_info(component->dev, "PMIC REV: %d\t CODEC Version: %d\n",
 		 priv->pmic_rev, priv->codec_version);
@@ -950,7 +964,7 @@ static irqreturn_t mbhc_btn_release_irq_handler(int irq, void *arg)
 
 	if (priv->detect_accessory_type) {
 		struct snd_soc_component *component = priv->component;
-		u32 val = snd_soc_component_read32(component, CDC_A_MBHC_RESULT_1);
+		u32 val = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1);
 
 		/* check if its BTN0 thats released */
 		if ((val != -1) && !(val & CDC_A_MBHC_RESULT_1_BTN_RESULT_MASK))
@@ -969,7 +983,7 @@ static irqreturn_t mbhc_btn_press_irq_handler(int irq, void *arg)
 	struct snd_soc_component *component = priv->component;
 	u32 btn_result;
 
-	btn_result = snd_soc_component_read32(component, CDC_A_MBHC_RESULT_1) &
+	btn_result = snd_soc_component_read(component, CDC_A_MBHC_RESULT_1) &
 				  CDC_A_MBHC_RESULT_1_BTN_RESULT_MASK;
 
 	switch (btn_result) {
@@ -1006,7 +1020,7 @@ static irqreturn_t pm8916_mbhc_switch_irq_handler(int irq, void *arg)
 	struct snd_soc_component *component = priv->component;
 	bool ins = false;
 
-	if (snd_soc_component_read32(component, CDC_A_MBHC_DET_CTL_1) &
+	if (snd_soc_component_read(component, CDC_A_MBHC_DET_CTL_1) &
 				CDC_A_MBHC_DET_CTL_MECH_DET_TYPE_MASK)
 		ins = true;
 
@@ -1019,7 +1033,7 @@ static irqreturn_t pm8916_mbhc_switch_irq_handler(int irq, void *arg)
 	if (ins) { /* hs insertion */
 		bool micbias_enabled = false;
 
-		if (snd_soc_component_read32(component, CDC_A_MICB_2_EN) &
+		if (snd_soc_component_read(component, CDC_A_MICB_2_EN) &
 				CDC_A_MICB_2_EN_ENABLE)
 			micbias_enabled = true;
 
@@ -1181,10 +1195,8 @@ static int pm8916_wcd_analog_spmi_probe(struct platform_device *pdev)
 	}
 
 	irq = platform_get_irq_byname(pdev, "mbhc_switch_int");
-	if (irq < 0) {
-		dev_err(dev, "failed to get mbhc switch irq\n");
+	if (irq < 0)
 		return irq;
-	}
 
 	ret = devm_request_threaded_irq(dev, irq, NULL,
 			       pm8916_mbhc_switch_irq_handler,
@@ -1196,10 +1208,8 @@ static int pm8916_wcd_analog_spmi_probe(struct platform_device *pdev)
 
 	if (priv->mbhc_btn_enabled) {
 		irq = platform_get_irq_byname(pdev, "mbhc_but_press_det");
-		if (irq < 0) {
-			dev_err(dev, "failed to get button press irq\n");
+		if (irq < 0)
 			return irq;
-		}
 
 		ret = devm_request_threaded_irq(dev, irq, NULL,
 				       mbhc_btn_press_irq_handler,
@@ -1210,10 +1220,8 @@ static int pm8916_wcd_analog_spmi_probe(struct platform_device *pdev)
 			dev_err(dev, "cannot request mbhc button press irq\n");
 
 		irq = platform_get_irq_byname(pdev, "mbhc_but_rel_det");
-		if (irq < 0) {
-			dev_err(dev, "failed to get button release irq\n");
+		if (irq < 0)
 			return irq;
-		}
 
 		ret = devm_request_threaded_irq(dev, irq, NULL,
 				       mbhc_btn_release_irq_handler,

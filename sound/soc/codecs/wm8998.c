@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * wm8998.c -- ALSA SoC Audio driver for WM8998 codecs
  *
  * Copyright 2015 Cirrus Logic, Inc.
  *
  * Author: Richard Fitzgerald <rf@opensource.wolfsonmicro.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
@@ -46,7 +43,7 @@ static int wm8998_asrc_ev(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		val = snd_soc_component_read32(component, ARIZONA_ASRC_RATE1);
+		val = snd_soc_component_read(component, ARIZONA_ASRC_RATE1);
 		val &= ARIZONA_ASRC_RATE1_MASK;
 		val >>= ARIZONA_ASRC_RATE1_SHIFT;
 
@@ -54,13 +51,13 @@ static int wm8998_asrc_ev(struct snd_soc_dapm_widget *w,
 		case 0:
 		case 1:
 		case 2:
-			val = snd_soc_component_read32(component,
+			val = snd_soc_component_read(component,
 					   ARIZONA_SAMPLE_RATE_1 + val);
 			if (val >= 0x11) {
 				dev_warn(component->dev,
 					 "Unsupported ASRC rate1 (%s)\n",
 					 arizona_sample_rate_val_to_name(val));
-			return -EINVAL;
+				return -EINVAL;
 			}
 			break;
 		default:
@@ -70,7 +67,7 @@ static int wm8998_asrc_ev(struct snd_soc_dapm_widget *w,
 			return -EINVAL;
 		}
 
-		val = snd_soc_component_read32(component, ARIZONA_ASRC_RATE2);
+		val = snd_soc_component_read(component, ARIZONA_ASRC_RATE2);
 		val &= ARIZONA_ASRC_RATE2_MASK;
 		val >>= ARIZONA_ASRC_RATE2_SHIFT;
 
@@ -78,7 +75,7 @@ static int wm8998_asrc_ev(struct snd_soc_dapm_widget *w,
 		case 8:
 		case 9:
 			val -= 0x8;
-			val = snd_soc_component_read32(component,
+			val = snd_soc_component_read(component,
 					   ARIZONA_ASYNC_SAMPLE_RATE_1 + val);
 			if (val >= 0x11) {
 				dev_warn(component->dev,
@@ -137,11 +134,13 @@ static int wm8998_inmux_put(struct snd_kcontrol *kcontrol,
 	if (inmode & ARIZONA_INMODE_SE)
 		src_val |= 1 << ARIZONA_IN1L_SRC_SE_SHIFT;
 
-	snd_soc_component_update_bits(component, mode_reg, ARIZONA_IN1_MODE_MASK, mode_val);
+	snd_soc_component_update_bits(component, mode_reg,
+				      ARIZONA_IN1_MODE_MASK, mode_val);
 
 	snd_soc_component_update_bits(component, e->reg,
-			    ARIZONA_IN1L_SRC_MASK | ARIZONA_IN1L_SRC_SE_MASK,
-			    src_val);
+				      ARIZONA_IN1L_SRC_MASK |
+				      ARIZONA_IN1L_SRC_SE_MASK,
+				      src_val);
 
 	return snd_soc_dapm_mux_update_power(dapm, kcontrol,
 					     ucontrol->value.enumerated.item[0],
@@ -322,7 +321,7 @@ SOC_DOUBLE_R("HPOUT Digital Switch", ARIZONA_DAC_DIGITAL_VOLUME_1L,
 SOC_DOUBLE_R("LINEOUT Digital Switch", ARIZONA_DAC_DIGITAL_VOLUME_2L,
 	     ARIZONA_DAC_DIGITAL_VOLUME_2R, ARIZONA_OUT2L_MUTE_SHIFT, 1, 1),
 SOC_SINGLE("EPOUT Digital Switch", ARIZONA_DAC_DIGITAL_VOLUME_3L,
-	     ARIZONA_OUT3L_MUTE_SHIFT, 1, 1),
+	   ARIZONA_OUT3L_MUTE_SHIFT, 1, 1),
 SOC_DOUBLE_R("Speaker Digital Switch", ARIZONA_DAC_DIGITAL_VOLUME_4L,
 	     ARIZONA_DAC_DIGITAL_VOLUME_4R, ARIZONA_OUT4L_MUTE_SHIFT, 1, 1),
 SOC_DOUBLE_R("SPKDAT Digital Switch", ARIZONA_DAC_DIGITAL_VOLUME_5L,
@@ -335,7 +334,7 @@ SOC_DOUBLE_R_TLV("LINEOUT Digital Volume", ARIZONA_DAC_DIGITAL_VOLUME_2L,
 		 ARIZONA_DAC_DIGITAL_VOLUME_2R, ARIZONA_OUT2L_VOL_SHIFT,
 		 0xbf, 0, digital_tlv),
 SOC_SINGLE_TLV("EPOUT Digital Volume", ARIZONA_DAC_DIGITAL_VOLUME_3L,
-		 ARIZONA_OUT3L_VOL_SHIFT, 0xbf, 0, digital_tlv),
+	       ARIZONA_OUT3L_VOL_SHIFT, 0xbf, 0, digital_tlv),
 SOC_DOUBLE_R_TLV("Speaker Digital Volume", ARIZONA_DAC_DIGITAL_VOLUME_4L,
 		 ARIZONA_DAC_DIGITAL_VOLUME_4R, ARIZONA_OUT4L_VOL_SHIFT,
 		 0xbf, 0, digital_tlv),
@@ -615,105 +614,105 @@ SND_SOC_DAPM_PGA("ISRC2DEC2", ARIZONA_ISRC_2_CTRL_3,
 		 ARIZONA_ISRC2_DEC1_ENA_SHIFT, 0, NULL, 0),
 
 SND_SOC_DAPM_MUX("AEC1 Loopback", ARIZONA_DAC_AEC_CONTROL_1,
-		       ARIZONA_AEC_LOOPBACK_ENA_SHIFT, 0,
-		       &wm8998_aec_loopback_mux[0]),
+		 ARIZONA_AEC_LOOPBACK_ENA_SHIFT, 0,
+		 &wm8998_aec_loopback_mux[0]),
 
 SND_SOC_DAPM_MUX("AEC2 Loopback", ARIZONA_DAC_AEC_CONTROL_2,
-		       ARIZONA_AEC_LOOPBACK_ENA_SHIFT, 0,
-		       &wm8998_aec_loopback_mux[1]),
+		 ARIZONA_AEC_LOOPBACK_ENA_SHIFT, 0,
+		 &wm8998_aec_loopback_mux[1]),
 
 SND_SOC_DAPM_AIF_OUT("AIF1TX1", NULL, 0,
 		     ARIZONA_AIF1_TX_ENABLES, ARIZONA_AIF1TX1_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF1TX2", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF1TX2", NULL, 1,
 		     ARIZONA_AIF1_TX_ENABLES, ARIZONA_AIF1TX2_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF1TX3", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF1TX3", NULL, 2,
 		     ARIZONA_AIF1_TX_ENABLES, ARIZONA_AIF1TX3_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF1TX4", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF1TX4", NULL, 3,
 		     ARIZONA_AIF1_TX_ENABLES, ARIZONA_AIF1TX4_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF1TX5", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF1TX5", NULL, 4,
 		     ARIZONA_AIF1_TX_ENABLES, ARIZONA_AIF1TX5_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF1TX6", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF1TX6", NULL, 5,
 		     ARIZONA_AIF1_TX_ENABLES, ARIZONA_AIF1TX6_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_AIF_IN("AIF1RX1", NULL, 0,
 		    ARIZONA_AIF1_RX_ENABLES, ARIZONA_AIF1RX1_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF1RX2", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF1RX2", NULL, 1,
 		    ARIZONA_AIF1_RX_ENABLES, ARIZONA_AIF1RX2_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF1RX3", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF1RX3", NULL, 2,
 		    ARIZONA_AIF1_RX_ENABLES, ARIZONA_AIF1RX3_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF1RX4", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF1RX4", NULL, 3,
 		    ARIZONA_AIF1_RX_ENABLES, ARIZONA_AIF1RX4_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF1RX5", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF1RX5", NULL, 4,
 		    ARIZONA_AIF1_RX_ENABLES, ARIZONA_AIF1RX5_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF1RX6", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF1RX6", NULL, 5,
 		    ARIZONA_AIF1_RX_ENABLES, ARIZONA_AIF1RX6_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_AIF_OUT("AIF2TX1", NULL, 0,
 		     ARIZONA_AIF2_TX_ENABLES, ARIZONA_AIF2TX1_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF2TX2", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF2TX2", NULL, 1,
 		     ARIZONA_AIF2_TX_ENABLES, ARIZONA_AIF2TX2_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF2TX3", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF2TX3", NULL, 2,
 		     ARIZONA_AIF2_TX_ENABLES, ARIZONA_AIF2TX3_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF2TX4", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF2TX4", NULL, 3,
 		     ARIZONA_AIF2_TX_ENABLES, ARIZONA_AIF2TX4_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF2TX5", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF2TX5", NULL, 4,
 		     ARIZONA_AIF2_TX_ENABLES, ARIZONA_AIF2TX5_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF2TX6", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF2TX6", NULL, 5,
 		     ARIZONA_AIF2_TX_ENABLES, ARIZONA_AIF2TX6_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_AIF_IN("AIF2RX1", NULL, 0,
 		    ARIZONA_AIF2_RX_ENABLES, ARIZONA_AIF2RX1_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF2RX2", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF2RX2", NULL, 1,
 		    ARIZONA_AIF2_RX_ENABLES, ARIZONA_AIF2RX2_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF2RX3", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF2RX3", NULL, 2,
 		    ARIZONA_AIF2_RX_ENABLES, ARIZONA_AIF2RX3_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF2RX4", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF2RX4", NULL, 3,
 		    ARIZONA_AIF2_RX_ENABLES, ARIZONA_AIF2RX4_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF2RX5", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF2RX5", NULL, 4,
 		    ARIZONA_AIF2_RX_ENABLES, ARIZONA_AIF2RX5_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF2RX6", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF2RX6", NULL, 5,
 		    ARIZONA_AIF2_RX_ENABLES, ARIZONA_AIF2RX6_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_AIF_IN("SLIMRX1", NULL, 0,
 		    ARIZONA_SLIMBUS_RX_CHANNEL_ENABLE,
 		    ARIZONA_SLIMRX1_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("SLIMRX2", NULL, 0,
+SND_SOC_DAPM_AIF_IN("SLIMRX2", NULL, 1,
 		    ARIZONA_SLIMBUS_RX_CHANNEL_ENABLE,
 		    ARIZONA_SLIMRX2_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("SLIMRX3", NULL, 0,
+SND_SOC_DAPM_AIF_IN("SLIMRX3", NULL, 2,
 		    ARIZONA_SLIMBUS_RX_CHANNEL_ENABLE,
 		    ARIZONA_SLIMRX3_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("SLIMRX4", NULL, 0,
+SND_SOC_DAPM_AIF_IN("SLIMRX4", NULL, 3,
 		    ARIZONA_SLIMBUS_RX_CHANNEL_ENABLE,
 		    ARIZONA_SLIMRX4_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_AIF_OUT("SLIMTX1", NULL, 0,
 		     ARIZONA_SLIMBUS_TX_CHANNEL_ENABLE,
 		     ARIZONA_SLIMTX1_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("SLIMTX2", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("SLIMTX2", NULL, 1,
 		     ARIZONA_SLIMBUS_TX_CHANNEL_ENABLE,
 		     ARIZONA_SLIMTX2_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("SLIMTX3", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("SLIMTX3", NULL, 2,
 		     ARIZONA_SLIMBUS_TX_CHANNEL_ENABLE,
 		     ARIZONA_SLIMTX3_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("SLIMTX4", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("SLIMTX4", NULL, 3,
 		     ARIZONA_SLIMBUS_TX_CHANNEL_ENABLE,
 		     ARIZONA_SLIMTX4_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("SLIMTX5", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("SLIMTX5", NULL, 4,
 		     ARIZONA_SLIMBUS_TX_CHANNEL_ENABLE,
 		     ARIZONA_SLIMTX5_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("SLIMTX6", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("SLIMTX6", NULL, 5,
 		     ARIZONA_SLIMBUS_TX_CHANNEL_ENABLE,
 		     ARIZONA_SLIMTX6_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_AIF_OUT("AIF3TX1", NULL, 0,
 		     ARIZONA_AIF3_TX_ENABLES, ARIZONA_AIF3TX1_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_OUT("AIF3TX2", NULL, 0,
+SND_SOC_DAPM_AIF_OUT("AIF3TX2", NULL, 1,
 		     ARIZONA_AIF3_TX_ENABLES, ARIZONA_AIF3TX2_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_AIF_IN("AIF3RX1", NULL, 0,
 		    ARIZONA_AIF3_RX_ENABLES, ARIZONA_AIF3RX1_ENA_SHIFT, 0),
-SND_SOC_DAPM_AIF_IN("AIF3RX2", NULL, 0,
+SND_SOC_DAPM_AIF_IN("AIF3RX2", NULL, 1,
 		    ARIZONA_AIF3_RX_ENABLES, ARIZONA_AIF3RX2_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_PGA_E("OUT1L", SND_SOC_NOPM,
@@ -739,9 +738,9 @@ SND_SOC_DAPM_PGA_E("OUT5R", ARIZONA_OUTPUT_ENABLES_1,
 		   SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMU),
 
 SND_SOC_DAPM_PGA("SPD1TX1", ARIZONA_SPD1_TX_CONTROL,
-		   ARIZONA_SPD1_VAL1_SHIFT, 0, NULL, 0),
+		 ARIZONA_SPD1_VAL1_SHIFT, 0, NULL, 0),
 SND_SOC_DAPM_PGA("SPD1TX2", ARIZONA_SPD1_TX_CONTROL,
-		   ARIZONA_SPD1_VAL2_SHIFT, 0, NULL, 0),
+		 ARIZONA_SPD1_VAL2_SHIFT, 0, NULL, 0),
 SND_SOC_DAPM_OUT_DRV("SPD1", ARIZONA_SPD1_TX_CONTROL,
 		     ARIZONA_SPD1_ENA_SHIFT, 0, NULL, 0),
 
@@ -1249,8 +1248,8 @@ static struct snd_soc_dai_driver wm8998_dai[] = {
 	},
 };
 
-static int wm8998_set_fll(struct snd_soc_component *component, int fll_id, int source,
-			  unsigned int Fref, unsigned int Fout)
+static int wm8998_set_fll(struct snd_soc_component *component, int fll_id,
+			  int source, unsigned int Fref, unsigned int Fout)
 {
 	struct wm8998_priv *wm8998 = snd_soc_component_get_drvdata(component);
 
@@ -1379,8 +1378,9 @@ static int wm8998_probe(struct platform_device *pdev)
 		return ret;
 
 	ret = devm_snd_soc_register_component(&pdev->dev,
-				     &soc_component_dev_wm8998,
-				     wm8998_dai, ARRAY_SIZE(wm8998_dai));
+					      &soc_component_dev_wm8998,
+					      wm8998_dai,
+					      ARRAY_SIZE(wm8998_dai));
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to register component: %d\n", ret);
 		goto err_spk_irqs;

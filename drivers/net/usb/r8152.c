@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  Copyright (c) 2014 Realtek Semiconductor Corp. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
  */
 
 #include <linux/signal.h>
@@ -35,7 +31,7 @@
 #define NETNEXT_VERSION		"11"
 
 /* Information for net */
-#define NET_VERSION		"10"
+#define NET_VERSION		"11"
 
 #define DRIVER_VERSION		"v1." NETNEXT_VERSION "." NET_VERSION
 #define DRIVER_AUTHOR "Realtek linux nic maintainers <nic_swsd@realtek.com>"
@@ -72,6 +68,7 @@
 #define PLA_LED_FEATURE		0xdd92
 #define PLA_PHYAR		0xde00
 #define PLA_BOOT_CTRL		0xe004
+#define PLA_LWAKE_CTRL_REG	0xe007
 #define PLA_GPHY_INTR_IMR	0xe022
 #define PLA_EEE_CR		0xe040
 #define PLA_EEEP_CR		0xe080
@@ -99,6 +96,7 @@
 #define PLA_TALLYCNT		0xe890
 #define PLA_SFF_STS_7		0xe8de
 #define PLA_PHYSTATUS		0xe908
+#define PLA_CONFIG6		0xe90a /* CONFIG6 */
 #define PLA_BP_BA		0xfc26
 #define PLA_BP_0		0xfc28
 #define PLA_BP_1		0xfc2a
@@ -111,6 +109,7 @@
 #define PLA_BP_EN		0xfc38
 
 #define USB_USB2PHY		0xb41e
+#define USB_SSPHYLINK1		0xb426
 #define USB_SSPHYLINK2		0xb428
 #define USB_U2P3_CTRL		0xb460
 #define USB_CSR_DUMMY1		0xb464
@@ -304,6 +303,9 @@
 #define LINK_ON_WAKE_EN		0x0010
 #define LINK_OFF_WAKE_EN	0x0008
 
+/* PLA_CONFIG6 */
+#define LANWAKE_CLR_EN		BIT(0)
+
 /* PLA_CONFIG5 */
 #define BWF_EN			0x0040
 #define MWF_EN			0x0020
@@ -316,6 +318,7 @@
 /* PLA_PHY_PWR */
 #define TX_10M_IDLE_EN		0x0080
 #define PFM_PWM_SWITCH		0x0040
+#define TEST_IO_OFF		BIT(4)
 
 /* PLA_MAC_PWR_CTRL */
 #define D3_CLK_GATED_EN		0x00004000
@@ -328,6 +331,7 @@
 #define MAC_CLK_SPDWN_EN	BIT(15)
 
 /* PLA_MAC_PWR_CTRL3 */
+#define PLA_MCU_SPDWN_EN	BIT(14)
 #define PKT_AVAIL_SPDWN_EN	0x0100
 #define SUSPEND_SPDWN_EN	0x0004
 #define U1U2_SPDWN_EN		0x0002
@@ -358,6 +362,9 @@
 /* PLA_BOOT_CTRL */
 #define AUTOLOAD_DONE		0x0002
 
+/* PLA_LWAKE_CTRL_REG */
+#define LANWAKE_PIN		BIT(7)
+
 /* PLA_SUSPEND_FLAG */
 #define LINK_CHG_EVENT		BIT(0)
 
@@ -375,6 +382,9 @@
 /* USB_USB2PHY */
 #define USB2PHY_SUSPEND		0x0001
 #define USB2PHY_L1		0x0002
+
+/* USB_SSPHYLINK1 */
+#define DELAY_PHY_PWR_CHG	BIT(1)
 
 /* USB_SSPHYLINK2 */
 #define pwd_dn_scale_mask	0x3ffe
@@ -674,7 +684,6 @@ enum rtl8152_flags {
 	SCHEDULE_TASKLET,
 	GREEN_ETHERNET,
 	DELL_TB_RX_AGG_BUG,
-	LENOVO_MACPASSTHRU,
 };
 
 /* Define these values to match your device */
@@ -1413,52 +1422,38 @@ static int vendor_mac_passthru_addr_read(struct r8152 *tp, struct sockaddr *sa)
 	int ret = -EINVAL;
 	u32 ocp_data;
 	unsigned char buf[6];
-	char *mac_obj_name;
-	acpi_object_type mac_obj_type;
-	int mac_strlen;
 
-	if (test_bit(LENOVO_MACPASSTHRU, &tp->flags)) {
-		mac_obj_name = "\\MACA";
-		mac_obj_type = ACPI_TYPE_STRING;
-		mac_strlen = 0x16;
-	} else {
-		/* test for -AD variant of RTL8153 */
-		ocp_data = ocp_read_word(tp, MCU_TYPE_USB, USB_MISC_0);
-		if ((ocp_data & AD_MASK) == 0x1000) {
-			/* test for MAC address pass-through bit */
-			ocp_data = ocp_read_byte(tp, MCU_TYPE_USB, EFUSE);
-			if ((ocp_data & PASS_THRU_MASK) != 1) {
-				netif_dbg(tp, probe, tp->netdev,
-						"No efuse for RTL8153-AD MAC pass through\n");
-				return -ENODEV;
-			}
-		} else {
-			/* test for RTL8153-BND and RTL8153-BD */
-			ocp_data = ocp_read_byte(tp, MCU_TYPE_USB, USB_MISC_1);
-			if ((ocp_data & BND_MASK) == 0 && (ocp_data & BD_MASK) == 0) {
-				netif_dbg(tp, probe, tp->netdev,
-						"Invalid variant for MAC pass through\n");
-				return -ENODEV;
-			}
+	/* test for -AD variant of RTL8153 */
+	ocp_data = ocp_read_word(tp, MCU_TYPE_USB, USB_MISC_0);
+	if ((ocp_data & AD_MASK) == 0x1000) {
+		/* test for MAC address pass-through bit */
+		ocp_data = ocp_read_byte(tp, MCU_TYPE_USB, EFUSE);
+		if ((ocp_data & PASS_THRU_MASK) != 1) {
+			netif_dbg(tp, probe, tp->netdev,
+				  "No efuse for RTL8153-AD MAC pass through\n");
+			return -ENODEV;
 		}
-
-		mac_obj_name = "\\_SB.AMAC";
-		mac_obj_type = ACPI_TYPE_BUFFER;
-		mac_strlen = 0x17;
+	} else {
+		/* test for RTL8153-BND and RTL8153-BD */
+		ocp_data = ocp_read_byte(tp, MCU_TYPE_USB, USB_MISC_1);
+		if ((ocp_data & BND_MASK) == 0 && (ocp_data & BD_MASK) == 0) {
+			netif_dbg(tp, probe, tp->netdev,
+				  "Invalid variant for MAC pass through\n");
+			return -ENODEV;
+		}
 	}
 
 	/* returns _AUXMAC_#AABBCCDDEEFF# */
-	status = acpi_evaluate_object(NULL, mac_obj_name, NULL, &buffer);
+	status = acpi_evaluate_object(NULL, "\\_SB.AMAC", NULL, &buffer);
 	obj = (union acpi_object *)buffer.pointer;
 	if (!ACPI_SUCCESS(status))
 		return -ENODEV;
-	if (obj->type != mac_obj_type || obj->string.length != mac_strlen) {
+	if (obj->type != ACPI_TYPE_BUFFER || obj->string.length != 0x17) {
 		netif_warn(tp, probe, tp->netdev,
 			   "Invalid buffer for pass-thru MAC addr: (%d, %d)\n",
 			   obj->type, obj->string.length);
 		goto amacout;
 	}
-
 	if (strncmp(obj->string.pointer, "_AUXMAC_#", 9) != 0 ||
 	    strncmp(obj->string.pointer + 0x15, "#", 1) != 0) {
 		netif_warn(tp, probe, tp->netdev,
@@ -3382,7 +3377,6 @@ static void rtl8153b_runtime_enable(struct r8152 *tp, bool enable)
 		r8153b_ups_en(tp, false);
 		r8153_queue_wake(tp, false);
 		rtl_runtime_suspend_enable(tp, false);
-		r8153_u2p3en(tp, true);
 		r8153b_u1u2en(tp, true);
 	}
 }
@@ -4681,7 +4675,6 @@ static void r8153b_hw_phy_cfg(struct r8152 *tp)
 
 	r8153_aldps_en(tp, true);
 	r8152b_enable_fc(tp);
-	r8153_u2p3en(tp, true);
 
 	set_bit(PHY_RESET, &tp->flags);
 }
@@ -4960,6 +4953,8 @@ static void rtl8152_down(struct r8152 *tp)
 
 static void rtl8153_up(struct r8152 *tp)
 {
+	u32 ocp_data;
+
 	if (test_bit(RTL8152_UNPLUG, &tp->flags))
 		return;
 
@@ -4967,6 +4962,19 @@ static void rtl8153_up(struct r8152 *tp)
 	r8153_u2p3en(tp, false);
 	r8153_aldps_en(tp, false);
 	r8153_first_init(tp);
+
+	ocp_data = ocp_read_byte(tp, MCU_TYPE_PLA, PLA_CONFIG6);
+	ocp_data |= LANWAKE_CLR_EN;
+	ocp_write_byte(tp, MCU_TYPE_PLA, PLA_CONFIG6, ocp_data);
+
+	ocp_data = ocp_read_byte(tp, MCU_TYPE_PLA, PLA_LWAKE_CTRL_REG);
+	ocp_data &= ~LANWAKE_PIN;
+	ocp_write_byte(tp, MCU_TYPE_PLA, PLA_LWAKE_CTRL_REG, ocp_data);
+
+	ocp_data = ocp_read_word(tp, MCU_TYPE_USB, USB_SSPHYLINK1);
+	ocp_data &= ~DELAY_PHY_PWR_CHG;
+	ocp_write_word(tp, MCU_TYPE_USB, USB_SSPHYLINK1, ocp_data);
+
 	r8153_aldps_en(tp, true);
 
 	switch (tp->version) {
@@ -4985,10 +4993,16 @@ static void rtl8153_up(struct r8152 *tp)
 
 static void rtl8153_down(struct r8152 *tp)
 {
+	u32 ocp_data;
+
 	if (test_bit(RTL8152_UNPLUG, &tp->flags)) {
 		rtl_drop_queued_tx(tp);
 		return;
 	}
+
+	ocp_data = ocp_read_byte(tp, MCU_TYPE_PLA, PLA_CONFIG6);
+	ocp_data &= ~LANWAKE_CLR_EN;
+	ocp_write_byte(tp, MCU_TYPE_PLA, PLA_CONFIG6, ocp_data);
 
 	r8153_u1u2en(tp, false);
 	r8153_u2p3en(tp, false);
@@ -5000,6 +5014,8 @@ static void rtl8153_down(struct r8152 *tp)
 
 static void rtl8153b_up(struct r8152 *tp)
 {
+	u32 ocp_data;
+
 	if (test_bit(RTL8152_UNPLUG, &tp->flags))
 		return;
 
@@ -5010,17 +5026,26 @@ static void rtl8153b_up(struct r8152 *tp)
 	r8153_first_init(tp);
 	ocp_write_dword(tp, MCU_TYPE_USB, USB_RX_BUF_TH, RX_THR_B);
 
+	ocp_data = ocp_read_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL3);
+	ocp_data &= ~PLA_MCU_SPDWN_EN;
+	ocp_write_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL3, ocp_data);
+
 	r8153_aldps_en(tp, true);
-	r8153_u2p3en(tp, true);
 	r8153b_u1u2en(tp, true);
 }
 
 static void rtl8153b_down(struct r8152 *tp)
 {
+	u32 ocp_data;
+
 	if (test_bit(RTL8152_UNPLUG, &tp->flags)) {
 		rtl_drop_queued_tx(tp);
 		return;
 	}
+
+	ocp_data = ocp_read_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL3);
+	ocp_data |= PLA_MCU_SPDWN_EN;
+	ocp_write_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL3, ocp_data);
 
 	r8153b_u1u2en(tp, false);
 	r8153_u2p3en(tp, false);
@@ -5429,6 +5454,14 @@ static void r8153_init(struct r8152 *tp)
 	r8153_mac_clk_spd(tp, false);
 	usb_enable_lpm(tp->udev);
 
+	ocp_data = ocp_read_byte(tp, MCU_TYPE_PLA, PLA_CONFIG6);
+	ocp_data |= LANWAKE_CLR_EN;
+	ocp_write_byte(tp, MCU_TYPE_PLA, PLA_CONFIG6, ocp_data);
+
+	ocp_data = ocp_read_byte(tp, MCU_TYPE_PLA, PLA_LWAKE_CTRL_REG);
+	ocp_data &= ~LANWAKE_PIN;
+	ocp_write_byte(tp, MCU_TYPE_PLA, PLA_LWAKE_CTRL_REG, ocp_data);
+
 	/* rx aggregation */
 	ocp_data = ocp_read_word(tp, MCU_TYPE_USB, USB_USB_CTRL);
 	ocp_data &= ~(RX_AGG_DISABLE | RX_ZERO_EN);
@@ -5504,6 +5537,19 @@ static void r8153b_init(struct r8152 *tp)
 	ocp_data |= MAC_CLK_SPDWN_EN;
 	ocp_write_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL2, ocp_data);
 
+	ocp_data = ocp_read_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL3);
+	ocp_data &= ~PLA_MCU_SPDWN_EN;
+	ocp_write_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL3, ocp_data);
+
+	if (tp->version == RTL_VER_09) {
+		/* Disable Test IO for 32QFN */
+		if (ocp_read_byte(tp, MCU_TYPE_PLA, 0xdc00) & BIT(5)) {
+			ocp_data = ocp_read_word(tp, MCU_TYPE_PLA, PLA_PHY_PWR);
+			ocp_data |= TEST_IO_OFF;
+			ocp_write_word(tp, MCU_TYPE_PLA, PLA_PHY_PWR, ocp_data);
+		}
+	}
+
 	set_bit(GREEN_ETHERNET, &tp->flags);
 
 	/* rx aggregation */
@@ -5555,7 +5601,7 @@ static int rtl8152_post_reset(struct usb_interface *intf)
 	/* reset the MAC adddress in case of policy change */
 	if (determine_ethernet_addr(tp, &sa) >= 0) {
 		rtnl_lock();
-		dev_set_mac_address (tp->netdev, &sa);
+		dev_set_mac_address (tp->netdev, &sa, NULL);
 		rtnl_unlock();
 	}
 
@@ -6671,10 +6717,6 @@ static int rtl8152_probe(struct usb_interface *intf,
 		netdev->hw_features &= ~NETIF_F_RXCSUM;
 	}
 
-	if (le16_to_cpu(udev->descriptor.idVendor) == VENDOR_ID_LENOVO &&
-	    le16_to_cpu(udev->descriptor.idProduct) == 0x3082)
-		set_bit(LENOVO_MACPASSTHRU, &tp->flags);
-
 	if (le16_to_cpu(udev->descriptor.bcdDevice) == 0x3011 && udev->serial &&
 	    (!strcmp(udev->serial, "000001000000") ||
 	     !strcmp(udev->serial, "000002000000"))) {
@@ -6803,7 +6845,6 @@ static const struct usb_device_id rtl8152_table[] = {
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x304f)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3062)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3069)},
-	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3082)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x7205)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x720c)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x7214)},

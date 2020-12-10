@@ -1,23 +1,16 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * mt6797-afe-common.h  --  Mediatek 6797 audio driver definitions
  *
  * Copyright (c) 2018 MediaTek Inc.
  * Author: KaiChieh Chuang <kaichieh.chuang@mediatek.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #ifndef _MT_6797_AFE_COMMON_H_
 #define _MT_6797_AFE_COMMON_H_
 
 #include <sound/soc.h>
+#include <linux/list.h>
 #include <linux/regmap.h>
 #include "../common/mtk-base-afe.h"
 
@@ -32,6 +25,10 @@ enum {
 	MT6797_MEMIF_MOD_DAI,
 	MT6797_MEMIF_NUM,
 	MT6797_DAI_ADDA = MT6797_MEMIF_NUM,
+	MT6797_DAI_PCM_1,
+	MT6797_DAI_PCM_2,
+	MT6797_DAI_HOSTLESS_LPBK,
+	MT6797_DAI_HOSTLESS_SPEECH,
 	MT6797_DAI_NUM,
 };
 
@@ -54,4 +51,9 @@ unsigned int mt6797_general_rate_transform(struct device *dev,
 					   unsigned int rate);
 unsigned int mt6797_rate_transform(struct device *dev,
 				   unsigned int rate, int aud_blk);
+
+/* dai register */
+int mt6797_dai_adda_register(struct mtk_base_afe *afe);
+int mt6797_dai_pcm_register(struct mtk_base_afe *afe);
+int mt6797_dai_hostless_register(struct mtk_base_afe *afe);
 #endif

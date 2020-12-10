@@ -1,17 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  * drivers/staging/android/uapi/ion.h
  *
  * Copyright (C) 2011 Google, Inc.
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 
 #ifndef _UAPI_LINUX_ION_H
@@ -133,4 +124,11 @@ struct ion_heap_query {
 #define ION_IOC_HEAP_QUERY     _IOWR(ION_IOC_MAGIC, 8, \
 					struct ion_heap_query)
 
+/**
+ * DOC: ION_IOC_HEAP_ABI_VERSION - return ABI version
+ *
+ * Returns ABI version for this driver
+ */
+#define ION_IOC_ABI_VERSION    _IOR(ION_IOC_MAGIC, 9, \
+					__u32)
 #endif /* _UAPI_LINUX_ION_H */

@@ -1,23 +1,21 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2014 NVIDIA Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/backlight.h>
+#include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
 
-#include <drm/drmP.h>
+#include <video/mipi_display.h>
+
 #include <drm/drm_crtc.h>
+#include <drm/drm_device.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
-
-#include <video/mipi_display.h>
 
 struct sharp_panel {
 	struct drm_panel base;
@@ -96,10 +94,7 @@ static int sharp_panel_disable(struct drm_panel *panel)
 	if (!sharp->enabled)
 		return 0;
 
-	if (sharp->backlight) {
-		sharp->backlight->props.power = FB_BLANK_POWERDOWN;
-		backlight_update_status(sharp->backlight);
-	}
+	backlight_disable(sharp->backlight);
 
 	sharp->enabled = false;
 
@@ -263,10 +258,7 @@ static int sharp_panel_enable(struct drm_panel *panel)
 	if (sharp->enabled)
 		return 0;
 
-	if (sharp->backlight) {
-		sharp->backlight->props.power = FB_BLANK_UNBLANK;
-		backlight_update_status(sharp->backlight);
-	}
+	backlight_enable(sharp->backlight);
 
 	sharp->enabled = true;
 
@@ -286,7 +278,8 @@ static const struct drm_display_mode default_mode = {
 	.vrefresh = 60,
 };
 
-static int sharp_panel_get_modes(struct drm_panel *panel)
+static int sharp_panel_get_modes(struct drm_panel *panel,
+				 struct drm_connector *connector)
 {
 	struct drm_display_mode *mode;
 
@@ -300,10 +293,10 @@ static int sharp_panel_get_modes(struct drm_panel *panel)
 
 	drm_mode_set_name(mode);
 
-	drm_mode_probed_add(panel->connector, mode);
+	drm_mode_probed_add(connector, mode);
 
-	panel->connector->display_info.width_mm = 217;
-	panel->connector->display_info.height_mm = 136;
+	connector->display_info.width_mm = 217;
+	connector->display_info.height_mm = 136;
 
 	return 1;
 }
@@ -324,8 +317,7 @@ MODULE_DEVICE_TABLE(of, sharp_of_match);
 
 static int sharp_panel_add(struct sharp_panel *sharp)
 {
-	struct device_node *np;
-	int err;
+	struct device *dev = &sharp->link1->dev;
 
 	sharp->mode = &default_mode;
 
@@ -333,39 +325,21 @@ static int sharp_panel_add(struct sharp_panel *sharp)
 	if (IS_ERR(sharp->supply))
 		return PTR_ERR(sharp->supply);
 
-	np = of_parse_phandle(sharp->link1->dev.of_node, "backlight", 0);
-	if (np) {
-		sharp->backlight = of_find_backlight_by_node(np);
-		of_node_put(np);
+	sharp->backlight = devm_of_find_backlight(dev);
 
-		if (!sharp->backlight)
-			return -EPROBE_DEFER;
-	}
+	if (IS_ERR(sharp->backlight))
+		return PTR_ERR(sharp->backlight);
 
-	drm_panel_init(&sharp->base);
-	sharp->base.funcs = &sharp_panel_funcs;
-	sharp->base.dev = &sharp->link1->dev;
+	drm_panel_init(&sharp->base, &sharp->link1->dev, &sharp_panel_funcs,
+		       DRM_MODE_CONNECTOR_DSI);
 
-	err = drm_panel_add(&sharp->base);
-	if (err < 0)
-		goto put_backlight;
-
-	return 0;
-
-put_backlight:
-	if (sharp->backlight)
-		put_device(&sharp->backlight->dev);
-
-	return err;
+	return drm_panel_add(&sharp->base);
 }
 
 static void sharp_panel_del(struct sharp_panel *sharp)
 {
 	if (sharp->base.dev)
 		drm_panel_remove(&sharp->base);
-
-	if (sharp->backlight)
-		put_device(&sharp->backlight->dev);
 
 	if (sharp->link2)
 		put_device(&sharp->link2->dev);

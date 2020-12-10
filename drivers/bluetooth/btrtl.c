@@ -1,18 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *  Bluetooth support for Realtek devices
  *
  *  Copyright (C) 2015 Endless Mobile, Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
  */
 
 #include <linux/module.h>
@@ -31,6 +21,7 @@
 #define RTL_ROM_LMP_3499	0x3499
 #define RTL_ROM_LMP_8723A	0x1200
 #define RTL_ROM_LMP_8723B	0x8723
+#define RTL_ROM_LMP_8723D	0x8873
 #define RTL_ROM_LMP_8821A	0x8821
 #define RTL_ROM_LMP_8761A	0x8761
 #define RTL_ROM_LMP_8822B	0x8822
@@ -117,6 +108,13 @@ static const struct id_table ic_id_table[] = {
 	  .fw_name  = "rtl_bt/rtl8723ds_fw.bin",
 	  .cfg_name = "rtl_bt/rtl8723ds_config" },
 
+	/* 8723DU */
+	{ IC_INFO(RTL_ROM_LMP_8723D, 0x826C),
+	  .config_needed = true,
+	  .has_rom_version = true,
+	  .fw_name  = "rtl_bt/rtl8723d_fw.bin",
+	  .cfg_name = "rtl_bt/rtl8723d_config" },
+
 	/* 8821A */
 	{ IC_INFO(RTL_ROM_LMP_8821A, 0xa),
 	  .config_needed = false,
@@ -137,6 +135,18 @@ static const struct id_table ic_id_table[] = {
 	  .has_rom_version = true,
 	  .fw_name  = "rtl_bt/rtl8761a_fw.bin",
 	  .cfg_name = "rtl_bt/rtl8761a_config" },
+
+	/* 8822C with UART interface */
+	{ .match_flags = IC_MATCH_FL_LMPSUBV | IC_MATCH_FL_HCIREV |
+			 IC_MATCH_FL_HCIBUS,
+	  .lmp_subver = RTL_ROM_LMP_8822B,
+	  .hci_rev = 0x000c,
+	  .hci_ver = 0x0a,
+	  .hci_bus = HCI_UART,
+	  .config_needed = true,
+	  .has_rom_version = true,
+	  .fw_name  = "rtl_bt/rtl8822cs_fw.bin",
+	  .cfg_name = "rtl_bt/rtl8822cs_config" },
 
 	/* 8822C with USB interface */
 	{ IC_INFO(RTL_ROM_LMP_8822B, 0xc),
@@ -420,7 +430,7 @@ static int rtl_download_firmware(struct hci_dev *hdev,
 		if (IS_ERR(skb)) {
 			rtl_dev_err(hdev, "download fw command failed (%ld)",
 				    PTR_ERR(skb));
-			ret = PTR_ERR(skb);
+			ret = -PTR_ERR(skb);
 			goto out;
 		}
 
@@ -661,9 +671,9 @@ int btrtl_setup_realtek(struct hci_dev *hdev)
 
 	btrtl_free(btrtl_dev);
 
-	/* Set the bit to reflect that all Realtek controllers are capable
-	 * of doing simultaneous LE scanning and BR/EDR inquiry.
-	*/
+	/* Enable controller to do both LE scan and BR/EDR inquiry
+	 * simultaneously.
+	 */
 	set_bit(HCI_QUIRK_SIMULTANEOUS_DISCOVERY, &hdev->quirks);
 
 	return ret;

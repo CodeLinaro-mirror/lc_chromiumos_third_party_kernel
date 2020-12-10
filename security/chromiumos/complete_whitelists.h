@@ -329,8 +329,7 @@ static struct syscall_whitelist_entry complete_whitelist[] = {
 	SYSCALL_ENTRY(vfork),
 #endif
 
-	/* Exist for x86_64 and ARM64 but not ARM32 */
-#if !defined(CONFIG_ARM) && (defined(CONFIG_ARM64) || defined(CONFIG_X86_64))
+	/* Exist for x86_64 and ARM64 */
 	SYSCALL_ENTRY(fadvise64),
 	SYSCALL_ENTRY(fstat),
 	SYSCALL_ENTRY(migrate_pages),
@@ -339,38 +338,6 @@ static struct syscall_whitelist_entry complete_whitelist[] = {
 	SYSCALL_ENTRY(sync_file_range),
 	SYSCALL_ENTRY(umount2),
 	SYSCALL_ENTRY(uname),
-#endif
-
-	/* Unique to ARM32. */
-#if defined(CONFIG_ARM) && !defined(CONFIG_ARM64)
-	SYSCALL_ENTRY(arm_fadvise64_64),
-	SYSCALL_ENTRY(bdflush),
-	SYSCALL_ENTRY(fcntl64),
-	SYSCALL_ENTRY(fstat64),
-	SYSCALL_ENTRY(fstatat64),
-	SYSCALL_ENTRY(ftruncate64),
-	SYSCALL_ENTRY(ipc),
-	SYSCALL_ENTRY(lstat64),
-	SYSCALL_ENTRY(mmap2),
-	SYSCALL_ENTRY(nice),
-	SYSCALL_ENTRY(pciconfig_iobase),
-	SYSCALL_ENTRY(pciconfig_read),
-	SYSCALL_ENTRY(pciconfig_write),
-	SYSCALL_ENTRY(recv),
-	SYSCALL_ENTRY(send),
-	SYSCALL_ENTRY(sendfile64),
-	SYSCALL_ENTRY(sigaction),
-	SYSCALL_ENTRY(sigpending),
-	SYSCALL_ENTRY(sigprocmask),
-	SYSCALL_ENTRY(sigsuspend),
-	SYSCALL_ENTRY(socketcall),
-	SYSCALL_ENTRY(stat64),
-	SYSCALL_ENTRY(stime),
-	SYSCALL_ENTRY(syscall),
-	SYSCALL_ENTRY(truncate64),
-	SYSCALL_ENTRY(umount),
-	SYSCALL_ENTRY(uselib),
-#endif
 
 	/* Unique to x86_64. */
 #ifdef CONFIG_X86_64
@@ -386,7 +353,7 @@ static struct syscall_whitelist_entry complete_whitelist[] = {
 #endif
 
 	/* Unique to ARM64. */
-#if defined(CONFIG_ARM64) && !defined(CONFIG_ARM)
+#ifdef CONFIG_ARM64
 	SYSCALL_ENTRY(nfsservctl),
 	SYSCALL_ENTRY(renameat2),
 #endif

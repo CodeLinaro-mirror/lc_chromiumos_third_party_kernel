@@ -108,11 +108,9 @@ chromiumos_super_block_lookup(struct super_block *sb)
 
 static int chromiumos_handle_fsnotify_event(struct fsnotify_group *group,
 					    struct inode *inode,
-					    struct fsnotify_mark *inode_mark,
-					    struct fsnotify_mark *vfsmount_mark,
 					    u32 mask, const void *data,
 					    int data_type,
-					    const unsigned char *file_name,
+					    const struct qstr *file_name,
 					    u32 cookie,
 					    struct fsnotify_iter_info *iter_info)
 {
@@ -223,8 +221,8 @@ chromiumos_inode_mark_create(
 		inode_mark->policies[i] = CHROMIUMOS_INODE_POLICY_INHERIT;
 
 	inode_mark->policies[type] = policy;
-	ret = fsnotify_add_mark_locked(&inode_mark->mark, inode_mark->inode,
-				       NULL, false);
+	ret = fsnotify_add_mark_locked(&inode_mark->mark, &inode->i_fsnotify_marks,
+				       type, false, NULL);
 	if (ret)
 		goto out;
 
@@ -296,7 +294,7 @@ int chromiumos_flush_inode_security_policies(struct super_block *sb)
 	sbm = chromiumos_super_block_lookup(sb);
 	if (sbm) {
 		fsnotify_clear_marks_by_group(sbm->fsn_group,
-					      FSNOTIFY_OBJ_ALL_TYPES);
+					      FSNOTIFY_OBJ_ALL_TYPES_MASK);
 		chromiumos_super_block_put(sbm);
 	}
 
