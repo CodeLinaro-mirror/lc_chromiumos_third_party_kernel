@@ -32,6 +32,12 @@ static struct evdi_context {
 	struct notifier_block usb_notifier;
 } evdi_context;
 
+struct evdi_platform_device_data {
+	struct drm_device *drm_dev;
+	struct device *parent;
+	bool symlinked;
+};
+
 static int evdi_platform_drv_usb(__always_unused struct notifier_block *nb,
 		unsigned long action,
 		void *data)
@@ -47,7 +53,10 @@ static int evdi_platform_drv_usb(__always_unused struct notifier_block *nb,
 
 	for (i = 0; i < EVDI_DEVICE_COUNT_MAX; ++i) {
 		pdev = evdi_context.devices[i];
-		if (pdev && pdev->dev.parent == &usb_dev->dev) {
+		if (!pdev)
+			continue;
+		evdi_platform_device_unlink_if_linked_with(pdev, &usb_dev->dev);
+		if (pdev->dev.parent == &usb_dev->dev) {
 			EVDI_INFO("Parent USB removed. Removing evdi.%d\n", i);
 			platform_device_unregister(pdev);
 			evdi_context.dev_count--;
@@ -71,13 +80,52 @@ static int evdi_context_get_free_idx(struct evdi_context *ctx)
 
 bool evdi_platform_device_is_free(struct platform_device *pdev)
 {
-	struct drm_device *drm_dev =
-		(struct drm_device *)platform_get_drvdata(pdev);
-	struct evdi_device *evdi = drm_dev->dev_private;
+	struct evdi_platform_device_data *data =
+		(struct evdi_platform_device_data *)platform_get_drvdata(pdev);
+	struct evdi_device *evdi = data->drm_dev->dev_private;
 
-	if (evdi && !evdi_painter_is_connected(evdi))
+	if (evdi && !evdi_painter_is_connected(evdi) &&
+	    !data->symlinked)
 		return true;
 	return false;
+}
+
+void evdi_platform_device_link(struct platform_device *pdev,
+				      struct device *parent)
+{
+	struct evdi_platform_device_data *data = NULL;
+	int ret = 0;
+
+	if (!parent || !pdev)
+		return;
+
+	data = (struct evdi_platform_device_data *)platform_get_drvdata(pdev);
+	if (!evdi_platform_device_is_free(pdev)) {
+		EVDI_FATAL("Device is already attached can't symlink again\n");
+		return;
+	}
+
+	ret = sysfs_create_link(&pdev->dev.kobj, &parent->kobj, "device");
+	if (ret) {
+		EVDI_FATAL("Failed to create sysfs link to parent device\n");
+	} else {
+		data->symlinked = true;
+		data->parent = parent;
+	}
+}
+
+void evdi_platform_device_unlink_if_linked_with(struct platform_device *pdev,
+				struct device *parent)
+{
+	struct evdi_platform_device_data *data =
+		(struct evdi_platform_device_data *)platform_get_drvdata(pdev);
+
+	if (parent && data->parent == parent) {
+		sysfs_remove_link(&pdev->dev.kobj, "device");
+		data->symlinked = false;
+		data->parent = NULL;
+		EVDI_INFO("Detached from parent device\n");
+	}
 }
 
 static struct drm_driver driver;
@@ -206,8 +254,7 @@ static struct platform_device *evdi_platform_drv_create_new_device(
 	return ctx->devices[pdevinfo.id];
 }
 
-static int evdi_add_device(struct evdi_context *ctx,
-		__always_unused struct device *parent)
+static int evdi_add_device(struct evdi_context *ctx, struct device *parent)
 {
 	struct platform_device *pdev = NULL;
 
@@ -220,23 +267,40 @@ static int evdi_add_device(struct evdi_context *ctx,
 	if (IS_ERR_OR_NULL(pdev))
 		return -EINVAL;
 
+	evdi_platform_device_link(pdev, parent);
 	return 0;
 }
 
 
 static int evdi_platform_probe(struct platform_device *pdev)
 {
+	int ret = 0;
+	struct evdi_platform_device_data *data =
+		kzalloc(sizeof(struct evdi_platform_device_data), GFP_KERNEL);
+
 	EVDI_CHECKPT();
-	return drm_platform_init(&driver, pdev);
+
+	ret = drm_platform_init(&driver, pdev);
+	if (ret)
+		kfree(data);
+	else {
+		data->drm_dev = (struct drm_device *)platform_get_drvdata(pdev);
+		data->symlinked = false;
+		platform_set_drvdata(pdev, data);
+	}
+
+	return ret;
 }
 
 static int evdi_platform_remove(struct platform_device *pdev)
 {
-	struct drm_device *drm_dev =
-	    (struct drm_device *)platform_get_drvdata(pdev);
+	struct evdi_platform_device_data *data =
+		(struct evdi_platform_device_data *)platform_get_drvdata(pdev);
+
 	EVDI_CHECKPT();
 
-	drm_unplug_dev(drm_dev);
+	drm_unplug_dev(data->drm_dev);
+	kfree(data);
 
 	return 0;
 }
