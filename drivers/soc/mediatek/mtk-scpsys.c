@@ -27,6 +27,7 @@
 
 #define MTK_SCPD_ACTIVE_WAKEUP		BIT(0)
 #define MTK_SCPD_FWAIT_SRAM		BIT(1)
+#define MTK_SCPD_ALWAYS_ON		BIT(2)
 #define MTK_SCPD_CAPS(_scpd, _x)	((_scpd)->data->caps & (_x))
 
 #define SPM_VDE_PWR_CON			0x0210
@@ -652,6 +653,8 @@ static struct scp *init_scp(struct platform_device *pdev,
 		genpd->power_on = scpsys_power_on;
 		if (MTK_SCPD_CAPS(scpd, MTK_SCPD_ACTIVE_WAKEUP))
 			genpd->flags |= GENPD_FLAG_ACTIVE_WAKEUP;
+		if (MTK_SCPD_CAPS(scpd, MTK_SCPD_ALWAYS_ON))
+			genpd->flags |= GENPD_FLAG_ALWAYS_ON;
 	}
 
 	return scp;
@@ -1124,6 +1127,7 @@ static const struct scp_domain_data scp_domain_data_mt8173[] = {
 		.sram_pdn_bits = GENMASK(11, 8),
 		.sram_pdn_ack_bits = 0,
 		.clk_id = {CLK_MFG},
+		.caps = MTK_SCPD_ALWAYS_ON,
 	},
 	[MT8173_POWER_DOMAIN_MFG_2D] = {
 		.name = "mfg_2d",
@@ -1132,6 +1136,7 @@ static const struct scp_domain_data scp_domain_data_mt8173[] = {
 		.sram_pdn_bits = GENMASK(11, 8),
 		.sram_pdn_ack_bits = GENMASK(13, 12),
 		.clk_id = {CLK_NONE},
+		.caps = MTK_SCPD_ALWAYS_ON,
 	},
 	[MT8173_POWER_DOMAIN_MFG] = {
 		.name = "mfg",
@@ -1144,6 +1149,7 @@ static const struct scp_domain_data scp_domain_data_mt8173[] = {
 			MT8173_TOP_AXI_PROT_EN_MFG_M0 |
 			MT8173_TOP_AXI_PROT_EN_MFG_M1 |
 			MT8173_TOP_AXI_PROT_EN_MFG_SNOOP_OUT,
+		.caps = MTK_SCPD_ALWAYS_ON,
 	},
 };
 
