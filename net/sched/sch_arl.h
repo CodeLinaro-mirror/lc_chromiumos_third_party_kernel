@@ -121,6 +121,7 @@ struct arl_vars {
 /* The default burst size for the Token Buffer rate limiter */
 #define ARL_BUFFER_SIZE_DEFAULT	(5 * USEC_PER_MSEC) /* in us */
 #define ARL_MAX_LATENCY_DEFAULT	(150 * USEC_PER_MSEC) /* in us */
+#define ARL_MAX_SIZE_DEFAULT	1522 /* max packet size */
 
 struct arl_stats {
 	u32	max_bw;		/* max bw detected */

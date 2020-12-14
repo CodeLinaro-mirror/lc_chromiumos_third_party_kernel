@@ -663,7 +663,7 @@ static void arl_update(struct Qdisc *sch)
 
 static void arl_params_init(struct arl_params *params)
 {
-	params->max_size = 1600;
+	params->max_size = ARL_MAX_SIZE_DEFAULT;
 	params->buffer = ARL_BUFFER_SIZE_DEFAULT * NSEC_PER_USEC;
 	params->max_bw = ARL_MAX_BW_DEFAULT;
 	params->min_rate = ARL_MIN_RATE_DEFAULT;
@@ -1363,6 +1363,11 @@ static int arl_change(struct Qdisc *sch, struct nlattr *opt)
 
 	psched_ratecfg_precompute(&rate, &rate_conf, q->params.rate * 1000);
 	memcpy(&q->vars.rate, &rate, sizeof(struct psched_ratecfg));
+
+	q->params.max_size = max_t(u32, ARL_MAX_SIZE_DEFAULT,
+				   round_down(q->params.buffer / NSEC_PER_MSEC *
+					      q->params.min_rate, 1024));
+	netdev_info(qdisc_dev(sch), "set max_size to %d\n", q->params.max_size);
 
 	if (q->qdisc != &noop_qdisc) {
 		err = fifo_set_limit(q->qdisc, q->params.limit);
