@@ -101,10 +101,13 @@ struct sfe_cm {
 
 static struct sfe_cm __sc;
 
-/* SFE bypass mode. When enabled, it will skip the SFE's shortcut
- * datapath, so ingress traffic can be redirected to the IFB interface.
+/* SFE bypass mode. When enabled, SFE's shortcut path will be bypassed.
+ * 0: Disabled.
+ * 1: Bypass all packets.
+ * 2: Bypass only packets with fwmark matchs sfe_bypass_mark.
  */
-static int sfe_ifb_enable;
+static int sfe_bypass_mode;
+static u32 sfe_bypass_mark;
 
 /* Delay SFE flow acceleration until the specified number of packets is
  * observed. This can allow for slow path policies that require inspecting
@@ -146,7 +149,10 @@ static int sfe_cm_recv(struct sk_buff *skb)
 
 	dev = skb->dev;
 
-	if (sfe_ifb_enable)
+	if (unlikely(sfe_bypass_mode == 1))
+		return 0;
+
+	if (unlikely(sfe_bypass_mode == 2 && skb->mark == sfe_bypass_mark))
 		return 0;
 
 	/*
@@ -1031,26 +1037,49 @@ static ssize_t sfe_cm_set_defunct_all(struct device *dev,
 	return count;
 }
 
-static ssize_t sfe_cm_get_ifb(struct device *dev,
-			      struct device_attribute *attr,
-			      char *buf)
+static ssize_t sfe_cm_get_bypass_mode(struct device *dev,
+				      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, (ssize_t)PAGE_SIZE, "%d\n", sfe_ifb_enable);
+	return snprintf(buf, (ssize_t)PAGE_SIZE, "%d\n", sfe_bypass_mode);
 }
 
-static ssize_t sfe_cm_set_ifb(struct device *dev,
-			      struct device_attribute *attr,
-			      const char *buf, size_t count)
+static ssize_t sfe_cm_set_bypass_mode(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
 {
 	int ret;
-	u32 enable;
+	int mode;
 
-	ret = kstrtou32(buf, 0, &enable);
+	ret = kstrtoint(buf, 0, &mode);
 	if (ret)
 		return ret;
 
-	sfe_ifb_enable = enable;
-	DEBUG_TRACE("sfe_cm_ifb= %d\n", sfe_ifb_enable);
+	if (mode > 2 || mode < 0)
+		return -EINVAL;
+	sfe_bypass_mode = mode;
+	DEBUG_TRACE("sfe_cm_bypass_mode= %d\n", sfe_bypass_mode);
+	return count;
+}
+
+static ssize_t sfe_cm_get_bypass_mark(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, (ssize_t)PAGE_SIZE, "0x%x\n", sfe_bypass_mark);
+}
+
+static ssize_t sfe_cm_set_bypass_mark(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	int ret;
+	u32 mark;
+
+	ret = kstrtou32(buf, 0, &mark);
+	if (ret)
+		return ret;
+
+	sfe_bypass_mark = mark;
+	DEBUG_TRACE("sfe_cm_bypass_mark= %d\n", sfe_bypass_mark);
 	return count;
 }
 
@@ -1119,7 +1148,10 @@ static const struct device_attribute sfe_attrs[] = {
 	__ATTR(exceptions, S_IRUGO, sfe_cm_get_exceptions, NULL),
 	__ATTR(stop, S_IWUSR | S_IRUGO, sfe_cm_get_stop, sfe_cm_set_stop),
 	__ATTR(defunct_all, S_IWUSR | S_IRUGO, sfe_cm_get_defunct_all, sfe_cm_set_defunct_all),
-	__ATTR(ifb, S_IWUSR | S_IRUGO, sfe_cm_get_ifb, sfe_cm_set_ifb),
+	__ATTR(bypass_mode, S_IWUSR | S_IRUGO, sfe_cm_get_bypass_mode,
+	       sfe_cm_set_bypass_mode),
+	__ATTR(bypass_mark, S_IWUSR | S_IRUGO, sfe_cm_get_bypass_mark,
+	       sfe_cm_set_bypass_mark),
 	__ATTR(udp_flow_accel_delay_pkts, S_IWUSR | S_IRUGO,
 	       sfe_cm_get_udp_flow_accel_delay_pkts,
 	       sfe_cm_set_udp_flow_accel_delay_pkts),
