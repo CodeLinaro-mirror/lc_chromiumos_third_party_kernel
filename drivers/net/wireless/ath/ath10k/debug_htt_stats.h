@@ -431,6 +431,9 @@ struct wlan_10_4_dbg_tx_pf_sched_stats {
 	__le32 pfsched_peer_skipped[WAL_STATS_PREFETCH_MAX_QUEUES];
 } __packed;
 
+#define ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID	GENMASK(5, 5)
+#define ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT	GENMASK(15, 0)
+
 struct wlan_10_4_halphy_cal_stats_t {
 	/* bit 0: Represent the stats is for home channel or scan channel.
 	 *        0: Scan channel, 1: Home channel
@@ -445,7 +448,10 @@ struct wlan_10_4_halphy_cal_stats_t {
 	 * bit 4: Represents if the post processed data applied to
 	 *	  hardware or not.
 	 *        0: Not applied, 1:Applied
-	 * bit 5 - 31 : Reserved for future use
+	 * bit 5: Represents if calibration failure counts are valid in the
+	 *        stats or not.
+	 *        0: Counts are invalid, 1: Counts are valid
+	 * bit 6 - 31 : Reserved for future use.
 	 */
 	__le32 statusflags;
 	/* lastcaltime -
@@ -454,7 +460,12 @@ struct wlan_10_4_halphy_cal_stats_t {
 	 * prior cal results.
 	 */
 	__le32 lastcaltime;
-	__le32 reserved; /* for future use */
+	/* bit 0 - 15: Calibration Failure count.
+	 *             Stats to count number of calibration failures including
+	 *             Home, Scan and FCS altogether.
+	 * bit 16 - 31: Reserved for future use.
+	 */
+	__le32 calfailcnt;
 } __packed;
 
 /* Below ANI stats are directly fetched from the BB registers.

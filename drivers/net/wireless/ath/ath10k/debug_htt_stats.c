@@ -19,6 +19,7 @@
 #include <linux/debugfs.h>
 #include <linux/vmalloc.h>
 #include <linux/utsname.h>
+#include <linux/bitfield.h>
 
 #include "core.h"
 #include "debug.h"
@@ -1548,6 +1549,7 @@ void ath10k_htt_10_4_halphy_info_fill(struct wlan_10_4_halphy_dbg_stats *stats,
 	struct wlan_10_4_halphy_ani_stats_t *ani_stats = &stats->ani_stats;
 	struct wlan_10_4_halphy_tx_stats_t *tx_stats = &stats->tx_stats;
 	unsigned int buf_len = ATH10K_HTT_STATS_BUF_SIZE;
+	u8 fail_count_valid;
 
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "======halphy dbg stats======");
@@ -1559,98 +1561,207 @@ void ath10k_htt_10_4_halphy_info_fill(struct wlan_10_4_halphy_dbg_stats *stats,
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			le32_to_cpu(nf_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(nf_stats->lastcaltime));
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	if (le32_to_cpu(nf_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(nf_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				       ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				       le32_to_cpu(nf_stats->calfailcnt)));
+	}
+
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "IBF Calibration stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			 le32_to_cpu(ibf_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(ibf_stats->lastcaltime));
+	if (le32_to_cpu(ibf_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(ibf_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				       ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				       le32_to_cpu(ibf_stats->calfailcnt)));
+	}
 
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "DPD calibration stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			 le32_to_cpu(dpd_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(dpd_stats->lastcaltime));
+	if (le32_to_cpu(dpd_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(dpd_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				       ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				       le32_to_cpu(dpd_stats->calfailcnt)));
+	}
 
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "RXDCO Calibration stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			 le32_to_cpu(rxdco_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(rxdco_stats->lastcaltime));
+	if (le32_to_cpu(rxdco_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(rxdco_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				       ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				       le32_to_cpu(rxdco_stats->calfailcnt)));
+	}
 
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "Peak detector calibration stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			 le32_to_cpu(peakdetect_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(peakdetect_stats->lastcaltime));
+	if (le32_to_cpu(peakdetect_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(peakdetect_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				       ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				       le32_to_cpu(peakdetect_stats->calfailcnt)));
+	}
 
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "TX IQ Calibration stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			 le32_to_cpu(txiqcal_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(txiqcal_stats->lastcaltime));
+	if (le32_to_cpu(txiqcal_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(txiqcal_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				       ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				       le32_to_cpu(txiqcal_stats->calfailcnt)));
+	}
 
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "RX IQ Calibration stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			 le32_to_cpu(rxiqcal_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(rxiqcal_stats->lastcaltime));
+	if (le32_to_cpu(rxiqcal_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(rxiqcal_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				       ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				       le32_to_cpu(rxiqcal_stats->calfailcnt)));
+	}
 
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "Carrier Leakage calibration stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			 le32_to_cpu(carrierlkg_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(carrierlkg_stats->lastcaltime));
+	if (le32_to_cpu(carrierlkg_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(carrierlkg_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				   ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				   le32_to_cpu(carrierlkg_stats->calfailcnt)));
+	}
 
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "RX Filter calibration stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
 	len += scnprintf(buf + len, buf_len - len, "%30s0x%02x\n",
 			 "Status flags : ",
 			 le32_to_cpu(rxfltrcal_stats->statusflags));
-	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n\n",
+	len += scnprintf(buf + len, buf_len - len, "%30s%10d\n",
 			 "Last cal time: ",
 			 le32_to_cpu(rxfltrcal_stats->lastcaltime));
+	if (le32_to_cpu(rxfltrcal_stats->statusflags)) {
+		fail_count_valid =
+			FIELD_GET(ATH10K_HALPHY_HTT_STATS_FAIL_CNT_VALID,
+				  le32_to_cpu(rxfltrcal_stats->statusflags));
+		if (fail_count_valid)
+			len +=
+			scnprintf(buf + len, buf_len - len, "%30s%lu\n",
+				  "Cal Failure count: ",
+				  FIELD_GET(
+				    ATH10K_HALPHY_HTT_STATS_CAL_FAIL_CNT,
+				    le32_to_cpu(rxfltrcal_stats->calfailcnt)));
+	}
 
-	len += scnprintf(buf + len, buf_len - len, "%30s\n",
+	len += scnprintf(buf + len, buf_len - len, "\n%30s\n",
 			 "ANI stats");
 	len += scnprintf(buf + len, buf_len - len, "%30s\n\n",
 			 "=================");
