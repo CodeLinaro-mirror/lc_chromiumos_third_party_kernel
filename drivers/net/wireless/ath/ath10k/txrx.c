@@ -111,7 +111,9 @@ int ath10k_txrx_tx_unref(struct ath10k_htt *htt,
 	struct ieee80211_vif *vif;
 	struct ath10k_vif *arvif;
 	struct ath10k_sta *arsta;
+	struct ieee80211_hw *hw = htt->ar->hw;
 	struct sk_buff *msdu;
+	int len;
 
 	ath10k_dbg(ar, ATH10K_DBG_HTT,
 		   "htt tx completion msdu_id %u status %d\n",
@@ -196,6 +198,40 @@ int ath10k_txrx_tx_unref(struct ath10k_htt *htt,
 		info->status.ack_signal = ATH10K_DEFAULT_NOISE_FLOOR +
 						tx_done->ack_rssi;
 		info->status.is_valid_ack_signal = true;
+	}
+
+	if (unlikely(msdu->protocol == cpu_to_be16(ETH_P_PAE))) {
+		u8 peer_addr[ETH_ALEN];
+
+		if (txq && txq->sta)
+			ether_addr_copy(peer_addr, txq->sta->addr);
+		else
+			eth_zero_addr(peer_addr);
+
+		spin_lock_bh(&hw->con_pkt_trace_lock);
+
+		if ((hw->con_pkt_trace_wr_idx == hw->con_pkt_trace_rd_idx) &&
+		    hw->con_pkt_trace_num_entries) {
+			hw->con_pkt_trace_rd_idx =
+				CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx);
+			hw->con_pkt_trace_num_entries--;
+		}
+
+		memset(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx], '\0',
+		       sizeof(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx]));
+		len = scnprintf(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx],
+				CON_PKT_ENTRY_LEN,
+				"%llu:ath10k:tx_compl:%s:eapol->%pM",
+				ktime_to_ms(ktime_get()),
+				tx_done->status == HTT_TX_COMPL_STATE_ACK ?
+				"OKAY" : "FAILED", peer_addr);
+		hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx][len] = '\0';
+
+		hw->con_pkt_trace_wr_idx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_wr_idx);
+		hw->con_pkt_trace_num_entries++;
+
+		spin_unlock_bh(&hw->con_pkt_trace_lock);
 	}
 
 	ieee80211_tx_status(htt->ar->hw, msdu);

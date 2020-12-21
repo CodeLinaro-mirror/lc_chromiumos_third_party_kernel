@@ -624,6 +624,11 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	wiphy->ht_capa_mod_mask = &mac80211_ht_capa_mod_mask;
 	wiphy->vht_capa_mod_mask = &mac80211_vht_capa_mod_mask;
 
+	spin_lock_init(&local->hw.con_pkt_trace_lock);
+	local->hw.con_pkt_trace_rd_idx = 0;
+	local->hw.con_pkt_trace_wr_idx = 0;
+	local->hw.con_pkt_trace_num_entries = 0;
+
 	local->ext_capa[7] = WLAN_EXT_CAPA8_OPMODE_NOTIF;
 
 	wiphy->extended_capabilities = local->ext_capa;

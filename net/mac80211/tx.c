@@ -3828,6 +3828,7 @@ void __ieee80211_subif_start_xmit(struct sk_buff *skb,
 	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 	struct sta_info *sta;
 	struct sk_buff *next;
+	int len;
 
 	if (unlikely(skb->len < ETH_HLEN)) {
 		kfree_skb(skb);
@@ -3849,6 +3850,33 @@ void __ieee80211_subif_start_xmit(struct sk_buff *skb,
 		if (fast_tx &&
 		    ieee80211_xmit_fast(sdata, sta, fast_tx, skb))
 			goto out;
+	}
+
+	if (unlikely(((skb->data[12] << 8) | skb->data[13]) == ETH_P_PAE)) {
+		struct ieee80211_hw *hw = &sdata->local->hw;
+
+		spin_lock_bh(&hw->con_pkt_trace_lock);
+
+		if ((hw->con_pkt_trace_wr_idx == hw->con_pkt_trace_rd_idx) &&
+		    hw->con_pkt_trace_num_entries) {
+			hw->con_pkt_trace_rd_idx =
+				CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx);
+			hw->con_pkt_trace_num_entries--;
+		}
+
+		memset(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx], '\0',
+		       sizeof(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx]));
+		len = scnprintf(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx],
+				CON_PKT_ENTRY_LEN,
+				"%llu:mac80211:tx:eapol->%pM",
+				ktime_to_ms(ktime_get()), skb->data);
+		hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx][len] = '\0';
+
+		hw->con_pkt_trace_wr_idx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_wr_idx);
+		hw->con_pkt_trace_num_entries++;
+
+		spin_unlock_bh(&hw->con_pkt_trace_lock);
 	}
 
 	if (skb_is_gso(skb)) {

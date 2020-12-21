@@ -4153,6 +4153,7 @@ int ath10k_mac_tx_push_txq(struct ieee80211_hw *hw,
 	bool is_mgmt, is_presp;
 	int ret;
 	u16 airtime;
+	int len;
 
 	spin_lock_bh(&ar->htt.tx_lock);
 	ret = ath10k_htt_tx_inc_pending(htt);
@@ -4171,6 +4172,39 @@ int ath10k_mac_tx_push_txq(struct ieee80211_hw *hw,
 	}
 
 	airtime = ath10k_mac_update_airtime(ar, txq, skb);
+
+	if (unlikely(skb->protocol == cpu_to_be16(ETH_P_PAE))) {
+		u8 peer_addr[ETH_ALEN];
+
+		if (sta)
+			ether_addr_copy(peer_addr, sta->addr);
+		else
+			eth_zero_addr(peer_addr);
+
+		spin_lock_bh(&hw->con_pkt_trace_lock);
+
+		if ((hw->con_pkt_trace_wr_idx == hw->con_pkt_trace_rd_idx) &&
+		    hw->con_pkt_trace_num_entries) {
+			hw->con_pkt_trace_rd_idx =
+				CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx);
+			hw->con_pkt_trace_num_entries--;
+		}
+
+		memset(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx], '\0',
+		       sizeof(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx]));
+		len = scnprintf(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx],
+				CON_PKT_ENTRY_LEN,
+				"%llu:ath10k:tx:eapol->%pM",
+				ktime_to_ms(ktime_get()), peer_addr);
+		hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx][len] = '\0';
+
+		hw->con_pkt_trace_wr_idx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_wr_idx);
+		hw->con_pkt_trace_num_entries++;
+
+		spin_unlock_bh(&hw->con_pkt_trace_lock);
+	}
+
 	ath10k_mac_tx_h_fill_cb(ar, vif, txq, skb, airtime);
 
 	skb_len = skb->len;
@@ -4443,6 +4477,7 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 	bool is_presp = false;
 	int ret;
 	u16 airtime;
+	int len;
 
 
 	airtime = ath10k_mac_update_airtime(ar, txq, skb);
@@ -4465,6 +4500,38 @@ static void ath10k_mac_op_tx(struct ieee80211_hw *hw,
 			memcpy(&mgmt->u.probe_resp.timestamp,
 			       &adjusted_tsf, sizeof(adjusted_tsf));
 		}
+	}
+
+	if (unlikely(skb->protocol == cpu_to_be16(ETH_P_PAE))) {
+		u8 peer_addr[ETH_ALEN];
+
+		if (sta)
+			ether_addr_copy(peer_addr, sta->addr);
+		else
+			eth_zero_addr(peer_addr);
+
+		spin_lock_bh(&hw->con_pkt_trace_lock);
+
+		if ((hw->con_pkt_trace_wr_idx == hw->con_pkt_trace_rd_idx) &&
+		    hw->con_pkt_trace_num_entries) {
+			hw->con_pkt_trace_rd_idx =
+				CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx);
+			hw->con_pkt_trace_num_entries--;
+		}
+
+		memset(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx], '\0',
+		       sizeof(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx]));
+		len = scnprintf(hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx],
+				CON_PKT_ENTRY_LEN,
+				"%llu:ath10k:tx:eapol->%pM",
+				ktime_to_ms(ktime_get()), peer_addr);
+		hw->con_pkt_trace_buf[hw->con_pkt_trace_wr_idx][len] = '\0';
+
+		hw->con_pkt_trace_wr_idx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_wr_idx);
+		hw->con_pkt_trace_num_entries++;
+
+		spin_unlock_bh(&hw->con_pkt_trace_lock);
 	}
 
 	if (is_htt) {

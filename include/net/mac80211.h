@@ -2216,6 +2216,10 @@ enum ieee80211_dbg_mask {
 	IEEE80211_HW_MAX_DBG_MASK = 0x00000004,
 };
 
+#define CON_PKT_ENTRIES_MAX	100
+#define CON_PKT_ENTRY_LEN	64
+#define CON_PKT_INC_IDX(idx)    ((idx + 1) % CON_PKT_ENTRIES_MAX)
+
 /**
  * struct ieee80211_hw - hardware information and state
  *
@@ -2375,6 +2379,12 @@ struct ieee80211_hw {
 	u32 rx_clear_count;
 	u32 cycle_count;
 	u8 medium_busy;
+
+	spinlock_t con_pkt_trace_lock;
+	char con_pkt_trace_buf[CON_PKT_ENTRIES_MAX][CON_PKT_ENTRY_LEN];
+	u32 con_pkt_trace_rd_idx;
+	u32 con_pkt_trace_wr_idx;
+	u32 con_pkt_trace_num_entries;
 };
 
 static inline bool _ieee80211_hw_check(struct ieee80211_hw *hw,

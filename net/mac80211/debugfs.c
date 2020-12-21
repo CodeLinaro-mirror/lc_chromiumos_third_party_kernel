@@ -491,6 +491,93 @@ DEBUGFS_DEVSTATS_FILE(dot11RTSFailureCount);
 DEBUGFS_DEVSTATS_FILE(dot11FCSErrorCount);
 DEBUGFS_DEVSTATS_FILE(dot11RTSSuccessCount);
 
+static int con_pkt_trace_open(struct inode *inode, struct file *file)
+{
+	struct ieee80211_local *local = inode->i_private;
+	struct ieee80211_hw *hw = &local->hw;
+	u8 *buf;
+	int len = 0;
+	int trace_len;
+	int ret = 0;
+
+	spin_lock_bh(&hw->con_pkt_trace_lock);
+
+	if (hw->con_pkt_trace_num_entries == 0) {
+		file->private_data = NULL;
+		goto exit;
+	}
+
+	if (hw->con_pkt_trace_num_entries > CON_PKT_ENTRIES_MAX) {
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	trace_len = hw->con_pkt_trace_num_entries * CON_PKT_ENTRY_LEN;
+
+	spin_unlock_bh(&hw->con_pkt_trace_lock);
+
+	buf = vmalloc(trace_len);
+	if (!buf)
+		return -ENOMEM;
+
+	spin_lock_bh(&hw->con_pkt_trace_lock);
+
+	while ((hw->con_pkt_trace_rd_idx != hw->con_pkt_trace_wr_idx) ||
+	       hw->con_pkt_trace_num_entries > 0) {
+		len += scnprintf(buf + len, trace_len - len, "%s\n",
+			hw->con_pkt_trace_buf[hw->con_pkt_trace_rd_idx]);
+		hw->con_pkt_trace_rd_idx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx);
+		hw->con_pkt_trace_num_entries--;
+	}
+
+	if (hw->con_pkt_trace_num_entries) {
+		len += scnprintf(buf + len, trace_len - len, "%s\n",
+			hw->con_pkt_trace_buf[hw->con_pkt_trace_rd_idx]);
+		hw->con_pkt_trace_rd_idx =
+			CON_PKT_INC_IDX(hw->con_pkt_trace_rd_idx);
+	}
+
+	hw->con_pkt_trace_num_entries = 0;
+
+	spin_unlock_bh(&hw->con_pkt_trace_lock);
+
+	file->private_data = buf;
+
+	return 0;
+
+exit:
+	spin_unlock_bh(&hw->con_pkt_trace_lock);
+
+	return ret;
+};
+
+static ssize_t con_pkt_trace_read(struct file *file, char __user *user_buf,
+				  size_t count, loff_t *ppos)
+{
+	u8 *buf = file->private_data;
+
+	if (!buf)
+		return 0;
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, strlen(buf));
+}
+
+static int con_pkt_trace_release(struct inode *inode, struct file *file)
+{
+	if (file->private_data)
+		vfree(file->private_data);
+
+	return 0;
+}
+
+static const struct file_operations con_pkt_trace_ops = {
+	.open = con_pkt_trace_open,
+	.read = con_pkt_trace_read,
+	.release = con_pkt_trace_release,
+	.llseek = generic_file_llseek,
+};
+
 void debugfs_hw_add(struct ieee80211_local *local)
 {
 	struct dentry *phyd = local->hw.wiphy->debugfsdir;
@@ -533,6 +620,9 @@ void debugfs_hw_add(struct ieee80211_local *local)
 	/* if the dir failed, don't put all the other things into the root! */
 	if (!statsd)
 		return;
+
+	debugfs_create_file("connect_pkt_trace", 0400, phyd, local,
+			    &con_pkt_trace_ops);
 
 #ifdef CONFIG_MAC80211_DEBUG_COUNTERS
 	DEBUGFS_STATS_ADD(dot11TransmittedFragmentCount);
