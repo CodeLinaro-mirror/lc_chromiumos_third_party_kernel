@@ -442,7 +442,7 @@ static enum gsi_channel_state gsi_channel_state(struct gsi_channel *channel)
 }
 
 /* Issue a channel command and wait for it to complete */
-static int
+static void
 gsi_channel_command(struct gsi_channel *channel, enum gsi_ch_cmd_opcode opcode)
 {
 	struct completion *completion = &channel->completion;
@@ -461,12 +461,10 @@ gsi_channel_command(struct gsi_channel *channel, enum gsi_ch_cmd_opcode opcode)
 	val |= u32_encode_bits(opcode, CH_OPCODE_FMASK);
 
 	if (gsi_command(gsi, GSI_CH_CMD_OFFSET, val, completion))
-		return 0;	/* Success! */
+		return;
 
 	dev_err(dev, "GSI command %u for channel %u timed out, state %u\n",
 		opcode, channel_id, gsi_channel_state(channel));
-
-	return -ETIMEDOUT;
 }
 
 /* Allocate GSI channel in NOT_ALLOCATED state */
@@ -475,7 +473,6 @@ static int gsi_channel_alloc_command(struct gsi *gsi, u32 channel_id)
 	struct gsi_channel *channel = &gsi->channel[channel_id];
 	struct device *dev = gsi->dev;
 	enum gsi_channel_state state;
-	int ret;
 
 	/* Get initial channel state */
 	state = gsi_channel_state(channel);
@@ -484,7 +481,7 @@ static int gsi_channel_alloc_command(struct gsi *gsi, u32 channel_id)
 		return -EINVAL;
 	}
 
-	ret = gsi_channel_command(channel, GSI_CH_ALLOCATE);
+	gsi_channel_command(channel, GSI_CH_ALLOCATE);
 
 	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
@@ -501,7 +498,6 @@ static int gsi_channel_start_command(struct gsi_channel *channel)
 {
 	struct device *dev = channel->gsi->dev;
 	enum gsi_channel_state state;
-	int ret;
 
 	state = gsi_channel_state(channel);
 	if (state != GSI_CHANNEL_STATE_ALLOCATED &&
@@ -510,7 +506,7 @@ static int gsi_channel_start_command(struct gsi_channel *channel)
 		return -EINVAL;
 	}
 
-	ret = gsi_channel_command(channel, GSI_CH_START);
+	gsi_channel_command(channel, GSI_CH_START);
 
 	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
@@ -527,7 +523,6 @@ static int gsi_channel_stop_command(struct gsi_channel *channel)
 {
 	struct device *dev = channel->gsi->dev;
 	enum gsi_channel_state state;
-	int ret;
 
 	state = gsi_channel_state(channel);
 
@@ -543,7 +538,7 @@ static int gsi_channel_stop_command(struct gsi_channel *channel)
 		return -EINVAL;
 	}
 
-	ret = gsi_channel_command(channel, GSI_CH_STOP);
+	gsi_channel_command(channel, GSI_CH_STOP);
 
 	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
@@ -564,7 +559,6 @@ static void gsi_channel_reset_command(struct gsi_channel *channel)
 {
 	struct device *dev = channel->gsi->dev;
 	enum gsi_channel_state state;
-	int ret;
 
 	msleep(1);	/* A short delay is required before a RESET command */
 
@@ -575,7 +569,7 @@ static void gsi_channel_reset_command(struct gsi_channel *channel)
 		return;
 	}
 
-	ret = gsi_channel_command(channel, GSI_CH_RESET);
+	gsi_channel_command(channel, GSI_CH_RESET);
 
 	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
@@ -589,7 +583,6 @@ static void gsi_channel_de_alloc_command(struct gsi *gsi, u32 channel_id)
 	struct gsi_channel *channel = &gsi->channel[channel_id];
 	struct device *dev = gsi->dev;
 	enum gsi_channel_state state;
-	int ret;
 
 	state = gsi_channel_state(channel);
 	if (state != GSI_CHANNEL_STATE_ALLOCATED) {
@@ -597,7 +590,7 @@ static void gsi_channel_de_alloc_command(struct gsi *gsi, u32 channel_id)
 		return;
 	}
 
-	ret = gsi_channel_command(channel, GSI_CH_DE_ALLOC);
+	gsi_channel_command(channel, GSI_CH_DE_ALLOC);
 
 	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
