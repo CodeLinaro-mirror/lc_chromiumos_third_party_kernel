@@ -476,14 +476,14 @@ static int gsi_channel_alloc_command(struct gsi *gsi, u32 channel_id)
 
 	ret = gsi_channel_command(channel, GSI_CH_ALLOCATE);
 
-	/* Channel state will normally have been updated */
+	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
-	if (!ret && state != GSI_CHANNEL_STATE_ALLOCATED) {
-		dev_err(dev, "bad channel state %u after alloc\n", state);
-		ret = -EIO;
-	}
+	if (state == GSI_CHANNEL_STATE_ALLOCATED)
+		return 0;
 
-	return ret;
+	dev_err(dev, "bad channel state %u after alloc\n", state);
+
+	return -EIO;
 }
 
 /* Start an ALLOCATED channel */
@@ -502,14 +502,14 @@ static int gsi_channel_start_command(struct gsi_channel *channel)
 
 	ret = gsi_channel_command(channel, GSI_CH_START);
 
-	/* Channel state will normally have been updated */
+	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
-	if (!ret && state != GSI_CHANNEL_STATE_STARTED) {
-		dev_err(dev, "bad channel state %u after start\n", state);
-		ret = -EIO;
-	}
+	if (state == GSI_CHANNEL_STATE_STARTED)
+		return 0;
 
-	return ret;
+	dev_err(dev, "bad channel state %u after start\n", state);
+
+	return -EIO;
 }
 
 /* Stop a GSI channel in STARTED state */
@@ -535,10 +535,10 @@ static int gsi_channel_stop_command(struct gsi_channel *channel)
 
 	ret = gsi_channel_command(channel, GSI_CH_STOP);
 
-	/* Channel state will normally have been updated */
+	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
-	if (ret || state == GSI_CHANNEL_STATE_STOPPED)
-		return ret;
+	if (state == GSI_CHANNEL_STATE_STOPPED)
+		return 0;
 
 	/* We may have to try again if stop is in progress */
 	if (state == GSI_CHANNEL_STATE_STOP_IN_PROC)
@@ -567,9 +567,9 @@ static void gsi_channel_reset_command(struct gsi_channel *channel)
 
 	ret = gsi_channel_command(channel, GSI_CH_RESET);
 
-	/* Channel state will normally have been updated */
+	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
-	if (!ret && state != GSI_CHANNEL_STATE_ALLOCATED)
+	if (state != GSI_CHANNEL_STATE_ALLOCATED)
 		dev_err(dev, "bad channel state %u after reset\n", state);
 }
 
@@ -589,9 +589,9 @@ static void gsi_channel_de_alloc_command(struct gsi *gsi, u32 channel_id)
 
 	ret = gsi_channel_command(channel, GSI_CH_DE_ALLOC);
 
-	/* Channel state will normally have been updated */
+	/* If successful the channel state will have changed */
 	state = gsi_channel_state(channel);
-	if (!ret && state != GSI_CHANNEL_STATE_NOT_ALLOCATED)
+	if (state != GSI_CHANNEL_STATE_NOT_ALLOCATED)
 		dev_err(dev, "bad channel state %u after dealloc\n", state);
 }
 
