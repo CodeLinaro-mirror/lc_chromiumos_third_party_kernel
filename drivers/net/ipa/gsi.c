@@ -331,8 +331,8 @@ gsi_evt_ring_state(struct gsi *gsi, u32 evt_ring_id)
 }
 
 /* Issue an event ring command and wait for it to complete */
-static int evt_ring_command(struct gsi *gsi, u32 evt_ring_id,
-			    enum gsi_evt_cmd_opcode opcode)
+static void evt_ring_command(struct gsi *gsi, u32 evt_ring_id,
+			     enum gsi_evt_cmd_opcode opcode)
 {
 	struct gsi_evt_ring *evt_ring = &gsi->evt_ring[evt_ring_id];
 	struct completion *completion = &evt_ring->completion;
@@ -349,19 +349,16 @@ static int evt_ring_command(struct gsi *gsi, u32 evt_ring_id,
 	val |= u32_encode_bits(opcode, EV_OPCODE_FMASK);
 
 	if (gsi_command(gsi, GSI_EV_CH_CMD_OFFSET, val, completion))
-		return 0;	/* Success! */
+		return;
 
 	dev_err(dev, "GSI command %u for event ring %u timed out, state %u\n",
 		opcode, evt_ring_id, evt_ring->state);
-
-	return -ETIMEDOUT;
 }
 
 /* Allocate an event ring in NOT_ALLOCATED state */
 static int gsi_evt_ring_alloc_command(struct gsi *gsi, u32 evt_ring_id)
 {
 	struct gsi_evt_ring *evt_ring = &gsi->evt_ring[evt_ring_id];
-	int ret;
 
 	/* Get initial event ring state */
 	evt_ring->state = gsi_evt_ring_state(gsi, evt_ring_id);
@@ -371,7 +368,7 @@ static int gsi_evt_ring_alloc_command(struct gsi *gsi, u32 evt_ring_id)
 		return -EINVAL;
 	}
 
-	ret = evt_ring_command(gsi, evt_ring_id, GSI_EVT_ALLOCATE);
+	evt_ring_command(gsi, evt_ring_id, GSI_EVT_ALLOCATE);
 
 	/* If successful the event ring state will have changed */
 	if (evt_ring->state == GSI_EVT_RING_STATE_ALLOCATED)
@@ -388,7 +385,6 @@ static void gsi_evt_ring_reset_command(struct gsi *gsi, u32 evt_ring_id)
 {
 	struct gsi_evt_ring *evt_ring = &gsi->evt_ring[evt_ring_id];
 	enum gsi_evt_ring_state state = evt_ring->state;
-	int ret;
 
 	if (state != GSI_EVT_RING_STATE_ALLOCATED &&
 	    state != GSI_EVT_RING_STATE_ERROR) {
@@ -397,7 +393,7 @@ static void gsi_evt_ring_reset_command(struct gsi *gsi, u32 evt_ring_id)
 		return;
 	}
 
-	ret = evt_ring_command(gsi, evt_ring_id, GSI_EVT_RESET);
+	evt_ring_command(gsi, evt_ring_id, GSI_EVT_RESET);
 
 	/* If successful the event ring state will have changed */
 	if (evt_ring->state == GSI_EVT_RING_STATE_ALLOCATED)
@@ -411,7 +407,6 @@ static void gsi_evt_ring_reset_command(struct gsi *gsi, u32 evt_ring_id)
 static void gsi_evt_ring_de_alloc_command(struct gsi *gsi, u32 evt_ring_id)
 {
 	struct gsi_evt_ring *evt_ring = &gsi->evt_ring[evt_ring_id];
-	int ret;
 
 	if (evt_ring->state != GSI_EVT_RING_STATE_ALLOCATED) {
 		dev_err(gsi->dev, "bad event ring state %u before dealloc\n",
@@ -419,7 +414,7 @@ static void gsi_evt_ring_de_alloc_command(struct gsi *gsi, u32 evt_ring_id)
 		return;
 	}
 
-	ret = evt_ring_command(gsi, evt_ring_id, GSI_EVT_DE_ALLOC);
+	evt_ring_command(gsi, evt_ring_id, GSI_EVT_DE_ALLOC);
 
 	/* If successful the event ring state will have changed */
 	if (evt_ring->state == GSI_EVT_RING_STATE_NOT_ALLOCATED)
