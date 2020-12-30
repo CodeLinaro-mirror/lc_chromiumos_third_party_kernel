@@ -73,6 +73,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.spectral_fft_pad_sz = 2,
 		.spectral_max_fft_bins = 512,
 		.spectral_fft_hdr_len = 16,
+		.single_pdev_dbs_support = false,
 	},
 	{
 		.hw_rev = ATH11K_HW_IPQ6018_HW10,
@@ -115,6 +116,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.hal_desc_sz = sizeof(struct hal_rx_desc_ipq8074),
 		.spectral_max_fft_bins = 512,
 		.spectral_fft_hdr_len = 16,
+		.single_pdev_dbs_support = false,
 	},
 	{
 		.name = "qca6390 hw2.0",
@@ -154,6 +156,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.cold_boot_calib = false,
 		.supports_suspend = true,
 		.hal_desc_sz = sizeof(struct hal_rx_desc_ipq8074),
+		.single_pdev_dbs_support = true,
 	},
 	{
 		.name = "qcn9074 hw1.0",
@@ -193,6 +196,47 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.spectral_max_fft_bins = 1024,
 		.spectral_summary_pad_sz = 16,
 		.spectral_fft_hdr_len = 24,
+		.single_pdev_dbs_support = false,
+	},
+	{
+		.name = "wcn6750 hw1.0",
+		.hw_rev = ATH11K_HW_WCN6750_HW10,
+		.fw = {
+			.dir = "WCN6750/hw1.0",
+			.board_size = 256 * 1024,
+			.cal_size = 256 * 1024,
+		},
+		.max_radios = 1,
+		.bdf_addr = 0x4B0C0000,
+		.hw_ops = &wcn6750_ops,
+		.ring_mask = &ath11k_hw_ring_mask_qca6390,
+		.internal_sleep_clock = false,
+		.regs = &wcn6750_regs,
+		.qmi_service_ins_id = ATH11K_QMI_WLFW_SERVICE_INS_ID_V01_WCN6750,
+		.host_ce_config = ath11k_host_ce_config_qca6390,
+		.ce_count = 9,
+		.target_ce_config = ath11k_target_ce_config_wlan_qca6390,
+		.target_ce_count = 9,
+		.svc_to_ce_map = ath11k_target_service_to_ce_map_wlan_qca6390,
+		.svc_to_ce_map_len = 14,
+		.single_pdev_only = true,
+		.rxdma1_enable = false,
+		.num_rxmda_per_pdev = 1,
+		.rx_mac_buf_ring = true,
+		.vdev_start_delay = true,
+		.htt_peer_map_v2 = false,
+		.tcl_0_only = true,
+		.spectral_fft_sz = 0,
+
+		.interface_modes = BIT(NL80211_IFTYPE_STATION) |
+					BIT(NL80211_IFTYPE_AP),
+		.supports_monitor = false,
+		.supports_shadow_regs = true,
+		.idle_ps = true,
+		.cold_boot_calib = true,
+		.supports_suspend = false,
+		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9074),
+		.single_pdev_dbs_support = false,
 	},
 };
 
@@ -779,7 +823,7 @@ static int ath11k_core_start(struct ath11k_base *ab,
 	}
 
 	/* put hardware to DBS mode */
-	if (ab->hw_params.single_pdev_only) {
+	if (ab->hw_params.single_pdev_dbs_support) {
 		ret = ath11k_wmi_set_hw_mode(ab, WMI_HOST_HW_MODE_DBS);
 		if (ret) {
 			ath11k_err(ab, "failed to send dbs mode: %d\n", ret);
@@ -855,6 +899,8 @@ int ath11k_core_qmi_firmware_ready(struct ath11k_base *ab)
 		ath11k_err(ab, "failed to create pdev core: %d\n", ret);
 		goto err_core_stop;
 	}
+
+	ath11k_dp_update_wbm_idle_ring_hp(ab);
 	ath11k_hif_irq_enable(ab);
 	mutex_unlock(&ab->core_lock);
 

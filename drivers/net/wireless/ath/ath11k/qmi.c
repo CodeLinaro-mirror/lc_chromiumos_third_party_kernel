@@ -10,6 +10,8 @@
 #include "debug.h"
 #include <linux/of.h>
 #include <linux/firmware.h>
+#include <linux/of_device.h>
+#include <linux/of_irq.h>
 
 #define SLEEP_CLOCK_SELECT_INTERNAL_BIT	0x02
 #define HOST_CSTATE_BIT			0x04
@@ -740,6 +742,68 @@ static struct qmi_elem_info qmi_wlanfw_cap_req_msg_v01_ei[] = {
 		.data_type	= QMI_EOTI,
 		.array_type	= NO_ARRAY,
 		.tlv_type	= QMI_COMMON_TLV_TYPE,
+	},
+};
+
+static struct qmi_elem_info qmi_wlanfw_device_info_req_msg_v01_ei[] = {
+	{
+		.data_type      = QMI_EOTI,
+		.array_type     = NO_ARRAY,
+		.tlv_type       = QMI_COMMON_TLV_TYPE,
+	},
+};
+
+struct qmi_elem_info qmi_wlfw_device_info_resp_msg_v01_ei[] = {
+	{
+		.data_type      = QMI_STRUCT,
+		.elem_len       = 1,
+		.elem_size      = sizeof(struct qmi_response_type_v01),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x02,
+		.offset         = offsetof(struct qmi_wlanfw_device_info_resp_msg_v01,
+					   resp),
+		.ei_array      = qmi_response_type_v01_ei,
+	},
+	{
+		.data_type      = QMI_OPT_FLAG,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u8),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x10,
+		.offset         = offsetof(struct qmi_wlanfw_device_info_resp_msg_v01,
+					   bar_addr_valid),
+	},
+	{
+		.data_type      = QMI_UNSIGNED_8_BYTE,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u64),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x10,
+		.offset         = offsetof(struct qmi_wlanfw_device_info_resp_msg_v01,
+					   bar_addr),
+	},
+	{
+		.data_type      = QMI_OPT_FLAG,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u8),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x11,
+		.offset         = offsetof(struct qmi_wlanfw_device_info_resp_msg_v01,
+					   bar_size_valid),
+	},
+	{
+		.data_type      = QMI_UNSIGNED_4_BYTE,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u32),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x11,
+		.offset         = offsetof(struct qmi_wlanfw_device_info_resp_msg_v01,
+					   bar_size),
+	},
+	{
+		.data_type      = QMI_EOTI,
+		.array_type       = NO_ARRAY,
+		.tlv_type       = QMI_COMMON_TLV_TYPE,
 	},
 };
 
@@ -1607,10 +1671,6 @@ static int ath11k_qmi_fw_ind_register_send(struct ath11k_base *ab)
 	req->client_id = QMI_WLANFW_CLIENT_ID;
 	req->fw_ready_enable_valid = 1;
 	req->fw_ready_enable = 1;
-	req->request_mem_enable_valid = 1;
-	req->request_mem_enable = 1;
-	req->fw_mem_ready_enable_valid = 1;
-	req->fw_mem_ready_enable = 1;
 	req->cal_done_enable_valid = 1;
 	req->cal_done_enable = 1;
 	req->fw_init_done_enable_valid = 1;
@@ -1618,6 +1678,13 @@ static int ath11k_qmi_fw_ind_register_send(struct ath11k_base *ab)
 
 	req->pin_connect_result_enable_valid = 0;
 	req->pin_connect_result_enable = 0;
+
+	if (!ab->bus_params.hybrid_bus_type) {
+		req->request_mem_enable_valid = 1;
+		req->request_mem_enable = 1;
+		req->fw_mem_ready_enable_valid = 1;
+		req->fw_mem_ready_enable = 1;
+	}
 
 	ret = qmi_txn_init(handle, &txn,
 			   qmi_wlanfw_ind_register_resp_msg_v01_ei, resp);
@@ -1800,6 +1867,83 @@ static int ath11k_qmi_assign_target_mem_chunk(struct ath11k_base *ab)
 	ab->qmi.mem_seg_count = idx;
 
 	return 0;
+}
+
+static int ath11k_qmi_request_device_info(struct ath11k_base *ab)
+{
+	struct qmi_wlanfw_device_info_req_msg_v01 req;
+	struct qmi_wlanfw_device_info_resp_msg_v01 resp;
+	struct qmi_txn txn = {};
+	void *bar_addr_va = NULL;
+	int ret = 0;
+
+	/*device info message only supported for internal-PCI devices */
+	if (!ab->bus_params.hybrid_bus_type)
+		return 0;
+
+	memset(&req, 0, sizeof(req));
+	memset(&resp, 0, sizeof(resp));
+
+	ret = qmi_txn_init(&ab->qmi.handle, &txn,
+			   qmi_wlfw_device_info_resp_msg_v01_ei, &resp);
+	if (ret < 0)
+		goto out;
+
+	ret = qmi_send_request(&ab->qmi.handle, NULL, &txn,
+			       QMI_WLANFW_DEVICE_INFO_REQ_V01,
+			       QMI_WLANFW_DEVICE_INFO_REQ_MSG_V01_MAX_LEN,
+			       qmi_wlanfw_device_info_req_msg_v01_ei, &req);
+	if (ret < 0) {
+		ath11k_warn(ab, "qmi failed to send target device info request, err = %d\n",
+			    ret);
+		goto out;
+	}
+
+	ret = qmi_txn_wait(&txn, msecs_to_jiffies(ATH11K_QMI_WLANFW_TIMEOUT_MS));
+	if (ret < 0) {
+		ath11k_warn(ab, "qmi failed target device info request %d\n", ret);
+		goto out;
+	}
+
+	if (resp.resp.result != QMI_RESULT_SUCCESS_V01) {
+		ath11k_warn(ab, "qmi device info req failed, result: %d, err: %d\n",
+			    resp.resp.result, resp.resp.error);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (!resp.bar_addr_valid || !resp.bar_size_valid) {
+		ath11k_warn(ab, "qmi device info response invalid, result: %d, err: %d\n",
+			    resp.resp.result, resp.resp.error);
+		ret = -EINVAL;
+		goto out;
+	}
+	if (!resp.bar_addr ||
+	    resp.bar_size != DEVICE_BAR_SIZE) {
+		ath11k_warn(ab, "qmi device info invalid addr and size, result: %d, err: %d\n",
+			    resp.resp.result, resp.resp.error);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	bar_addr_va = devm_ioremap(ab->dev, resp.bar_addr, resp.bar_size);
+
+	if (!bar_addr_va) {
+		ath11k_warn(ab, "qmi device info ioremap failed\n");
+		ab->mem_len = 0;
+		ret = -EIO;
+		goto out;
+	}
+
+	ab->mem = bar_addr_va;
+	ab->mem_len = resp.bar_size;
+
+	ath11k_dbg(ab, ATH11K_DBG_QMI, "Device BAR Info pa: 0x%llx, va: 0x%p, size: 0x%lx\n",
+		   resp.bar_addr, ab->mem, ab->mem_len);
+
+	return 0;
+out:
+	return ret;
 }
 
 static int ath11k_qmi_request_target_cap(struct ath11k_base *ab)
@@ -2153,6 +2297,10 @@ static int ath11k_qmi_wlanfw_m3_info_send(struct ath11k_base *ab)
 	struct qmi_txn txn = {};
 	int ret = 0;
 
+	if (!ab->bus_params.m3_fw_support &&
+	    ab->bus_params.hybrid_bus_type)
+		return 0;
+
 	memset(&req, 0, sizeof(req));
 	memset(&resp, 0, sizeof(resp));
 
@@ -2421,6 +2569,41 @@ ath11k_qmi_driver_event_post(struct ath11k_qmi *qmi,
 	return 0;
 }
 
+static int ath11k_qmi_event_load_bdf(struct ath11k_qmi *qmi)
+{
+	struct ath11k_base *ab = qmi->ab;
+	int ret;
+
+	ret = ath11k_qmi_request_target_cap(ab);
+	if (ret < 0) {
+		ath11k_warn(ab, "qmi failed to req target capabilities:%d\n", ret);
+		return ret;
+	}
+
+	ret = ath11k_qmi_request_device_info(ab);
+	if (ret < 0) {
+		ath11k_warn(ab, "qmi failed to req device info %d\n", ret);
+		return ret;
+	}
+
+	if (ab->bus_params.fixed_bdf_addr)
+		ret = ath11k_qmi_load_bdf_fixed_addr(ab);
+	else
+		ret = ath11k_qmi_load_bdf_qmi(ab);
+	if (ret < 0) {
+		ath11k_warn(ab, "qmi failed to load board data file:%d\n", ret);
+		return ret;
+	}
+
+	ret = ath11k_qmi_wlanfw_m3_info_send(ab);
+	if (ret < 0) {
+		ath11k_warn(ab, "qmi failed to send m3 info req:%d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
 static int ath11k_qmi_event_server_arrive(struct ath11k_qmi *qmi)
 {
 	struct ath11k_base *ab = qmi->ab;
@@ -2438,6 +2621,15 @@ static int ath11k_qmi_event_server_arrive(struct ath11k_qmi *qmi)
 		return ret;
 	}
 
+	if (!ab->bus_params.hybrid_bus_type)
+		return ret;
+
+	ret = ath11k_qmi_event_load_bdf(qmi);
+	if (ret < 0) {
+		ath11k_warn(ab, "qmi failed to download BDF:%d\n", ret);
+		return ret;
+	}
+
 	return ret;
 }
 
@@ -2449,35 +2641,6 @@ static int ath11k_qmi_event_mem_request(struct ath11k_qmi *qmi)
 	ret = ath11k_qmi_respond_fw_mem_request(ab);
 	if (ret < 0) {
 		ath11k_warn(ab, "qmi failed to respond fw mem req:%d\n", ret);
-		return ret;
-	}
-
-	return ret;
-}
-
-static int ath11k_qmi_event_load_bdf(struct ath11k_qmi *qmi)
-{
-	struct ath11k_base *ab = qmi->ab;
-	int ret;
-
-	ret = ath11k_qmi_request_target_cap(ab);
-	if (ret < 0) {
-		ath11k_warn(ab, "qmi failed to req target capabilities:%d\n", ret);
-		return ret;
-	}
-
-	if (ab->bus_params.fixed_bdf_addr)
-		ret = ath11k_qmi_load_bdf_fixed_addr(ab);
-	else
-		ret = ath11k_qmi_load_bdf_qmi(ab);
-	if (ret < 0) {
-		ath11k_warn(ab, "qmi failed to load board data file:%d\n", ret);
-		return ret;
-	}
-
-	ret = ath11k_qmi_wlanfw_m3_info_send(ab);
-	if (ret < 0) {
-		ath11k_warn(ab, "qmi failed to send m3 info req:%d\n", ret);
 		return ret;
 	}
 

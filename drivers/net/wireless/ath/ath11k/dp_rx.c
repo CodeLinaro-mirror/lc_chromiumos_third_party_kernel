@@ -4084,6 +4084,8 @@ int ath11k_dp_process_rxdma_err(struct ath11k_base *ab, int mac_id, int budget)
 	while (quota-- &&
 	       (desc = ath11k_hal_srng_dst_get_next_entry(ab, srng))) {
 		ath11k_hal_rx_reo_ent_paddr_get(ab, desc, &paddr, &desc_bank);
+		if (paddr == 0)
+			continue;
 
 		entr_ring = (struct hal_reo_entrance_ring *)desc;
 		rxdma_err_code =

@@ -3569,6 +3569,10 @@ static void ath11k_mac_setup_ht_vht_cap(struct ath11k *ar,
 	u32 rate_cap_tx_chainmask;
 	u32 rate_cap_rx_chainmask;
 	u32 ht_cap;
+	bool dualband_capable;
+
+	dualband_capable = (cap->supported_bands & WMI_HOST_WLAN_2G_CAP) &&
+			(cap->supported_bands & WMI_HOST_WLAN_5G_CAP);
 
 	rate_cap_tx_chainmask = ar->cfg_tx_chainmask >> cap->tx_chain_mask_shift;
 	rate_cap_rx_chainmask = ar->cfg_rx_chainmask >> cap->rx_chain_mask_shift;
@@ -3582,7 +3586,8 @@ static void ath11k_mac_setup_ht_vht_cap(struct ath11k *ar,
 						    rate_cap_rx_chainmask);
 	}
 
-	if (cap->supported_bands & WMI_HOST_WLAN_5G_CAP && !ar->supports_6ghz) {
+	if ((cap->supported_bands & WMI_HOST_WLAN_5G_CAP && !ar->supports_6ghz) ||
+	     dualband_capable) {
 		band = &ar->mac.sbands[NL80211_BAND_5GHZ];
 		ht_cap = cap->band[NL80211_BAND_5GHZ].ht_cap_info;
 		if (ht_cap_info)

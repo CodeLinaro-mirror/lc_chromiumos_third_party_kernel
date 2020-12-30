@@ -106,6 +106,7 @@ enum ath11k_hw_rev {
 	ATH11K_HW_QCA6390_HW20,
 	ATH11K_HW_IPQ6018_HW10,
 	ATH11K_HW_QCN9074_HW10,
+	ATH11K_HW_WCN6750_HW10,
 };
 
 enum ath11k_firmware_mode {
@@ -188,6 +189,7 @@ enum ath11k_dev_flags {
 	ATH11K_FLAG_REGISTERED,
 	ATH11K_FLAG_QMI_FAIL,
 	ATH11K_FLAG_HTC_SUSPEND_COMPLETE,
+	ATH11K_FLAG_DEV_INIT_DONE,
 };
 
 enum ath11k_monitor_flags {
@@ -437,6 +439,19 @@ struct ath11k_per_peer_tx_stats {
 #define ATH11K_FLUSH_TIMEOUT (5 * HZ)
 #define ATH11K_VDEV_DELETE_TIMEOUT_HZ (5 * HZ)
 
+struct ath11k_msi_user {
+	char *name;
+	int num_vectors;
+	u32 base_vector;
+};
+
+struct ath11k_msi_config {
+	int total_vectors;
+	int total_users;
+	struct ath11k_msi_user *users;
+	u16 hw_rev;
+};
+
 struct ath11k {
 	struct ath11k_base *ab;
 	struct ath11k_pdev *pdev;
@@ -608,6 +623,11 @@ struct ath11k_bus_params {
 	bool fixed_bdf_addr;
 	bool fixed_mem_region;
 	bool static_window_map;
+	bool hybrid_bus_type;
+	u8 dp_window_idx;
+	u8 ce_window_idx;
+	void (*bus_wakeup)(struct ath11k_base *ab);
+	void (*bus_release)(struct ath11k_base *ab);
 };
 
 /* IPQ8074 HW channel counters frequency value in hertz */
@@ -742,6 +762,14 @@ struct ath11k_base {
 	struct timer_list mon_reap_timer;
 
 	struct completion htc_suspend;
+
+	struct {
+		const struct ath11k_msi_config *msi_config;
+		u32 msi_ep_base_data;
+		u32 irqs[32];
+		u32 msi_addr_lo;
+		u32 msi_addr_hi;
+	} msi;
 
 	/* must be last */
 	u8 drv_priv[0] __aligned(sizeof(void *));

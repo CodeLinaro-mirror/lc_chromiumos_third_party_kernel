@@ -7,7 +7,6 @@
 #include "core.h"
 #include "debug.h"
 #include "mhi.h"
-#include "pci.h"
 
 #define MHI_TIMEOUT_DEFAULT_MS	90000
 
@@ -253,7 +252,7 @@ static int ath11k_mhi_get_msi(struct ath11k_pci *ab_pci)
 	int ret, num_vectors, i;
 	int *irq;
 
-	ret = ath11k_pci_get_user_msi_assignment(ab_pci,
+	ret = ath11k_pci_get_user_msi_assignment(ab,
 						 "MHI", &num_vectors,
 						 &user_base_data, &base_vector);
 	if (ret)
@@ -267,7 +266,7 @@ static int ath11k_mhi_get_msi(struct ath11k_pci *ab_pci)
 		return -ENOMEM;
 
 	for (i = 0; i < num_vectors; i++)
-		irq[i] = ath11k_pci_get_msi_irq(ab->dev,
+		irq[i] = ath11k_pci_get_msi_irq(ab,
 						base_vector + i);
 
 	ab_pci->mhi_ctrl->irq = irq;

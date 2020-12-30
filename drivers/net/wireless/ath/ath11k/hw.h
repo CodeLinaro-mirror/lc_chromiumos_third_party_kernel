@@ -166,6 +166,7 @@ struct ath11k_hw_params {
 	u8 spectral_summary_pad_sz;
 	u8 spectral_fft_hdr_len;
 	u32 spectral_max_fft_bins;
+	bool single_pdev_dbs_support;
 };
 
 struct ath11k_hw_ops {
@@ -203,12 +204,15 @@ struct ath11k_hw_ops {
 	void (*rx_desc_set_msdu_len)(struct hal_rx_desc *desc, u16 len);
 	struct rx_attention *(*rx_desc_get_attention)(struct hal_rx_desc *desc);
 	u8 *(*rx_desc_get_msdu_payload)(struct hal_rx_desc *desc);
+	void (*reo_config)(struct ath11k_base *ab);
+	u32 (*get_reo_ring_hash_map)(void);
 };
 
 extern const struct ath11k_hw_ops ipq8074_ops;
 extern const struct ath11k_hw_ops ipq6018_ops;
 extern const struct ath11k_hw_ops qca6390_ops;
 extern const struct ath11k_hw_ops qcn9074_ops;
+extern const struct ath11k_hw_ops wcn6750_ops;
 
 extern const struct ath11k_hw_ring_mask ath11k_hw_ring_mask_ipq8074;
 extern const struct ath11k_hw_ring_mask ath11k_hw_ring_mask_qca6390;
@@ -302,6 +306,12 @@ struct ath11k_hw_regs {
 	u32 hal_reo_status_ring_base_lsb;
 	u32 hal_reo_status_hp;
 
+	u32 hal_reo_cmd_ring_base_lsb;
+	u32 hal_reo_cmd_ring_hp;
+
+	u32 hal_sw2reo_ring_base_lsb;
+	u32 hal_sw2reo_ring_hp;
+
 	u32 hal_seq_wcss_umac_ce0_src_reg;
 	u32 hal_seq_wcss_umac_ce0_dst_reg;
 	u32 hal_seq_wcss_umac_ce1_src_reg;
@@ -314,10 +324,12 @@ struct ath11k_hw_regs {
 
 	u32 hal_wbm0_release_ring_base_lsb;
 	u32 hal_wbm1_release_ring_base_lsb;
+	u32 hal_shadow_base_addr;
 };
 
 extern const struct ath11k_hw_regs ipq8074_regs;
 extern const struct ath11k_hw_regs qca6390_regs;
 extern const struct ath11k_hw_regs qcn9074_regs;
+extern const struct ath11k_hw_regs wcn6750_regs;
 
 #endif

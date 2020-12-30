@@ -1054,3 +1054,19 @@ int ath11k_ce_get_attr_flags(struct ath11k_base *ab, int ce_id)
 	return ab->hw_params.host_ce_config[ce_id].flags;
 }
 EXPORT_SYMBOL(ath11k_ce_get_attr_flags);
+
+void ath11k_ce_init_qmi_ce_config(struct ath11k_base *ab)
+{
+	struct ath11k_qmi_ce_cfg *cfg = &ab->qmi.ce_cfg;
+
+	cfg->tgt_ce_len = ab->hw_params.target_ce_count;
+	cfg->tgt_ce = ab->hw_params.target_ce_config;
+	cfg->svc_to_ce_map_len = ab->hw_params.svc_to_ce_map_len;
+	cfg->svc_to_ce_map = ab->hw_params.svc_to_ce_map;
+	ab->qmi.service_ins_id = ab->hw_params.qmi_service_ins_id;
+
+	if (!ab->bus_params.hybrid_bus_type)
+		ath11k_ce_get_shadow_config(ab, &cfg->shadow_reg_v2,
+					    &cfg->shadow_reg_v2_len);
+}
+EXPORT_SYMBOL(ath11k_ce_init_qmi_ce_config);

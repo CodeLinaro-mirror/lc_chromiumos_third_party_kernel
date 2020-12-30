@@ -26,10 +26,10 @@ ath11k-$(CONFIG_THERMAL) += thermal.o
 ath11k-$(CONFIG_ATH11K_SPECTRAL) += spectral.o
 
 obj-$(CONFIG_ATH11K_AHB) += ath11k_ahb.o
-ath11k_ahb-y += ahb.o
+ath11k_ahb-y += ahb.o pci_cmn.o
 
 obj-$(CONFIG_ATH11K_PCI) += ath11k_pci.o
-ath11k_pci-y += mhi.o pci.o
+ath11k_pci-y += mhi.o pci.o pci_cmn.o
 
 # for tracing framework to find trace.h
 CFLAGS_trace.o := -I$(src)

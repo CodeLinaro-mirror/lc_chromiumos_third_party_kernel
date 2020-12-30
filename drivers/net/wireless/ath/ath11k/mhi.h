@@ -6,6 +6,7 @@
 #define _ATH11K_MHI_H
 
 #include "pci.h"
+#include "pci_cmn.h"
 
 #define PCIE_TXVECDB				0x360
 #define PCIE_TXVECSTATUS			0x368
