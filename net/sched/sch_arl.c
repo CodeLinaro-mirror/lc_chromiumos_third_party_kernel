@@ -149,7 +149,7 @@ static bool arl_is_throttling(struct arl_sched_data *q)
 	/* consider ARL is throttling the traffic if it causes significant
 	 * backlog (sojourn time > 1/2 CoDel target).
 	 */
-	return psched_l2t_ns(&q->vars.rate, q->qdisc->qstats.backlog) >
+	return psched_l2t_ns(&q->vars.rate, q->sch->qstats.backlog) >
 			     q->params.target * NSEC_PER_USEC / 2 ? 1 : 0;
 }
 
@@ -1465,6 +1465,7 @@ static int arl_init(struct Qdisc *sch, struct nlattr *opt)
 	arl_params_init(&q->params);
 	qdisc_watchdog_init(&q->wtd, sch);
 	q->qdisc = &noop_qdisc;
+	q->sch = sch;
 
 	init_timer(&q->arl_timer);
 	q->arl_timer.expires = jiffies + ARL_TIMER_INTERVAL;

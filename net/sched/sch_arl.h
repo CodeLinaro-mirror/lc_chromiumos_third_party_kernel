@@ -135,5 +135,6 @@ struct arl_sched_data {
 	struct qdisc_watchdog	wtd;
 	struct Qdisc		*qdisc;
 	struct timer_list	arl_timer;
+	struct Qdisc		*sch;
 };
 #endif /* _NET_SCH_ARL */
