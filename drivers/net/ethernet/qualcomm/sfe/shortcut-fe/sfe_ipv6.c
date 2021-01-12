@@ -512,6 +512,10 @@ typedef bool (*sfe_ipv6_debug_xml_write_method_t)(struct sfe_ipv6 *si, char *buf
 
 static struct sfe_ipv6 __si6;
 
+/* SFE DSCP rewrite table. */
+static u32 sfe_ipv6_dscp_rewrite_mark_to_match;
+static u32 sfe_ipv6_dscp_rewrite_dscp_to_set;
+
 /*
  * sfe_ipv6_get_debug_dev()
  */
@@ -957,6 +961,16 @@ void sfe_ipv6_mark_rule(struct sfe_connection_mark *mark)
 	}
 }
 
+/* sfe_ipv6_set_dscp_rewrite()
+ *	Updates DSCP rewrite table.
+ */
+void sfe_ipv6_set_dscp_rewrite(u32 mark_to_match, u32 dscp_to_set)
+{
+	sfe_ipv6_dscp_rewrite_mark_to_match = mark_to_match;
+	sfe_ipv6_dscp_rewrite_dscp_to_set =
+	    dscp_to_set << SFE_IPV6_DSCP_SHIFT;
+}
+
 /*
  * sfe_ipv6_insert_connection()
  *	Insert a connection into the hash.
@@ -1309,12 +1323,15 @@ static int sfe_ipv6_recv_udp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 	 * From this point on we're good to modify the packet.
 	 */
 
-	/*
-	 * Update DSCP
+	/* Update DSCP
+	 * DSCP rewrite table takes precedence over flow policy.
 	 */
-	if (unlikely(cm->flags & SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK)) {
+	if (unlikely(sfe_ipv6_dscp_rewrite_mark_to_match != 0 &&
+		     sfe_ipv6_dscp_rewrite_mark_to_match == cm->mark))
+		sfe_ipv6_change_dsfield(iph, sfe_ipv6_dscp_rewrite_dscp_to_set);
+	else if (unlikely(cm->flags &
+			  SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK))
 		sfe_ipv6_change_dsfield(iph, cm->dscp);
-	}
 
 	/*
 	 * Decrement our hop_limit.
@@ -1870,12 +1887,15 @@ static int sfe_ipv6_recv_tcp(struct sfe_ipv6 *si, struct sk_buff *skb, struct ne
 	 * From this point on we're good to modify the packet.
 	 */
 
-	/*
-	 * Update DSCP
+	/* Update DSCP
+	 * DSCP rewrite table takes precedence over flow policy.
 	 */
-	if (unlikely(cm->flags & SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK)) {
+	if (unlikely(sfe_ipv6_dscp_rewrite_mark_to_match != 0 &&
+		     sfe_ipv6_dscp_rewrite_mark_to_match == cm->mark))
+		sfe_ipv6_change_dsfield(iph, sfe_ipv6_dscp_rewrite_dscp_to_set);
+	else if (unlikely(cm->flags &
+			  SFE_IPV6_CONNECTION_MATCH_FLAG_DSCP_REMARK))
 		sfe_ipv6_change_dsfield(iph, cm->dscp);
-	}
 
 	/*
 	 * Decrement our hop_limit.
@@ -3482,8 +3502,9 @@ EXPORT_SYMBOL(sfe_ipv6_create_rule);
 EXPORT_SYMBOL(sfe_ipv6_destroy_rule);
 EXPORT_SYMBOL(sfe_ipv6_destroy_all_rules_for_dev);
 EXPORT_SYMBOL(sfe_ipv6_register_sync_rule_callback);
-EXPORT_SYMBOL(sfe_ipv6_mark_rule);
 EXPORT_SYMBOL(sfe_ipv6_update_rule);
+EXPORT_SYMBOL(sfe_ipv6_mark_rule);
+EXPORT_SYMBOL(sfe_ipv6_set_dscp_rewrite);
 
 MODULE_DESCRIPTION("Shortcut Forwarding Engine - IPv6 support");
 MODULE_LICENSE("Dual BSD/GPL");
