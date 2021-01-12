@@ -488,6 +488,10 @@ typedef bool (*sfe_ipv4_debug_xml_write_method_t)(struct sfe_ipv4 *si, char *buf
 
 static struct sfe_ipv4 __si;
 
+/* SFE DSCP rewrite table. */
+static u32 sfe_ipv4_dscp_rewrite_mark_to_match;
+static u32 sfe_ipv4_dscp_rewrite_dscp_to_set;
+
 /*
  * sfe_ipv4_gen_ip_csum()
  *	Generate the IP checksum for an IPv4 header.
@@ -902,6 +906,16 @@ void sfe_ipv4_mark_rule(struct sfe_connection_mark *mark)
 	}
 }
 
+/* sfe_ipv4_set_dscp_rewrite()
+ *	Updates DSCP rewrite table.
+ */
+void sfe_ipv4_set_dscp_rewrite(u32 mark_to_match, u32 dscp_to_set)
+{
+	sfe_ipv4_dscp_rewrite_mark_to_match = mark_to_match;
+	sfe_ipv4_dscp_rewrite_dscp_to_set =
+	    dscp_to_set << SFE_IPV4_DSCP_SHIFT;
+}
+
 /*
  * sfe_ipv4_insert_sfe_ipv4_connection()
  *	Insert a connection into the hash.
@@ -1256,12 +1270,16 @@ static int sfe_ipv4_recv_udp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 	 * From this point on we're good to modify the packet.
 	 */
 
-	/*
-	 * Update DSCP
+	/* Update DSCP
+	 * DSCP rewrite table takes precedence over flow policy.
 	 */
-	if (unlikely(cm->flags & SFE_IPV4_CONNECTION_MATCH_FLAG_DSCP_REMARK)) {
+	if (unlikely(sfe_ipv4_dscp_rewrite_mark_to_match != 0 &&
+		     sfe_ipv4_dscp_rewrite_mark_to_match == cm->mark))
+		iph->tos = (iph->tos & SFE_IPV4_DSCP_MASK) |
+			   sfe_ipv4_dscp_rewrite_dscp_to_set;
+	else if (unlikely(cm->flags &
+			    SFE_IPV4_CONNECTION_MATCH_FLAG_DSCP_REMARK))
 		iph->tos = (iph->tos & SFE_IPV4_DSCP_MASK) | cm->dscp;
-	}
 
 	/*
 	 * Decrement our TTL.
@@ -1837,12 +1855,16 @@ static int sfe_ipv4_recv_tcp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 	 * From this point on we're good to modify the packet.
 	 */
 
-	/*
-	 * Update DSCP
+	/* Update DSCP
+	 * DSCP rewrite table takes precedence over flow policy.
 	 */
-	if (unlikely(cm->flags & SFE_IPV4_CONNECTION_MATCH_FLAG_DSCP_REMARK)) {
+	if (unlikely(sfe_ipv4_dscp_rewrite_mark_to_match != 0 &&
+		     sfe_ipv4_dscp_rewrite_mark_to_match == cm->mark))
+		iph->tos = (iph->tos & SFE_IPV4_DSCP_MASK) |
+			   sfe_ipv4_dscp_rewrite_dscp_to_set;
+	else if (unlikely(cm->flags &
+			    SFE_IPV4_CONNECTION_MATCH_FLAG_DSCP_REMARK))
 		iph->tos = (iph->tos & SFE_IPV4_DSCP_MASK) | cm->dscp;
-	}
 
 	/*
 	 * Decrement our TTL.
@@ -3490,8 +3512,9 @@ EXPORT_SYMBOL(sfe_ipv4_create_rule);
 EXPORT_SYMBOL(sfe_ipv4_destroy_rule);
 EXPORT_SYMBOL(sfe_ipv4_destroy_all_rules_for_dev);
 EXPORT_SYMBOL(sfe_ipv4_register_sync_rule_callback);
-EXPORT_SYMBOL(sfe_ipv4_mark_rule);
 EXPORT_SYMBOL(sfe_ipv4_update_rule);
+EXPORT_SYMBOL(sfe_ipv4_mark_rule);
+EXPORT_SYMBOL(sfe_ipv4_set_dscp_rewrite);
 
 MODULE_DESCRIPTION("Shortcut Forwarding Engine - IPv4 edition");
 MODULE_LICENSE("Dual BSD/GPL");

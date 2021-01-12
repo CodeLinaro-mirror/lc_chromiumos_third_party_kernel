@@ -117,6 +117,15 @@ static u32 sfe_bypass_mark;
 static int sfe_cm_udp_flow_accel_delay_pkts;
 static int sfe_cm_tcp_flow_accel_delay_pkts;
 
+/* SFE DSCP rewrite table.
+ * When `mark_to_match` is set non-zero then any packet with the specified
+ * skb->mark will override flow DSCP policy with `dscp_to_set` value.
+ * i.e. Basically equivalent to
+ * `iptables -m mark --mark <mark_to_match> -j DSCP --set-dscp <dscp_to_set>`
+ */
+static u32 sfe_cm_dscp_rewrite_mark_to_match;
+static u32 sfe_cm_dscp_rewrite_dscp_to_set;
+
 /*
  * sfe_cm_incr_exceptions()
  *	increase an exception counter.
@@ -1124,7 +1133,7 @@ sfe_cm_set_udp_flow_accel_delay_pkts(struct device *dev,
 	if (flow_accel_delay_pkts < 0)
 		return -EINVAL;
 
-	sfe_cm_udp_flow_accel_delay_pkts = flow_accel_delay_pkts
+	sfe_cm_udp_flow_accel_delay_pkts = flow_accel_delay_pkts;
 	DEBUG_TRACE("sfe_cm_udp_flow_accel_delay_pkts= %d\n",
 		    sfe_cm_udp_flow_accel_delay_pkts);
 	return count;
@@ -1153,9 +1162,71 @@ sfe_cm_set_tcp_flow_accel_delay_pkts(struct device *dev,
 	if (flow_accel_delay_pkts < 0)
 		return -EINVAL;
 
-	sfe_cm_tcp_flow_accel_delay_pkts = flow_accel_delay_pkts
+	sfe_cm_tcp_flow_accel_delay_pkts = flow_accel_delay_pkts;
 	DEBUG_TRACE("sfe_cm_tcp_flow_accel_delay_pkts= %d\n",
 		    sfe_cm_tcp_flow_accel_delay_pkts);
+	return count;
+}
+
+static ssize_t
+sfe_cm_get_dscp_rewrite_mark_to_match(struct device *dev,
+				      struct device_attribute *attr,
+				      char *buf)
+{
+	return snprintf(buf, (ssize_t)PAGE_SIZE, "0x%x\n",
+			sfe_cm_dscp_rewrite_mark_to_match);
+}
+
+static ssize_t
+sfe_cm_set_dscp_rewrite_mark_to_match(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	int ret;
+	u32 mark_to_match;
+
+	ret = kstrtou32(buf, 0, &mark_to_match);
+	if (ret)
+		return ret;
+
+	sfe_cm_dscp_rewrite_mark_to_match = mark_to_match;
+	DEBUG_TRACE("sfe_cm_dscp_rewrite_mark_to_match= 0x%x\n",
+		    sfe_cm_dscp_rewrite_mark_to_match);
+	sfe_ipv4_set_dscp_rewrite(sfe_cm_dscp_rewrite_mark_to_match,
+				  sfe_cm_dscp_rewrite_dscp_to_set);
+	sfe_ipv6_set_dscp_rewrite(sfe_cm_dscp_rewrite_mark_to_match,
+				  sfe_cm_dscp_rewrite_dscp_to_set);
+	return count;
+}
+
+static ssize_t
+sfe_cm_get_dscp_rewrite_dscp_to_set(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	return snprintf(buf, (ssize_t)PAGE_SIZE, "0x%x\n",
+			sfe_cm_dscp_rewrite_dscp_to_set);
+}
+
+static ssize_t
+sfe_cm_set_dscp_rewrite_dscp_to_set(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int ret;
+	u32 dscp_to_set;
+
+	ret = kstrtou32(buf, 0, &dscp_to_set);
+	if (ret)
+		return ret;
+
+	sfe_cm_dscp_rewrite_dscp_to_set = dscp_to_set;
+	DEBUG_TRACE("sfe_cm_dscp_rewrite_dscp_to_set= 0x%x\n",
+		    sfe_cm_dscp_rewrite_dscp_to_set);
+	sfe_ipv4_set_dscp_rewrite(sfe_cm_dscp_rewrite_mark_to_match,
+				  sfe_cm_dscp_rewrite_dscp_to_set);
+	sfe_ipv6_set_dscp_rewrite(sfe_cm_dscp_rewrite_mark_to_match,
+				  sfe_cm_dscp_rewrite_dscp_to_set);
 	return count;
 }
 
@@ -1176,6 +1247,12 @@ static const struct device_attribute sfe_attrs[] = {
 	__ATTR(tcp_flow_accel_delay_pkts, S_IWUSR | S_IRUGO,
 	       sfe_cm_get_tcp_flow_accel_delay_pkts,
 	       sfe_cm_set_tcp_flow_accel_delay_pkts),
+	__ATTR(dscp_rewrite_mark_to_match, S_IWUSR | S_IRUGO,
+	       sfe_cm_get_dscp_rewrite_mark_to_match,
+	       sfe_cm_set_dscp_rewrite_mark_to_match),
+	__ATTR(dscp_rewrite_dscp_to_set, S_IWUSR | S_IRUGO,
+	       sfe_cm_get_dscp_rewrite_dscp_to_set,
+	       sfe_cm_set_dscp_rewrite_dscp_to_set),
 };
 
 /*

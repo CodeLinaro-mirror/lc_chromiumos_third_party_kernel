@@ -177,6 +177,7 @@ void sfe_ipv4_destroy_all_rules_for_dev(struct net_device *dev);
 void sfe_ipv4_register_sync_rule_callback(sfe_sync_rule_callback_t callback);
 void sfe_ipv4_update_rule(struct sfe_connection_create *sic);
 void sfe_ipv4_mark_rule(struct sfe_connection_mark *mark);
+void sfe_ipv4_set_dscp_rewrite(u32 mark_to_match, u32 dscp_to_set);
 
 #ifdef SFE_SUPPORT_IPV6
 /*
@@ -189,6 +190,7 @@ void sfe_ipv6_destroy_all_rules_for_dev(struct net_device *dev);
 void sfe_ipv6_register_sync_rule_callback(sfe_sync_rule_callback_t callback);
 void sfe_ipv6_update_rule(struct sfe_connection_create *sic);
 void sfe_ipv6_mark_rule(struct sfe_connection_mark *mark);
+void sfe_ipv6_set_dscp_rewrite(u32 mark_to_match, u32 dscp_to_set);
 #else
 static inline int sfe_ipv6_recv(struct net_device *dev, struct sk_buff *skb)
 {
@@ -221,6 +223,12 @@ static inline void sfe_ipv6_update_rule(struct sfe_connection_create *sic)
 }
 
 static inline void sfe_ipv6_mark_rule(struct sfe_connection_mark *mark)
+{
+	return;
+}
+
+static inline void sfe_ipv6_set_dscp_rewrite(u32 mark_to_match,
+					     u32 dscp_to_set)
 {
 	return;
 }
