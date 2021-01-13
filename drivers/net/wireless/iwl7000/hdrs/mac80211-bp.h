@@ -2380,7 +2380,7 @@ LINUX_BACKPORT(cfg80211_ch_switch_started_notify)(struct net_device *dev,
 #define ETH_TLEN	2		/* Octets in ethernet type field */
 #endif
 
-#if CFG80211_VERSION >= KERNEL_VERSION(5, 10, 0)
+#if CFG80211_VERSION >= KERNEL_VERSION(5, 10, 255)
 /**
  * cfg80211_channel_is_psc - Check if the channel is a 6 GHz PSC
  * @chan: control channel to check
