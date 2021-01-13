@@ -133,6 +133,11 @@ DECLARE_RESTRICTED_HOOK(android_rvh_cpu_cgroup_can_attach,
 	TP_PROTO(struct cgroup_taskset *tset, int *retval),
 	TP_ARGS(tset, retval), 1);
 
+DECLARE_HOOK(android_vh_map_util_freq,
+	TP_PROTO(unsigned long util, unsigned long freq,
+		unsigned long cap, unsigned long *next_freq),
+	TP_ARGS(util, freq, cap, next_freq));
+
 struct em_perf_domain;
 DECLARE_HOOK(android_vh_em_cpu_energy,
 	TP_PROTO(struct em_perf_domain *pd,
