@@ -14,6 +14,9 @@
 
 #include <linux/rwsem.h>
 
+#define I2C_PROBE_DELAY_MS 30
+#define I2C_PROBE_RETRIES 5
+
 struct i2c_devinfo {
 	struct list_head	list;
 	int			busnum;

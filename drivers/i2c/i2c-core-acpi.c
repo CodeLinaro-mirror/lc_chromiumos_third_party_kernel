@@ -10,6 +10,7 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
@@ -184,8 +185,22 @@ static void i2c_acpi_register_device(struct i2c_adapter *adapter,
 
 	if (!acpi_dev_get_property(adev, "linux,probed", ACPI_TYPE_ANY, NULL)) {
 		unsigned short addrs[] = { info->addr, I2C_CLIENT_END };
+		int probe_retries = I2C_PROBE_RETRIES;
 
-		client = i2c_new_probed_device(adapter, info, addrs, NULL);
+		/* The device may be in deep sleep and will actually wake on
+		 * the rising edge of the I2C clock. It may then fail to
+		 * respond, so perform more reads.
+		 */
+		while (probe_retries--) {
+			/* Test address responsiveness */
+			client = i2c_new_probed_device(adapter, info, addrs,
+						       NULL);
+			if (client)
+				break;
+			msleep(I2C_PROBE_DELAY_MS);
+		}
+		dev_dbg(&adapter->dev, "Probe retries left: %d\n",
+			probe_retries);
 	} else {
 		client = i2c_new_device(adapter, info);
 	}

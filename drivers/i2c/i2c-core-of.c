@@ -13,6 +13,7 @@
  */
 
 #include <dt-bindings/i2c/i2c.h>
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
@@ -80,8 +81,23 @@ static struct i2c_client *of_i2c_register_device(struct i2c_adapter *adap,
 	/* Allow device property to enable probing before init */
 	if (of_get_property(node, "linux,probed", NULL)) {
 		unsigned short addrs[] = { info.addr, I2C_CLIENT_END };
+		int probe_retries = I2C_PROBE_RETRIES;
 
-		client = i2c_new_probed_device(adap, &info, addrs, NULL);
+		/* The device may be in deep sleep and will actually wake on
+		 * the rising edge of the I2C clock. It may then fail to
+		 * respond, so perform more reads.
+		 */
+		while (probe_retries--) {
+			/* Test address responsiveness */
+			client = i2c_new_probed_device(adap, &info, addrs,
+						       NULL);
+			if (client)
+				break;
+			msleep(I2C_PROBE_DELAY_MS);
+		}
+		dev_dbg(&adap->dev, "Probe retries left: %d\n",
+			probe_retries);
+
 	} else {
 		client = i2c_new_device(adap, &info);
 	}
