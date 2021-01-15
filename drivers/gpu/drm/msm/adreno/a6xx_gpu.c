@@ -14,6 +14,79 @@
 
 #define GPU_PAS_ID 13
 
+static const u32 a6xx_protect[] = {
+	A6XX_PROTECT_RDONLY(0x600, 0x51),
+	A6XX_PROTECT_RW(0xae50, 0x2),
+	A6XX_PROTECT_RW(0x9624, 0x13),
+	A6XX_PROTECT_RW(0x8630, 0x8),
+	A6XX_PROTECT_RW(0x9e70, 0x1),
+	A6XX_PROTECT_RW(0x9e78, 0x187),
+	A6XX_PROTECT_RW(0xf000, 0x810),
+	A6XX_PROTECT_RDONLY(0xfc00, 0x3),
+	A6XX_PROTECT_RW(0x50e, 0x0),
+	A6XX_PROTECT_RDONLY(0x50f, 0x0),
+	A6XX_PROTECT_RW(0x510, 0x0),
+	A6XX_PROTECT_RDONLY(0x0, 0x4f9),
+	A6XX_PROTECT_RDONLY(0x501, 0xa),
+	A6XX_PROTECT_RDONLY(0x511, 0x44),
+	A6XX_PROTECT_RW(0xe00, 0xe),
+	A6XX_PROTECT_RW(0x8e00, 0x0),
+	A6XX_PROTECT_RW(0x8e50, 0xf),
+	A6XX_PROTECT_RW(0xbe02, 0x0),
+	A6XX_PROTECT_RW(0xbe20, 0x11f3),
+	A6XX_PROTECT_RW(0x800, 0x82),
+	A6XX_PROTECT_RW(0x8a0, 0x8),
+	A6XX_PROTECT_RW(0x8ab, 0x19),
+	A6XX_PROTECT_RW(0x900, 0x4d),
+	A6XX_PROTECT_RW(0x98d, 0x76),
+	A6XX_PROTECT_RDONLY(0x980, 0x4),
+	A6XX_PROTECT_RW(0xa630, 0x0),
+};
+
+static const u32 a635_protect[] = {
+	A6XX_PROTECT_RDONLY(0x0, 0x4ff),
+	A6XX_PROTECT_RDONLY(0x501, 0x5),
+	A6XX_PROTECT_RDONLY(0x50b, 0x2f4),
+	A6XX_PROTECT_RW(0x50e, 0x0),
+	A6XX_PROTECT_RW(0x510, 0x0),
+	A6XX_PROTECT_RW(0x534, 0x0),
+	A6XX_PROTECT_RW(0x800, 0x82),
+	A6XX_PROTECT_RW(0x8a0, 0x8),
+	A6XX_PROTECT_RW(0x8ab, 0x24),
+	A6XX_PROTECT_RDONLY(0x8d0, 0xbc),
+	A6XX_PROTECT_RW(0x900, 0x4d),
+	A6XX_PROTECT_RW(0x98d, 0x272),
+	A6XX_PROTECT_RW(0xe00, 0x1),
+	A6XX_PROTECT_RW(0xe03, 0xc),
+	A6XX_PROTECT_RW(0x3c00, 0xc3),
+	A6XX_PROTECT_RDONLY(0x3cc4, 0x1fff),
+	A6XX_PROTECT_RW(0x8630, 0x1cf),
+	A6XX_PROTECT_RW(0x8e00, 0x0),
+	A6XX_PROTECT_RW(0x8e08, 0x0),
+	A6XX_PROTECT_RW(0x8e50, 0x1f),
+	A6XX_PROTECT_RW(0x8e80, 0x27f),
+	A6XX_PROTECT_RW(0x9624, 0x1db),
+	A6XX_PROTECT_RW(0x9e60, 0x11),
+	A6XX_PROTECT_RW(0x9e78, 0x187),
+	A6XX_PROTECT_RW(0xa630, 0x1cf),
+	A6XX_PROTECT_RW(0xae02, 0x0),
+	A6XX_PROTECT_RW(0xae50, 0x12f),
+	A6XX_PROTECT_RW(0xb604, 0x0),
+	A6XX_PROTECT_RW(0xb608, 0x6),
+	A6XX_PROTECT_RW(0xbe02, 0x1),
+	A6XX_PROTECT_RW(0xbe20, 0x15f),
+	A6XX_PROTECT_RW(0xd000, 0x5ff),
+	A6XX_PROTECT_RW(0xf000, 0xbff),
+	A6XX_PROTECT_RDONLY(0xfc00, 0x1fff),
+	A6XX_PROTECT_RW(0x18400, 0x1fff),
+	A6XX_PROTECT_RW(0x1a400, 0x1fff),
+	A6XX_PROTECT_RW(0x1f400, 0x443),
+	A6XX_PROTECT_RDONLY(0x1f844, 0x7b),
+	A6XX_PROTECT_RW(0x1f860, 0x0),
+	A6XX_PROTECT_RW(0x1f887, 0x1b),
+	A6XX_PROTECT_RW(0x1f8c0, 0x0),
+};
+
 static inline bool _a6xx_check_idle(struct msm_gpu *gpu)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
@@ -484,6 +557,13 @@ static void a6xx_set_ubwc_config(struct msm_gpu *gpu)
 		uavflagprd_inv = 2;
 	}
 
+	if (adreno_is_a635(adreno_gpu)) {
+		lower_bit = 1;
+		amsbc = 1;
+		rgb565_predicator = 1;
+		uavflagprd_inv = 2;
+	}
+
 	gpu_write(gpu, REG_A6XX_RB_NC_MODE_CNTL,
 		rgb565_predicator << 11 | amsbc << 4 | lower_bit << 1);
 	gpu_write(gpu, REG_A6XX_TPL1_NC_MODE_CNTL, lower_bit << 1);
@@ -588,6 +668,24 @@ static int a6xx_zap_shader_init(struct msm_gpu *gpu)
 	return ret;
 }
 
+static void a6xx_protect_init(struct msm_gpu *gpu)
+{
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	unsigned int i, count = ARRAY_SIZE(a6xx_protect);
+	const u32 *regs = a6xx_protect;
+
+	if (adreno_is_a635(adreno_gpu)) {
+		regs = a635_protect;
+		count = ARRAY_SIZE(a635_protect);
+	}
+
+	/* Protect registers from the CP */
+	gpu_write(gpu, REG_A6XX_CP_PROTECT_CNTL, 0x00000003);
+
+	for (i = 0; i < count; i++)
+		gpu_write(gpu, REG_A6XX_CP_PROTECT(i), regs[i]);
+}
+
 #define A6XX_INT_MASK (A6XX_RBBM_INT_0_MASK_CP_AHB_ERROR | \
 	  A6XX_RBBM_INT_0_MASK_RBBM_ATB_ASYNCFIFO_OVERFLOW | \
 	  A6XX_RBBM_INT_0_MASK_CP_HW_ERROR | \
@@ -638,7 +736,8 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 	a6xx_set_hwcg(gpu, true);
 
 	/* VBIF/GBIF start*/
-	if (adreno_is_a640(adreno_gpu) || adreno_is_a650(adreno_gpu)) {
+	if (adreno_is_a640(adreno_gpu) || adreno_is_a650(adreno_gpu) ||
+			adreno_is_a635(adreno_gpu)) {
 		gpu_write(gpu, REG_A6XX_GBIF_QSB_SIDE0, 0x00071620);
 		gpu_write(gpu, REG_A6XX_GBIF_QSB_SIDE1, 0x00071620);
 		gpu_write(gpu, REG_A6XX_GBIF_QSB_SIDE2, 0x00071620);
@@ -647,6 +746,16 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 		gpu_write(gpu, REG_A6XX_RBBM_GBIF_CLIENT_QOS_CNTL, 0x3);
 	} else {
 		gpu_write(gpu, REG_A6XX_RBBM_VBIF_CLIENT_QOS_CNTL, 0x3);
+	}
+
+	if (adreno_is_a635(adreno_gpu)) {
+		/* Configure CHICKEN_DBG to improve CP boot latency */
+		gpu_write(gpu, REG_A6XX_CP_CHICKEN_DBG, 0x1);
+		/*
+		 * Disable GBIF_CLIENT_QOS on a635 to avoid priority levels
+		 * getting flopped.
+		 */
+		gpu_write(gpu, REG_A6XX_RBBM_GBIF_CLIENT_QOS_CNTL, 0x0);
 	}
 
 	if (adreno_is_a630(adreno_gpu))
@@ -663,7 +772,8 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 	gpu_write(gpu, REG_A6XX_UCHE_WRITE_THRU_BASE_LO, 0xfffff000);
 	gpu_write(gpu, REG_A6XX_UCHE_WRITE_THRU_BASE_HI, 0x0001ffff);
 
-	if (!adreno_is_a650(adreno_gpu)) {
+	if (adreno_is_a630(adreno_gpu) || adreno_is_a618(adreno_gpu)
+			|| adreno_is_a640(adreno_gpu)) {
 		/* Set the GMEM VA range [0x100000:0x100000 + gpu->gmem - 1] */
 		gpu_write64(gpu, REG_A6XX_UCHE_GMEM_RANGE_MIN_LO,
 			REG_A6XX_UCHE_GMEM_RANGE_MIN_HI, 0x00100000);
@@ -676,22 +786,31 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 	gpu_write(gpu, REG_A6XX_UCHE_FILTER_CNTL, 0x804);
 	gpu_write(gpu, REG_A6XX_UCHE_CACHE_WAYS, 0x4);
 
-	if (adreno_is_a640(adreno_gpu) || adreno_is_a650(adreno_gpu))
-		gpu_write(gpu, REG_A6XX_CP_ROQ_THRESHOLDS_2, 0x02000140);
-	else
+	if (adreno_is_a630(adreno_gpu) || adreno_is_a618(adreno_gpu))
 		gpu_write(gpu, REG_A6XX_CP_ROQ_THRESHOLDS_2, 0x010000c0);
+	else
+		gpu_write(gpu, REG_A6XX_CP_ROQ_THRESHOLDS_2, 0x02000140);
+
 	gpu_write(gpu, REG_A6XX_CP_ROQ_THRESHOLDS_1, 0x8040362c);
 
 	/* Setting the mem pool size */
 	gpu_write(gpu, REG_A6XX_CP_MEM_POOL_SIZE, 128);
 
+	if (adreno_is_a635(adreno_gpu))
+		gpu_write(gpu, REG_A6XX_CP_LPAC_PROG_FIFO_SIZE, 0x00000020);
+
 	/* Setting the primFifo thresholds default values */
 	if (adreno_is_a650(adreno_gpu))
 		gpu_write(gpu, REG_A6XX_PC_DBG_ECO_CNTL, 0x00300000);
-	else if (adreno_is_a640(adreno_gpu))
+	else if (adreno_is_a640(adreno_gpu) || adreno_is_a635(adreno_gpu))
 		gpu_write(gpu, REG_A6XX_PC_DBG_ECO_CNTL, 0x00200000);
 	else
 		gpu_write(gpu, REG_A6XX_PC_DBG_ECO_CNTL, (0x300 << 11));
+
+	/* Set the bit vccCacheSkipDis=1 to get rid of TSEskip logic */
+	if (adreno_is_a640(adreno_gpu) || adreno_is_a650(adreno_gpu)
+			|| adreno_is_a635(adreno_gpu))
+		gpu_rmw(gpu, REG_A6XX_PC_DBG_ECO_CNTL, 0, (1 << 9));
 
 	/* Set the AHB default slave response to "ERROR" */
 	gpu_write(gpu, REG_A6XX_CP_AHB_CNTL, 0x1);
@@ -711,7 +830,7 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 	gpu_write(gpu, REG_A6XX_UCHE_CLIENT_PF, 1);
 
 	/* Set weights for bicubic filtering */
-	if (adreno_is_a650(adreno_gpu)) {
+	if (adreno_is_a650(adreno_gpu) || adreno_is_a635(adreno_gpu)) {
 		gpu_write(gpu, REG_A6XX_TPL1_BICUBIC_WEIGHTS_TABLE_0, 0);
 		gpu_write(gpu, REG_A6XX_TPL1_BICUBIC_WEIGHTS_TABLE_1,
 			0x3fe05ff4);
@@ -723,42 +842,7 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 			0x3f0243f0);
 	}
 
-	/* Protect registers from the CP */
-	gpu_write(gpu, REG_A6XX_CP_PROTECT_CNTL, 0x00000003);
-
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(0),
-		A6XX_PROTECT_RDONLY(0x600, 0x51));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(1), A6XX_PROTECT_RW(0xae50, 0x2));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(2), A6XX_PROTECT_RW(0x9624, 0x13));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(3), A6XX_PROTECT_RW(0x8630, 0x8));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(4), A6XX_PROTECT_RW(0x9e70, 0x1));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(5), A6XX_PROTECT_RW(0x9e78, 0x187));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(6), A6XX_PROTECT_RW(0xf000, 0x810));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(7),
-		A6XX_PROTECT_RDONLY(0xfc00, 0x3));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(8), A6XX_PROTECT_RW(0x50e, 0x0));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(9), A6XX_PROTECT_RDONLY(0x50f, 0x0));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(10), A6XX_PROTECT_RW(0x510, 0x0));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(11),
-		A6XX_PROTECT_RDONLY(0x0, 0x4f9));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(12),
-		A6XX_PROTECT_RDONLY(0x501, 0xa));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(13),
-		A6XX_PROTECT_RDONLY(0x511, 0x44));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(14), A6XX_PROTECT_RW(0xe00, 0xe));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(15), A6XX_PROTECT_RW(0x8e00, 0x0));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(16), A6XX_PROTECT_RW(0x8e50, 0xf));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(17), A6XX_PROTECT_RW(0xbe02, 0x0));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(18),
-		A6XX_PROTECT_RW(0xbe20, 0x11f3));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(19), A6XX_PROTECT_RW(0x800, 0x82));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(20), A6XX_PROTECT_RW(0x8a0, 0x8));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(21), A6XX_PROTECT_RW(0x8ab, 0x19));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(22), A6XX_PROTECT_RW(0x900, 0x4d));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(23), A6XX_PROTECT_RW(0x98d, 0x76));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(24),
-			A6XX_PROTECT_RDONLY(0x980, 0x4));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(25), A6XX_PROTECT_RW(0xa630, 0x0));
+	a6xx_protect_init(gpu);
 
 	/* Enable expanded apriv for targets that support it */
 	if (gpu->hw_apriv) {
@@ -1038,15 +1122,18 @@ static void a6xx_llc_deactivate(struct a6xx_gpu *a6xx_gpu)
 	llcc_slice_deactivate(a6xx_gpu->htw_llc_slice);
 }
 
-static void a6xx_llc_activate(struct a6xx_gpu *a6xx_gpu)
+static void a6xx_llc_activate(struct msm_gpu *gpu)
 {
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	u32 cntl1_regval = 0;
+	u32 gpu_scid;
 
 	if (IS_ERR(a6xx_gpu->llc_mmio))
 		return;
 
 	if (!llcc_slice_activate(a6xx_gpu->llc_slice)) {
-		u32 gpu_scid = llcc_get_slice_id(a6xx_gpu->llc_slice);
+		gpu_scid = llcc_get_slice_id(a6xx_gpu->llc_slice);
 
 		gpu_scid &= 0x1f;
 		cntl1_regval = (gpu_scid << 0) | (gpu_scid << 5) | (gpu_scid << 10) |
@@ -1060,19 +1147,28 @@ static void a6xx_llc_activate(struct a6xx_gpu *a6xx_gpu)
 		cntl1_regval |= FIELD_PREP(GENMASK(29, 25), gpuhtw_scid);
 	}
 
-	if (cntl1_regval) {
-		/*
-		 * Program the slice IDs for the various GPU blocks and GPU MMU
-		 * pagetables
-		 */
-		a6xx_llc_write(a6xx_gpu, REG_A6XX_CX_MISC_SYSTEM_CACHE_CNTL_1, cntl1_regval);
+	if (!cntl1_regval)
+		return;
 
-		/*
-		 * Program cacheability overrides to not allocate cache lines on
-		 * a write miss
-		 */
-		a6xx_llc_rmw(a6xx_gpu, REG_A6XX_CX_MISC_SYSTEM_CACHE_CNTL_0, 0xF, 0x03);
+	if (adreno_is_a635(adreno_gpu)) {
+		gpu_rmw(gpu, REG_A6XX_GBIF_SCACHE_CNTL1, 0x1ffffff, cntl1_regval);
+
+		gpu_rmw(gpu, REG_A6XX_GBIF_SCACHE_CNTL0, (0x1f << 10) |
+			(1 << 8), (gpu_scid << 10) | (1 << 8));
+		return;
 	}
+
+	/*
+	 * Program the slice IDs for the various GPU blocks and GPU MMU
+	 * pagetables
+	 */
+	a6xx_llc_write(a6xx_gpu, REG_A6XX_CX_MISC_SYSTEM_CACHE_CNTL_1, cntl1_regval);
+
+	/*
+	 * Program cacheability overrides to not allocate cache lines on
+	 * a write miss
+	 */
+	a6xx_llc_rmw(a6xx_gpu, REG_A6XX_CX_MISC_SYSTEM_CACHE_CNTL_0, 0xF, 0x03);
 }
 
 static void a6xx_llc_slices_destroy(struct a6xx_gpu *a6xx_gpu)
@@ -1111,7 +1207,7 @@ static int a6xx_pm_resume(struct msm_gpu *gpu)
 
 	msm_gpu_resume_devfreq(gpu);
 
-	a6xx_llc_activate(a6xx_gpu);
+	a6xx_llc_activate(gpu);
 
 	return 0;
 }
@@ -1294,7 +1390,7 @@ struct msm_gpu *a6xx_gpu_init(struct drm_device *dev)
 	 */
 	info = adreno_info(config->rev);
 
-	if (info && info->revn == 650)
+	if (info && (info->revn == 650 || info->revn == 635))
 		adreno_gpu->base.hw_apriv = true;
 
 	a6xx_llc_slices_init(pdev, a6xx_gpu);

@@ -206,6 +206,17 @@ static const struct adreno_info gpulist[] = {
 		.zapfw = "a630_zap.mdt",
 		.hwcg = a630_hwcg,
 	}, {
+		.rev = ADRENO_REV(6, 3, 5, ANY_ID),
+		.revn = 635,
+		.name = "A635",
+		.fw = {
+			[ADRENO_FW_SQE] = "a660_sqe.fw",
+			[ADRENO_FW_GMU] = "a660_gmu.bin",
+		},
+		.gmem = SZ_512K,
+		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
+		.init = a6xx_gpu_init,
+	}, {
 		.rev = ADRENO_REV(6, 4, 0, ANY_ID),
 		.revn = 640,
 		.name = "A640",
