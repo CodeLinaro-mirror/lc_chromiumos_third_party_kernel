@@ -253,10 +253,7 @@ static ssize_t chromeos_vbc_nvram_write(const void *buf, size_t count)
 static ssize_t show_acpi_attribute(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
-	struct acpi_attribute *paa;
-
-	paa = container_of(attr, struct acpi_attribute, dev_attr);
-	return snprintf(buf, PAGE_SIZE, "%s", paa->value);
+  return 0;
 }
 
 /*
