@@ -470,3 +470,5 @@
 		qcom,ee = <0>;
 	};
 };
+
+#include "sc7280-regulator.dtsi"
