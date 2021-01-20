@@ -52,6 +52,8 @@
 
 #define INTF_SC7180_MASK BIT(DPU_INTF_INPUT_CTRL) | BIT(DPU_INTF_TE)
 
+#define INTF_SC7280_MASK INTF_SC7180_MASK | BIT(DPU_DATA_HCTL_EN)
+
 #define DEFAULT_PIXEL_RAM_SIZE		(50 * 1024)
 #define DEFAULT_DPU_LINE_WIDTH		2048
 #define DEFAULT_DPU_OUTPUT_LINE_WIDTH	2560
@@ -663,9 +665,9 @@ static const struct dpu_intf_cfg sm8150_intf[] = {
 };
 
 static const struct dpu_intf_cfg sc7280_intf[] = {
-	INTF_BLK("intf_0", INTF_0, 0x34000, INTF_DP, 0, INTF_SC7180_MASK),
-	INTF_BLK("intf_1", INTF_1, 0x35000, INTF_DSI, 0, INTF_SC7180_MASK),
-	INTF_BLK("intf_5", INTF_5, 0x39000, INTF_DP, 0, INTF_SC7180_MASK),
+	INTF_BLK("intf_0", INTF_0, 0x34000, INTF_DP, 0, INTF_SC7280_MASK),
+	INTF_BLK("intf_1", INTF_1, 0x35000, INTF_DSI, 0, INTF_SC7280_MASK),
+	INTF_BLK("intf_5", INTF_5, 0x39000, INTF_DP, 1, INTF_SC7280_MASK),
 };
 
 /*************************************************************
