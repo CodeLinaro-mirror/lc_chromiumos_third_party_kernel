@@ -1045,6 +1045,7 @@ static void sc7280_cfg_init(struct dpu_mdss_cfg *dpu_cfg)
 		.vbif_count = ARRAY_SIZE(sdm845_vbif),
 		.vbif = sdm845_vbif,
 		.perf = sc7280_perf_data,
+		.mdss_irqs = 0x1c07,
 	};
 }
 
