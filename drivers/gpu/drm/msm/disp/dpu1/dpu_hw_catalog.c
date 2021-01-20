@@ -41,6 +41,9 @@
 #define PINGPONG_SDM845_SPLIT_MASK \
 	(PINGPONG_SDM845_MASK | BIT(DPU_PINGPONG_TE2))
 
+#define CTL_SC7280_MASK \
+	(BIT(DPU_CTL_ACTIVE_CFG) | BIT(DPU_CTL_FETCH_ACTIVE))
+
 #define MERGE_3D_SM8150_MASK (0)
 
 #define DSPP_SC7180_MASK BIT(DPU_DSPP_PCC)
@@ -308,22 +311,22 @@ static const struct dpu_ctl_cfg sc7280_ctl[] = {
 	{
 	.name = "ctl_0", .id = CTL_0,
 	.base = 0x15000, .len = 0x1E8,
-	.features = BIT(DPU_CTL_ACTIVE_CFG)
+	.features = CTL_SC7280_MASK
 	},
 	{
 	.name = "ctl_1", .id = CTL_1,
 	.base = 0x16000, .len = 0x1E8,
-	.features = BIT(DPU_CTL_ACTIVE_CFG)
+	.features = CTL_SC7280_MASK
 	},
 	{
 	.name = "ctl_2", .id = CTL_2,
 	.base = 0x17000, .len = 0x1E8,
-	.features = BIT(DPU_CTL_ACTIVE_CFG)
+	.features = CTL_SC7280_MASK
 	},
 	{
 	.name = "ctl_3", .id = CTL_3,
 	.base = 0x18000, .len = 0x1E8,
-	.features = BIT(DPU_CTL_ACTIVE_CFG)
+	.features = CTL_SC7280_MASK
 	},
 };
 
