@@ -274,3 +274,21 @@ const struct msm_dsi_phy_cfg dsi_phy_7nm_8150_cfgs = {
 	.io_start = { 0xae94400, 0xae96400 },
 	.num_dsi_phy = 2,
 };
+
+const struct msm_dsi_phy_cfg dsi_phy_7nm_7280_cfgs = {
+	.type = MSM_DSI_PHY_7NM_V4_1,
+	.src_pll_truthtable = { {false, false}, {true, false} },
+	.reg_cfg = {
+		.num = 1,
+		.regs = {
+			{"vdds", 37550, 0},
+		},
+	},
+	.ops = {
+		.enable = dsi_7nm_phy_enable,
+		.disable = dsi_7nm_phy_disable,
+		.init = dsi_7nm_phy_init,
+	},
+	.io_start = { 0xae94400, 0xae96400 },
+	.num_dsi_phy = 2,
+};
