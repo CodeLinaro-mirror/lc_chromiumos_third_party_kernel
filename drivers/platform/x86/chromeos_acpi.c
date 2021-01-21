@@ -254,6 +254,12 @@ static ssize_t show_acpi_attribute(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	struct acpi_attribute *paa;
+	static int skip_first_read = 0;
+
+	if (strncmp(attr->attr.name,"BINF.3",6)== 0 && skip_first_read == 0) {
+		skip_first_read = 1;
+		return 0;
+	}
 
 	paa = container_of(attr, struct acpi_attribute, dev_attr);
 	return snprintf(buf, PAGE_SIZE, "%s", paa->value);
