@@ -3556,7 +3556,14 @@
 		#interrupt-cells = <4>;
 		cell-index = <0>;
 	};
+
+	thermal_zones: thermal-zones {
+	};
 };
 
 #include "pm7325b.dtsi"
 #include "sc7280-regulator.dtsi"
+#include "pm7325.dtsi"
+#include "pm8350c.dtsi"
+#include "pmk8350.dtsi"
+#include "pmr735a.dtsi"
