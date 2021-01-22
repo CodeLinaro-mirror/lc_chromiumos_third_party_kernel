@@ -4,3 +4,5 @@ obj-$(CONFIG_QCOM_TSENS)	+= qcom_tsens.o
 qcom_tsens-y			+= tsens.o tsens-v2.o tsens-v1.o tsens-v0_1.o \
 				   tsens-8960.o
 obj-$(CONFIG_QCOM_SPMI_TEMP_ALARM)	+= qcom-spmi-temp-alarm.o
+obj-$(CONFIG_QCOM_ADC_TM) += qcom-adc-tm.o
+qcom-adc-tm-y += adc-tm.o adc-tm-common.o adc-tm7.o
