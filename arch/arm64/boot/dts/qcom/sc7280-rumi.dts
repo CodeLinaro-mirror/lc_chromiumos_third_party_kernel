@@ -86,11 +86,50 @@
 	firmware-name = "mba.mbn", "qdsp6sw.mbn";
 };
 
+&qspi {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&qspi_clk>, <&qspi_cs0>, <&qspi_data01>;
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+
+		/* TODO: Increase frequency after testing */
+		spi-max-frequency = <25000000>;
+		spi-tx-bus-width = <2>;
+		spi-rx-bus-width = <2>;
+	};
+};
+
 &uart5 {
 	status = "okay";
 };
 
 /* PINCTRL - additions to nodes defined in sc7280.dtsi */
+
+&qspi_cs0 {
+	pinconf {
+		pins = "gpio15";
+		bias-disable;
+	};
+};
+
+&qspi_clk {
+	pinconf {
+		pins = "gpio14";
+		bias-disable;
+	};
+};
+
+&qspi_data01 {
+	pinconf {
+		pins = "gpio12", "gpio13";
+
+		/* High-Z when no transfers; nice to park the lines */
+		bias-pull-up;
+	};
+};
 
 &qup_uart5_default {
 	pinconf-tx {
