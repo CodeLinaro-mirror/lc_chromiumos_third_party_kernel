@@ -3247,7 +3247,7 @@
 			clocks = <&rpmhcc RPMH_CXO_CLK>,
 				<&rpmhcc RPMH_CXO_CLK_A>,
 				<&gcc GCC_CAMERA_AHB_CLK>;
-			clock-names = "bi_tcxo", "bi_tcxo_ao", "cfg_ahb";
+			clock-names = "bi_tcxo", "bi_tcxo_ao", "iface";
 			#clock-cells = <1>;
 			#reset-cells = <1>;
 			#power-domain-cells = <1>;
@@ -3482,6 +3482,18 @@
 
 				vdds-supply = "&vreg_l10c_0p8";
 			};
+		};
+
+		lpasscc: clock-controller@3000000 {
+			compatible = "qcom,sc7280-lpasscc";
+			reg = <0 0x03389000 0 0x24>,
+				<0 0x03C04000 0 0x4>,
+				<0 0x03000000 0 0x40>;
+			reg-names = "cc", "top_cc", "qdsp6ss";
+			clocks = <&gcc GCC_CFG_NOC_LPASS_CLK>;
+			clock-names = "cfg_ahb";
+			#clock-cells = <1>;
+			#power-domain-cells = <1>;
 		};
 	};
 
