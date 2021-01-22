@@ -374,6 +374,7 @@ config ARM_SBSA_WATCHDOG
 config ARMADA_37XX_WATCHDOG
 	tristate "Armada 37xx watchdog"
 	depends on ARCH_MVEBU || COMPILE_TEST
+	depends on HAS_IOMEM
 	select MFD_SYSCON
 	select WATCHDOG_CORE
 	help
@@ -617,7 +618,7 @@ config SUNXI_WATCHDOG
 
 config COH901327_WATCHDOG
 	bool "ST-Ericsson COH 901 327 watchdog"
-	depends on ARCH_U300 || (ARM && COMPILE_TEST)
+	depends on ARCH_U300 || (ARM && COMMON_CLK && COMPILE_TEST)
 	default y if MACH_U300
 	select WATCHDOG_CORE
 	help
@@ -774,6 +775,7 @@ config MOXART_WDT
 
 config SIRFSOC_WATCHDOG
 	tristate "SiRFSOC watchdog"
+	depends on HAS_IOMEM
 	depends on ARCH_SIRF || COMPILE_TEST
 	select WATCHDOG_CORE
 	default y
@@ -857,6 +859,19 @@ config DIGICOLOR_WATCHDOG
 	  in Conexant Digicolor SoCs.
 	  To compile this driver as a module, choose M here: the
 	  module will be called digicolor_wdt.
+
+config ARM_SMC_WATCHDOG
+	tristate "ARM Secure Monitor Call based watchdog support"
+	depends on ARM || ARM64
+	depends on OF
+	depends on HAVE_ARM_SMCCC
+	select WATCHDOG_CORE
+	help
+	  Say Y here to include support for a watchdog timer
+	  implemented by the EL3 Secure Monitor on ARM platforms.
+	  Requires firmware support.
+	  To compile this driver as a module, choose M here: the
+	  module will be called arm_smc_wdt.
 
 config LPC18XX_WATCHDOG
 	tristate "LPC18xx/43xx Watchdog"
@@ -1208,6 +1223,7 @@ config ITCO_WDT
 	depends on (X86 || IA64) && PCI
 	select WATCHDOG_CORE
 	depends on I2C || I2C=n
+	depends on MFD_INTEL_PMC_BXT || !MFD_INTEL_PMC_BXT
 	select LPC_ICH if !EXPERT
 	select I2C_I801 if !EXPERT && I2C
 	---help---

@@ -4,11 +4,14 @@
 //
 //Copyright 2016 Advanced Micro Devices, Inc.
 
+#include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/pm_runtime.h>
+#include <linux/sysfs.h>
+#include <linux/workqueue.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/soc-dai.h>
@@ -72,6 +75,7 @@ static irqreturn_t i2s_irq_handler(int irq, void *dev_id)
 	play_flag = 0;
 	cap_flag = 0;
 	val = rv_readl(rv_i2s_data->acp3x_base + mmACP_EXTERNAL_INTR_STAT);
+
 	if ((val & BIT(BT_TX_THRESHOLD)) && rv_i2s_data->play_stream) {
 		rv_writel(BIT(BT_TX_THRESHOLD), rv_i2s_data->acp3x_base +
 			  mmACP_EXTERNAL_INTR_STAT);
@@ -238,14 +242,68 @@ static int acp3x_dma_open(struct snd_soc_component *component,
 	}
 
 	if (!adata->play_stream && !adata->capture_stream &&
-		adata->i2ssp_play_stream && !adata->i2ssp_capture_stream)
+	    !adata->i2ssp_play_stream && !adata->i2ssp_capture_stream) {
 		rv_writel(1, adata->acp3x_base + mmACP_EXTERNAL_INTR_ENB);
+		schedule_work(&adata->work);
+	}
 
 	i2s_data->acp3x_base = adata->acp3x_base;
 	runtime->private_data = i2s_data;
 	return ret;
 }
 
+
+static void acp_intr_work(struct work_struct *work)
+{
+	u32 val;
+	struct i2s_dev_data *adata =
+		container_of(work, struct i2s_dev_data, work);
+
+	/* sleep and check status bits */
+	for (;;) {
+		val = rv_readl(adata->acp3x_base + mmACP_EXTERNAL_INTR_STAT);
+		if ((val & BIT(BT_TX_THRESHOLD)) &&
+		    (val & BIT(BT_RX_THRESHOLD))) {
+			rv_writel(BIT(BT_TX_THRESHOLD), adata->acp3x_base +
+				  mmACP_EXTERNAL_INTR_STAT);
+			snd_pcm_period_elapsed(adata->play_stream);
+			rv_writel(BIT(BT_RX_THRESHOLD), adata->acp3x_base +
+				  mmACP_EXTERNAL_INTR_STAT);
+			snd_pcm_period_elapsed(adata->capture_stream);
+		}
+		if ((val & BIT(I2S_TX_THRESHOLD)) &&
+		    (val & BIT(BT_RX_THRESHOLD))) {
+			rv_writel(BIT(I2S_TX_THRESHOLD), adata->acp3x_base +
+				  mmACP_EXTERNAL_INTR_STAT);
+			snd_pcm_period_elapsed(adata->i2ssp_play_stream);
+			rv_writel(BIT(BT_RX_THRESHOLD), adata->acp3x_base +
+				  mmACP_EXTERNAL_INTR_STAT);
+			snd_pcm_period_elapsed(adata->capture_stream);
+		}
+		if ((val & BIT(BT_TX_THRESHOLD)) &&
+		    (val & BIT(I2S_RX_THRESHOLD))) {
+			rv_writel(BIT(BT_TX_THRESHOLD), adata->acp3x_base +
+				  mmACP_EXTERNAL_INTR_STAT);
+			snd_pcm_period_elapsed(adata->play_stream);
+			rv_writel(BIT(I2S_RX_THRESHOLD), adata->acp3x_base +
+				  mmACP_EXTERNAL_INTR_STAT);
+			snd_pcm_period_elapsed(adata->i2ssp_capture_stream);
+		}
+		if ((val & BIT(I2S_TX_THRESHOLD)) &&
+		    (val & BIT(I2S_RX_THRESHOLD))) {
+			rv_writel(BIT(I2S_TX_THRESHOLD), adata->acp3x_base +
+				  mmACP_EXTERNAL_INTR_STAT);
+			snd_pcm_period_elapsed(adata->i2ssp_play_stream);
+			rv_writel(BIT(I2S_RX_THRESHOLD), adata->acp3x_base +
+				  mmACP_EXTERNAL_INTR_STAT);
+			snd_pcm_period_elapsed(adata->i2ssp_capture_stream);
+		}
+		val = rv_readl(adata->acp3x_base + mmACP_EXTERNAL_INTR_ENB);
+		if (!val)
+			break;
+		usleep_range(adata->sleep_us, adata->sleep_us + 10);
+	}
+}
 
 static int acp3x_dma_hw_params(struct snd_soc_component *component,
 			       struct snd_pcm_substream *substream,
@@ -295,6 +353,9 @@ static int acp3x_dma_hw_params(struct snd_soc_component *component,
 	rtd->dma_addr = substream->dma_buffer.addr;
 	rtd->num_pages = (PAGE_ALIGN(size) >> PAGE_SHIFT);
 	config_acp3x_dma(rtd, substream->stream);
+	adata->sleep_us = 1000000 / params_rate(params) *
+			   params_period_size(params);
+
 	return 0;
 }
 
@@ -303,7 +364,6 @@ static snd_pcm_uframes_t acp3x_dma_pointer(struct snd_soc_component *component,
 {
 	struct snd_soc_pcm_runtime *prtd;
 	struct snd_soc_card *card;
-	struct acp3x_platform_info *pinfo;
 	struct i2s_stream_instance *rtd;
 	u32 pos;
 	u32 buffersize;
@@ -312,13 +372,6 @@ static snd_pcm_uframes_t acp3x_dma_pointer(struct snd_soc_component *component,
 	prtd = substream->private_data;
 	card = prtd->card;
 	rtd = substream->runtime->private_data;
-	pinfo = snd_soc_card_get_drvdata(card);
-	if (pinfo) {
-		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-			rtd->i2s_instance = pinfo->play_i2s_instance;
-		else
-			rtd->i2s_instance = pinfo->cap_i2s_instance;
-	}
 
 	buffersize = frames_to_bytes(substream->runtime,
 				     substream->runtime->buffer_size);
@@ -350,25 +403,44 @@ static int acp3x_dma_close(struct snd_soc_component *component,
 {
 	struct snd_soc_pcm_runtime *prtd;
 	struct i2s_dev_data *adata;
+	struct i2s_stream_instance *ins;
 
 	prtd = substream->private_data;
 	component = snd_soc_rtdcom_lookup(prtd, DRV_NAME);
 	adata = dev_get_drvdata(component->dev);
+	ins = substream->runtime->private_data;
+	if (!ins)
+		return -EINVAL;
 
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		switch (ins->i2s_instance) {
+		case I2S_BT_INSTANCE:
+			adata->play_stream = NULL;
+			break;
+		case I2S_SP_INSTANCE:
+		default:
+			adata->i2ssp_play_stream = NULL;
+		}
+	} else {
+		switch (ins->i2s_instance) {
+		case I2S_BT_INSTANCE:
+			adata->capture_stream = NULL;
+			break;
+		case I2S_SP_INSTANCE:
+		default:
+			adata->i2ssp_capture_stream = NULL;
+		}
+	}
 
 	/* Disable ACP irq, when the current stream is being closed and
 	 * another stream is also not active.
 	 */
 	if (!adata->play_stream && !adata->capture_stream &&
-		!adata->i2ssp_play_stream && !adata->i2ssp_capture_stream)
+	    !adata->i2ssp_play_stream && !adata->i2ssp_capture_stream) {
 		rv_writel(0, adata->acp3x_base + mmACP_EXTERNAL_INTR_ENB);
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		adata->play_stream = NULL;
-		adata->i2ssp_play_stream = NULL;
-	} else {
-		adata->capture_stream = NULL;
-		adata->i2ssp_capture_stream = NULL;
+		cancel_work_sync(&adata->work);
 	}
+
 	return 0;
 }
 
@@ -432,6 +504,8 @@ static int acp3x_audio_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "ACP3x I2S IRQ request failed\n");
 		return -ENODEV;
 	}
+
+	INIT_WORK(&adata->work, acp_intr_work);
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 2000);
 	pm_runtime_use_autosuspend(&pdev->dev);

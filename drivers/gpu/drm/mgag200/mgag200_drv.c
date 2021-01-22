@@ -47,7 +47,7 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 
 static int mga_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
-	drm_fb_helper_remove_conflicting_pci_framebuffers(pdev, 0, "mgag200drmfb");
+	drm_fb_helper_remove_conflicting_pci_framebuffers(pdev, "mgag200drmfb");
 
 	return drm_get_pci_dev(pdev, ent, &driver);
 }
@@ -90,7 +90,7 @@ int mgag200_driver_dumb_create(struct drm_file *file,
 		pg_align = PFN_UP(mdev->mc.vram_size);
 
 	return drm_gem_vram_fill_create_dumb(file, dev, &dev->vram_mm->bdev,
-					     pg_align, false, args);
+					     pg_align, 0, false, args);
 }
 
 static struct drm_driver driver = {

@@ -140,6 +140,7 @@ unsigned name_to_int(const struct qstr *qstr);
  * array.c
  */
 extern const struct file_operations proc_tid_children_operations;
+extern const struct file_operations proc_tid_latsense_operations;
 
 extern void proc_task_name(struct seq_file *m, struct task_struct *p,
 			   bool escape);
@@ -208,6 +209,7 @@ struct pde_opener {
 extern const struct inode_operations proc_link_inode_operations;
 extern const struct inode_operations proc_pid_link_inode_operations;
 extern const struct super_operations proc_sops;
+extern const struct file_operations proc_reclaim_operations;
 
 void proc_init_kmemcache(void);
 void set_proc_pid_nlink(void);
@@ -312,3 +314,10 @@ extern unsigned long task_statm(struct mm_struct *,
 				unsigned long *, unsigned long *,
 				unsigned long *, unsigned long *);
 extern void task_mem(struct seq_file *, struct mm_struct *);
+
+extern const struct dentry_operations proc_net_dentry_ops;
+static inline void pde_force_lookup(struct proc_dir_entry *pde)
+{
+	/* /proc/net/ entries can be changed under us by setns(CLONE_NEWNET) */
+	pde->proc_dops = &proc_net_dentry_ops;
+}

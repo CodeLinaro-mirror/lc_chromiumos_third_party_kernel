@@ -10,6 +10,12 @@
 #define __RT5682_H__
 
 #include <sound/rt5682.h>
+#include <linux/regulator/consumer.h>
+#include <linux/clk.h>
+#include <linux/clkdev.h>
+#include <linux/clk-provider.h>
+#include <linux/soundwire/sdw.h>
+#include <linux/soundwire/sdw_type.h>
 
 #define DEVICE_ID 0x6530
 
@@ -651,6 +657,8 @@
 #define RT5682_DMIC_1_EN_SFT			15
 #define RT5682_DMIC_1_DIS			(0x0 << 15)
 #define RT5682_DMIC_1_EN			(0x1 << 15)
+#define RT5682_FIFO_CLK_DIV_MASK		(0x7 << 12)
+#define RT5682_FIFO_CLK_DIV_2			(0x1 << 12)
 #define RT5682_DMIC_1_DP_MASK			(0x3 << 4)
 #define RT5682_DMIC_1_DP_SFT			4
 #define RT5682_DMIC_1_DP_GPIO2			(0x0 << 4)
@@ -1072,6 +1080,10 @@
 #define RT5682_PLL2F_N_SFT			8
 
 /* PLL2 M/N/K Code Control 2 (0x009e) */
+#define RT5682_PLL2B_SEL_PS_MASK		(0x1 << 13)
+#define RT5682_PLL2B_SEL_PS_SFT			13
+#define RT5682_PLL2B_PS_BYP_MASK		(0x1 << 12)
+#define RT5682_PLL2B_PS_BYP_SFT			12
 #define RT5682_PLL2B_M_BP_MASK			(0x1 << 11)
 #define RT5682_PLL2B_M_BP_SFT			11
 #define RT5682_PLL2F_M_BP_MASK			(0x1 << 7)
@@ -1259,6 +1271,20 @@
 #define RT5682_CP_CLK_HP_300KHZ			(0x2 << 4)
 #define RT5682_CP_CLK_HP_600KHZ			(0x3 << 4)
 
+/* Pad Driving Control (0x0136) */
+#define RT5682_PAD_DRV_GP1_MASK			(0x3 << 14)
+#define RT5682_PAD_DRV_GP1_SFT			14
+#define RT5682_PAD_DRV_GP2_MASK			(0x3 << 12)
+#define RT5682_PAD_DRV_GP2_SFT			12
+#define RT5682_PAD_DRV_GP3_MASK			(0x3 << 10)
+#define RT5682_PAD_DRV_GP3_SFT			10
+#define RT5682_PAD_DRV_GP4_MASK			(0x3 << 8)
+#define RT5682_PAD_DRV_GP4_SFT			8
+#define RT5682_PAD_DRV_GP5_MASK			(0x3 << 6)
+#define RT5682_PAD_DRV_GP5_SFT			6
+#define RT5682_PAD_DRV_GP6_MASK			(0x3 << 4)
+#define RT5682_PAD_DRV_GP6_SFT			4
+
 /* Chopper and Clock control for DAC (0x013a)*/
 #define RT5682_CKXEN_DAC1_MASK			(0x1 << 13)
 #define RT5682_CKXEN_DAC1_SFT			13
@@ -1329,6 +1355,13 @@
 #define RT5682_SAR_SOUR_BTN			(0x3f)
 #define RT5682_SAR_SOUR_TYPE			(0x0)
 
+/* soundwire timeout */
+#define RT5682_PROBE_TIMEOUT			2000
+
+
+#define RT5682_STEREO_RATES SNDRV_PCM_RATE_8000_192000
+#define RT5682_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE | \
+		SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S8)
 
 /* System Clock Source */
 enum {
@@ -1355,6 +1388,7 @@ enum {
 enum {
 	RT5682_AIF1,
 	RT5682_AIF2,
+	RT5682_SDW,
 	RT5682_AIFS
 };
 
@@ -1370,7 +1404,66 @@ enum {
 	RT5682_CLK_SEL_I2S2_ASRC,
 };
 
+#define RT5682_NUM_SUPPLIES 3
+
+struct rt5682_priv {
+	struct snd_soc_component *component;
+	struct rt5682_platform_data pdata;
+	struct regmap *regmap;
+	struct regmap *sdw_regmap;
+	struct snd_soc_jack *hs_jack;
+	struct regulator_bulk_data supplies[RT5682_NUM_SUPPLIES];
+	struct delayed_work jack_detect_work;
+	struct delayed_work jd_check_work;
+	struct mutex calibrate_mutex;
+	struct sdw_slave *slave;
+	enum sdw_slave_status status;
+	struct sdw_bus_params params;
+	bool hw_init;
+	bool first_hw_init;
+	bool is_sdw;
+
+#ifdef CONFIG_COMMON_CLK
+	struct clk_hw dai_clks_hw[RT5682_DAI_NUM_CLKS];
+	struct clk *mclk;
+#endif
+
+	int sysclk;
+	int sysclk_src;
+	int lrck[RT5682_AIFS];
+	int bclk[RT5682_AIFS];
+	int master[RT5682_AIFS];
+
+	int pll_src[RT5682_PLLS];
+	int pll_in[RT5682_PLLS];
+	int pll_out[RT5682_PLLS];
+
+	int jack_type;
+};
+
+extern const char *rt5682_supply_names[RT5682_NUM_SUPPLIES];
+
 int rt5682_sel_asrc_clk_src(struct snd_soc_component *component,
 		unsigned int filter_mask, unsigned int clk_src);
+
+void rt5682_apply_patch_list(struct rt5682_priv *rt5682, struct device *dev);
+
+int rt5682_headset_detect(struct snd_soc_component *component, int jack_insert);
+void rt5682_jack_detect_handler(struct work_struct *work);
+
+bool rt5682_volatile_register(struct device *dev, unsigned int reg);
+bool rt5682_readable_register(struct device *dev, unsigned int reg);
+
+int rt5682_register_component(struct device *dev);
+void rt5682_calibrate(struct rt5682_priv *rt5682);
+void rt5682_reset(struct rt5682_priv *rt5682);
+int rt5682_parse_dt(struct rt5682_priv *rt5682, struct device *dev);
+
+#define RT5682_REG_NUM 318
+extern const struct reg_default rt5682_reg[RT5682_REG_NUM];
+
+extern const struct snd_soc_dai_ops rt5682_aif1_dai_ops;
+extern const struct snd_soc_dai_ops rt5682_aif2_dai_ops;
+extern const struct snd_soc_component_driver rt5682_soc_component_dev;
 
 #endif /* __RT5682_H__ */

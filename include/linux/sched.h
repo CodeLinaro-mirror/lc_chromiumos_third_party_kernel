@@ -675,16 +675,33 @@ struct task_struct {
 	const struct sched_class	*sched_class;
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
+	struct sched_dl_entity		dl;
+
+#ifdef CONFIG_SCHED_CORE
+	struct rb_node			core_node;
+	unsigned long			core_cookie;
+	unsigned int			core_occupation;
+#endif
+
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group		*sched_task_group;
 #endif
-	struct sched_dl_entity		dl;
 
 #ifdef CONFIG_UCLAMP_TASK
-	/* Clamp values requested for a scheduling entity */
+	/*
+	 * Clamp values requested for a scheduling entity.
+	 * Must be updated with task_rq_lock() held.
+	 */
 	struct uclamp_se		uclamp_req[UCLAMP_CNT];
-	/* Effective clamp values used for a scheduling entity */
+	/*
+	 * Effective clamp values used for a scheduling entity.
+	 * Must be updated with task_rq_lock() held.
+	 */
 	struct uclamp_se		uclamp[UCLAMP_CNT];
+#endif
+
+#ifdef CONFIG_PROC_LATSENSE
+	int proc_latency_sensitive;
 #endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
@@ -1610,6 +1627,9 @@ extern int idle_cpu(int cpu);
 extern int available_idle_cpu(int cpu);
 extern int sched_setscheduler(struct task_struct *, int, const struct sched_param *);
 extern int sched_setscheduler_nocheck(struct task_struct *, int, const struct sched_param *);
+extern int sched_set_fifo(struct task_struct *p);
+extern int sched_set_fifo_low(struct task_struct *p);
+extern int sched_set_normal(struct task_struct *p, int nice);
 extern int sched_setattr(struct task_struct *, const struct sched_attr *);
 extern int sched_setattr_nocheck(struct task_struct *, const struct sched_attr *);
 extern struct task_struct *idle_task(int cpu);
@@ -1676,6 +1696,7 @@ extern struct task_struct *find_get_task_by_vpid(pid_t nr);
 
 extern int wake_up_state(struct task_struct *tsk, unsigned int state);
 extern int wake_up_process(struct task_struct *tsk);
+extern int wake_up_process_prefer_current_cpu(struct task_struct *tsk);
 extern void wake_up_new_task(struct task_struct *tsk);
 
 #ifdef CONFIG_SMP
@@ -2000,5 +2021,17 @@ const struct sched_avg *sched_trace_rq_avg_irq(struct rq *rq);
 int sched_trace_rq_cpu(struct rq *rq);
 
 const struct cpumask *sched_trace_rd_span(struct root_domain *rd);
+
+#ifdef CONFIG_SCHED_CORE
+int task_set_core_sched(int set, struct task_struct *tsk, unsigned long cookie);
+void sched_core_irq_enter(void);
+void sched_core_irq_exit(void);
+void sched_core_user_enter(void);
+#else
+#define task_set_core_sched(set, tsk, cookie) (-EINVAL)
+#define sched_core_irq_enter(void) do { } while (0)
+#define sched_core_irq_exit(void) do { } while (0)
+#define sched_core_user_enter(void) do { } while (0)
+#endif
 
 #endif

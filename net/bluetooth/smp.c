@@ -2401,12 +2401,17 @@ int smp_conn_security(struct hci_conn *hcon, __u8 sec_level)
 			authreq |= SMP_AUTH_CT2;
 	}
 
-	/* Require MITM if IO Capability allows or the security level
-	 * requires it.
+	/* Don't attempt to set MITM if setting is overridden by debugfs
+	 * Needed to pass certification test SM/MAS/PKE/BV-01-C
 	 */
-	if (hcon->io_capability != HCI_IO_NO_INPUT_OUTPUT ||
-	    hcon->pending_sec_level > BT_SECURITY_MEDIUM)
-		authreq |= SMP_AUTH_MITM;
+	if (!hci_dev_test_flag(hcon->hdev, HCI_FORCE_NO_MITM)) {
+		/* Require MITM if IO Capability allows or the security level
+		 * requires it.
+		 */
+		if (hcon->io_capability != HCI_IO_NO_INPUT_OUTPUT ||
+		    hcon->pending_sec_level > BT_SECURITY_MEDIUM)
+			authreq |= SMP_AUTH_MITM;
+	}
 
 	if (hcon->role == HCI_ROLE_MASTER) {
 		struct smp_cmd_pairing cp;
@@ -3354,31 +3359,8 @@ static void smp_del_chan(struct l2cap_chan *chan)
 	l2cap_chan_put(chan);
 }
 
-static ssize_t force_bredr_smp_read(struct file *file,
-				    char __user *user_buf,
-				    size_t count, loff_t *ppos)
+int smp_force_bredr(struct hci_dev *hdev, bool enable)
 {
-	struct hci_dev *hdev = file->private_data;
-	char buf[3];
-
-	buf[0] = hci_dev_test_flag(hdev, HCI_FORCE_BREDR_SMP) ? 'Y': 'N';
-	buf[1] = '\n';
-	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
-}
-
-static ssize_t force_bredr_smp_write(struct file *file,
-				     const char __user *user_buf,
-				     size_t count, loff_t *ppos)
-{
-	struct hci_dev *hdev = file->private_data;
-	bool enable;
-	int err;
-
-	err = kstrtobool_from_user(user_buf, count, &enable);
-	if (err)
-		return err;
-
 	if (enable == hci_dev_test_flag(hdev, HCI_FORCE_BREDR_SMP))
 		return -EALREADY;
 
@@ -3400,103 +3382,8 @@ static ssize_t force_bredr_smp_write(struct file *file,
 
 	hci_dev_change_flag(hdev, HCI_FORCE_BREDR_SMP);
 
-	return count;
+	return 0;
 }
-
-static const struct file_operations force_bredr_smp_fops = {
-	.open		= simple_open,
-	.read		= force_bredr_smp_read,
-	.write		= force_bredr_smp_write,
-	.llseek		= default_llseek,
-};
-
-static ssize_t le_min_key_size_read(struct file *file,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
-{
-	struct hci_dev *hdev = file->private_data;
-	char buf[4];
-
-	snprintf(buf, sizeof(buf), "%2u\n", hdev->le_min_key_size);
-
-	return simple_read_from_buffer(user_buf, count, ppos, buf, strlen(buf));
-}
-
-static ssize_t le_min_key_size_write(struct file *file,
-				      const char __user *user_buf,
-				      size_t count, loff_t *ppos)
-{
-	struct hci_dev *hdev = file->private_data;
-	char buf[32];
-	size_t buf_size = min(count, (sizeof(buf) - 1));
-	u8 key_size;
-
-	if (copy_from_user(buf, user_buf, buf_size))
-		return -EFAULT;
-
-	buf[buf_size] = '\0';
-
-	sscanf(buf, "%hhu", &key_size);
-
-	if (key_size > hdev->le_max_key_size ||
-	    key_size < SMP_MIN_ENC_KEY_SIZE)
-		return -EINVAL;
-
-	hdev->le_min_key_size = key_size;
-
-	return count;
-}
-
-static const struct file_operations le_min_key_size_fops = {
-	.open		= simple_open,
-	.read		= le_min_key_size_read,
-	.write		= le_min_key_size_write,
-	.llseek		= default_llseek,
-};
-
-static ssize_t le_max_key_size_read(struct file *file,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
-{
-	struct hci_dev *hdev = file->private_data;
-	char buf[4];
-
-	snprintf(buf, sizeof(buf), "%2u\n", hdev->le_max_key_size);
-
-	return simple_read_from_buffer(user_buf, count, ppos, buf, strlen(buf));
-}
-
-static ssize_t le_max_key_size_write(struct file *file,
-				      const char __user *user_buf,
-				      size_t count, loff_t *ppos)
-{
-	struct hci_dev *hdev = file->private_data;
-	char buf[32];
-	size_t buf_size = min(count, (sizeof(buf) - 1));
-	u8 key_size;
-
-	if (copy_from_user(buf, user_buf, buf_size))
-		return -EFAULT;
-
-	buf[buf_size] = '\0';
-
-	sscanf(buf, "%hhu", &key_size);
-
-	if (key_size > SMP_MAX_ENC_KEY_SIZE ||
-	    key_size < hdev->le_min_key_size)
-		return -EINVAL;
-
-	hdev->le_max_key_size = key_size;
-
-	return count;
-}
-
-static const struct file_operations le_max_key_size_fops = {
-	.open		= simple_open,
-	.read		= le_max_key_size_read,
-	.write		= le_max_key_size_write,
-	.llseek		= default_llseek,
-};
 
 int smp_register(struct hci_dev *hdev)
 {
@@ -3522,22 +3409,7 @@ int smp_register(struct hci_dev *hdev)
 
 	hdev->smp_data = chan;
 
-	debugfs_create_file("le_min_key_size", 0644, hdev->debugfs, hdev,
-			    &le_min_key_size_fops);
-	debugfs_create_file("le_max_key_size", 0644, hdev->debugfs, hdev,
-			    &le_max_key_size_fops);
-
-	/* If the controller does not support BR/EDR Secure Connections
-	 * feature, then the BR/EDR SMP channel shall not be present.
-	 *
-	 * To test this with Bluetooth 4.0 controllers, create a debugfs
-	 * switch that allows forcing BR/EDR SMP support and accepting
-	 * cross-transport pairing on non-AES encrypted connections.
-	 */
 	if (!lmp_sc_capable(hdev)) {
-		debugfs_create_file("force_bredr_smp", 0644, hdev->debugfs,
-				    hdev, &force_bredr_smp_fops);
-
 		/* Flag can be already set here (due to power toggle) */
 		if (!hci_dev_test_flag(hdev, HCI_FORCE_BREDR_SMP))
 			return 0;

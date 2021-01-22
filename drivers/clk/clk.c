@@ -114,7 +114,11 @@ static int clk_pm_runtime_get(struct clk_core *core)
 		return 0;
 
 	ret = pm_runtime_get_sync(core->dev);
-	return ret < 0 ? ret : 0;
+	if (ret < 0) {
+		pm_runtime_put_noidle(core->dev);
+		return ret;
+	}
+	return 0;
 }
 
 static void clk_pm_runtime_put(struct clk_core *core)
@@ -4685,7 +4689,7 @@ EXPORT_SYMBOL(of_clk_get_by_name);
  *
  * Returns: The number of clocks that are possible parents of this node
  */
-unsigned int of_clk_get_parent_count(struct device_node *np)
+unsigned int of_clk_get_parent_count(const struct device_node *np)
 {
 	int count;
 
@@ -4697,7 +4701,7 @@ unsigned int of_clk_get_parent_count(struct device_node *np)
 }
 EXPORT_SYMBOL_GPL(of_clk_get_parent_count);
 
-const char *of_clk_get_parent_name(struct device_node *np, int index)
+const char *of_clk_get_parent_name(const struct device_node *np, int index)
 {
 	struct of_phandle_args clkspec;
 	struct property *prop;

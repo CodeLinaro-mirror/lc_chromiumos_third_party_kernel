@@ -258,7 +258,7 @@ sd_alloc_ctl_domain_table(struct sched_domain *sd)
 	set_table_entry(&table[2], "busy_factor",	  &sd->busy_factor,	    sizeof(int),  0644, proc_dointvec_minmax);
 	set_table_entry(&table[3], "imbalance_pct",	  &sd->imbalance_pct,	    sizeof(int),  0644, proc_dointvec_minmax);
 	set_table_entry(&table[4], "cache_nice_tries",	  &sd->cache_nice_tries,    sizeof(int),  0644, proc_dointvec_minmax);
-	set_table_entry(&table[5], "flags",		  &sd->flags,		    sizeof(int),  0644, proc_dointvec_minmax);
+	set_table_entry(&table[5], "flags",		  &sd->flags,		    sizeof(int),  0444, proc_dointvec_minmax);
 	set_table_entry(&table[6], "max_newidle_lb_cost", &sd->max_newidle_lb_cost, sizeof(long), 0644, proc_doulongvec_minmax);
 	set_table_entry(&table[7], "name",		  sd->name,	       CORENAME_MAX_SIZE, 0444, proc_dostring);
 	/* &table[8] is terminator */
@@ -498,7 +498,7 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 	SEQ_printf(m, "  .%-30s: %Ld.%06ld\n", "exec_clock",
 			SPLIT_NS(cfs_rq->exec_clock));
 
-	raw_spin_lock_irqsave(&rq->lock, flags);
+	raw_spin_lock_irqsave(rq_lockp(rq), flags);
 	if (rb_first_cached(&cfs_rq->tasks_timeline))
 		MIN_vruntime = (__pick_first_entity(cfs_rq))->vruntime;
 	last = __pick_last_entity(cfs_rq);
@@ -506,7 +506,7 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 		max_vruntime = last->vruntime;
 	min_vruntime = cfs_rq->min_vruntime;
 	rq0_min_vruntime = cpu_rq(0)->cfs.min_vruntime;
-	raw_spin_unlock_irqrestore(&rq->lock, flags);
+	raw_spin_unlock_irqrestore(rq_lockp(rq), flags);
 	SEQ_printf(m, "  .%-30s: %Ld.%06ld\n", "MIN_vruntime",
 			SPLIT_NS(MIN_vruntime));
 	SEQ_printf(m, "  .%-30s: %Ld.%06ld\n", "min_vruntime",
@@ -731,6 +731,10 @@ static void sched_debug_header(struct seq_file *m)
 		"sysctl_sched_tunable_scaling",
 		sysctl_sched_tunable_scaling,
 		sched_tunable_scaling_names[sysctl_sched_tunable_scaling]);
+#ifdef CONFIG_SCHED_CORE
+	SEQ_printf(m, "  .%-40s: %d\n", "core_sched_enabled",
+		   !!static_branch_likely(&__sched_core_enabled));
+#endif
 	SEQ_printf(m, "\n");
 }
 
@@ -811,10 +815,12 @@ static int __init init_sched_debug_procfs(void)
 
 __initcall(init_sched_debug_procfs);
 
-#define __P(F)	SEQ_printf(m, "%-45s:%21Ld\n",	     #F, (long long)F)
-#define   P(F)	SEQ_printf(m, "%-45s:%21Ld\n",	     #F, (long long)p->F)
-#define __PN(F)	SEQ_printf(m, "%-45s:%14Ld.%06ld\n", #F, SPLIT_NS((long long)F))
-#define   PN(F)	SEQ_printf(m, "%-45s:%14Ld.%06ld\n", #F, SPLIT_NS((long long)p->F))
+#define __PS(S, F) SEQ_printf(m, "%-45s:%21Ld\n", S, (long long)(F))
+#define __P(F) __PS(#F, F)
+#define   P(F) __PS(#F, p->F)
+#define __PSN(S, F) SEQ_printf(m, "%-45s:%14Ld.%06ld\n", S, SPLIT_NS((long long)(F)))
+#define __PN(F) __PSN(#F, F)
+#define   PN(F) __PSN(#F, p->F)
 
 
 #ifdef CONFIG_NUMA_BALANCING
@@ -863,18 +869,9 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 	SEQ_printf(m,
 		"---------------------------------------------------------"
 		"----------\n");
-#define __P(F) \
-	SEQ_printf(m, "%-45s:%21Ld\n", #F, (long long)F)
-#define P(F) \
-	SEQ_printf(m, "%-45s:%21Ld\n", #F, (long long)p->F)
-#define P_SCHEDSTAT(F) \
-	SEQ_printf(m, "%-45s:%21Ld\n", #F, (long long)schedstat_val(p->F))
-#define __PN(F) \
-	SEQ_printf(m, "%-45s:%14Ld.%06ld\n", #F, SPLIT_NS((long long)F))
-#define PN(F) \
-	SEQ_printf(m, "%-45s:%14Ld.%06ld\n", #F, SPLIT_NS((long long)p->F))
-#define PN_SCHEDSTAT(F) \
-	SEQ_printf(m, "%-45s:%14Ld.%06ld\n", #F, SPLIT_NS((long long)schedstat_val(p->F)))
+
+#define P_SCHEDSTAT(F)  __PS(#F, schedstat_val(p->F))
+#define PN_SCHEDSTAT(F) __PSN(#F, schedstat_val(p->F))
 
 	PN(se.exec_start);
 	PN(se.vruntime);
@@ -934,10 +931,8 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 	}
 
 	__P(nr_switches);
-	SEQ_printf(m, "%-45s:%21Ld\n",
-		   "nr_voluntary_switches", (long long)p->nvcsw);
-	SEQ_printf(m, "%-45s:%21Ld\n",
-		   "nr_involuntary_switches", (long long)p->nivcsw);
+	__PS("nr_voluntary_switches", p->nvcsw);
+	__PS("nr_involuntary_switches", p->nivcsw);
 
 	P(se.load.weight);
 	P(se.runnable_weight);
@@ -952,6 +947,12 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 	P(se.avg.util_est.ewma);
 	P(se.avg.util_est.enqueued);
 #endif
+#ifdef CONFIG_UCLAMP_TASK
+	__PS("uclamp.min", p->uclamp_req[UCLAMP_MIN].value);
+	__PS("uclamp.max", p->uclamp_req[UCLAMP_MAX].value);
+	__PS("effective uclamp.min", uclamp_eff_value(p, UCLAMP_MIN));
+	__PS("effective uclamp.max", uclamp_eff_value(p, UCLAMP_MAX));
+#endif
 	P(policy);
 	P(prio);
 	if (task_has_dl_policy(p)) {
@@ -959,11 +960,7 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 		P(dl.deadline);
 	}
 #undef PN_SCHEDSTAT
-#undef PN
-#undef __PN
 #undef P_SCHEDSTAT
-#undef P
-#undef __P
 
 	{
 		unsigned int this_cpu = raw_smp_processor_id();
@@ -971,9 +968,12 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 
 		t0 = cpu_clock(this_cpu);
 		t1 = cpu_clock(this_cpu);
-		SEQ_printf(m, "%-45s:%21Ld\n",
-			   "clock-delta", (long long)(t1-t0));
+		__PS("clock-delta", t1-t0);
 	}
+
+#ifdef CONFIG_SCHED_CORE
+	__PS("core_cookie", p->core_cookie);
+#endif
 
 	sched_show_numa(p, m);
 }

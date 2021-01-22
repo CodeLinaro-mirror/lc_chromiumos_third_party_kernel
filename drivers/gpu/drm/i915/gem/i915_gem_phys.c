@@ -16,6 +16,7 @@
 #include "gt/intel_gt.h"
 #include "i915_drv.h"
 #include "i915_gem_object.h"
+#include "i915_gem_region.h"
 #include "i915_scatterlist.h"
 
 static int i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
@@ -28,7 +29,8 @@ static int i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
 	void *dst;
 	int i;
 
-	if (WARN_ON(i915_gem_object_needs_bit17_swizzle(obj)))
+	if (drm_WARN_ON(obj->base.dev,
+			i915_gem_object_needs_bit17_swizzle(obj)))
 		return -EINVAL;
 
 	/*
@@ -165,7 +167,7 @@ int i915_gem_object_attach_phys(struct drm_i915_gem_object *obj, int align)
 	if (err)
 		return err;
 
-	mutex_lock(&obj->mm.lock);
+	mutex_lock_nested(&obj->mm.lock, I915_MM_GET_PAGES);
 
 	if (obj->mm.madv != I915_MADV_WILLNEED) {
 		err = -EFAULT;
@@ -193,8 +195,10 @@ int i915_gem_object_attach_phys(struct drm_i915_gem_object *obj, int align)
 	/* Perma-pin (until release) the physical set of pages */
 	__i915_gem_object_pin_pages(obj);
 
-	if (!IS_ERR_OR_NULL(pages))
+	if (!IS_ERR_OR_NULL(pages)) {
 		i915_gem_shmem_ops.put_pages(obj, pages);
+		i915_gem_object_release_memory_region(obj);
+	}
 	mutex_unlock(&obj->mm.lock);
 	return 0;
 

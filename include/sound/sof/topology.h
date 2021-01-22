@@ -38,6 +38,7 @@ enum sof_comp_type {
 	SOF_COMP_DEMUX,
 	SOF_COMP_ASRC,		/**< Asynchronous sample rate converter */
 	SOF_COMP_DCBLOCK,
+	SOF_COMP_SMART_AMP,             /**< smart amplifier component */
 	/* keep FILEREAD/FILEWRITE as the last ones */
 	SOF_COMP_FILEREAD = 10000,	/**< host test based file IO */
 	SOF_COMP_FILEWRITE = 10001,	/**< host test based file IO */
@@ -56,8 +57,8 @@ struct sof_ipc_comp {
 	uint32_t pipeline_id;
 	uint32_t core;
 
-	/* reserved for future use */
-	uint32_t reserved[1];
+	/* extended data length, 0 if no extended data */
+	uint32_t ext_data_length;
 } __packed;
 
 /*
@@ -85,6 +86,9 @@ struct sof_ipc_comp {
  * underrun will cause readback of 0s, instead of XRUN.
  */
 #define SOF_BUF_UNDERRUN_PERMITTED	BIT(1)
+
+/* the UUID size in bytes, shared between FW and host */
+#define SOF_UUID_SIZE	16
 
 /* create new component buffer - SOF_IPC_TPLG_BUFFER_NEW */
 struct sof_ipc_buffer {
@@ -220,6 +224,7 @@ enum sof_ipc_process_type {
 	SOF_PROCESS_MUX,
 	SOF_PROCESS_DEMUX,
 	SOF_PROCESS_DCBLOCK,
+	SOF_PROCESS_SMART_AMP,	/**< Smart Amplifier */
 };
 
 /* generic "effect", "codec" or proprietary processing component */
@@ -297,5 +302,10 @@ enum sof_event_types {
 	SOF_EVENT_NONE = 0,
 	SOF_KEYWORD_DETECT_DAPM_EVENT,
 };
+
+/* extended data struct for UUID components */
+struct sof_ipc_comp_ext {
+	uint8_t uuid[SOF_UUID_SIZE];
+}  __packed;
 
 #endif

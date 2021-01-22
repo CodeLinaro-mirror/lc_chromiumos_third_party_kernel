@@ -273,6 +273,13 @@ restart:
 	/* Reset the pending bitmask before enabling irqs */
 	set_softirq_pending(0);
 
+	/*
+	 * Core scheduling mitigations require entry into softirq to send stall
+	 * IPIs to sibling hyperthreads if needed (ex, sibling is running
+	 * untrusted task). If we are here from irq_exit(), no IPIs are sent.
+	 */
+	sched_core_irq_enter();
+
 	local_irq_enable();
 
 	h = softirq_vec;
@@ -304,6 +311,9 @@ restart:
 	if (__this_cpu_read(ksoftirqd) == current)
 		rcu_softirq_qs();
 	local_irq_disable();
+
+	/* Inform the scheduler about exit from softirq. */
+	sched_core_irq_exit();
 
 	pending = local_softirq_pending();
 	if (pending) {
@@ -345,6 +355,7 @@ asmlinkage __visible void do_softirq(void)
 void irq_enter(void)
 {
 	rcu_irq_enter();
+	sched_core_irq_enter();
 	if (is_idle_task(current) && !in_interrupt()) {
 		/*
 		 * Prevent raise_softirq from needlessly waking up ksoftirqd
@@ -413,6 +424,7 @@ void irq_exit(void)
 		invoke_softirq();
 
 	tick_irq_exit();
+	sched_core_irq_exit();
 	rcu_irq_exit();
 	trace_hardirq_exit(); /* must be last! */
 }
@@ -520,7 +532,10 @@ static void tasklet_action_common(struct softirq_action *a,
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED,
 							&t->state))
 					BUG();
-				t->func(t->data);
+				if (t->use_callback)
+					t->callback(t);
+				else
+					t->func(t->data);
 				tasklet_unlock(t);
 				continue;
 			}
@@ -546,6 +561,18 @@ static __latent_entropy void tasklet_hi_action(struct softirq_action *a)
 	tasklet_action_common(a, this_cpu_ptr(&tasklet_hi_vec), HI_SOFTIRQ);
 }
 
+void tasklet_setup(struct tasklet_struct *t,
+		   void (*callback)(struct tasklet_struct *))
+{
+	t->next = NULL;
+	t->state = 0;
+	atomic_set(&t->count, 0);
+	t->callback = callback;
+	t->use_callback = true;
+	t->data = 0;
+}
+EXPORT_SYMBOL(tasklet_setup);
+
 void tasklet_init(struct tasklet_struct *t,
 		  void (*func)(unsigned long), unsigned long data)
 {
@@ -553,6 +580,7 @@ void tasklet_init(struct tasklet_struct *t,
 	t->state = 0;
 	atomic_set(&t->count, 0);
 	t->func = func;
+	t->use_callback = false;
 	t->data = data;
 }
 EXPORT_SYMBOL(tasklet_init);

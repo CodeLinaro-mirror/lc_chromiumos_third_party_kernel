@@ -97,11 +97,11 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 	for (; *features != BASE_HW_FEATURE_END; features++)
 		set_bit(*features, &kbdev->hw_features_mask[0]);
 
-#if defined(CONFIG_MALI_VALHALL_JOB_DUMP) || defined(CONFIG_MALI_VALHALL_VECTOR_DUMP)
+#if defined(CONFIG_MALI_VALHALL_VECTOR_DUMP)
 	/* When dumping is enabled, need to disable flush reduction optimization
 	 * for GPUs on which it is safe to have only cache clean operation at
 	 * the end of job chain.
-	 * This is required to make job dumping work. There is some discrepancy
+	 * This is required to make vector dump work. There is some discrepancy
 	 * in the implementation of flush reduction optimization due to
 	 * unclear or ambiguous ARCH spec.
 	 */
@@ -195,14 +195,19 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		  {U32_MAX, NULL} } },
 
 		{GPU_ID2_PRODUCT_LBEX,
-		 {{GPU_ID2_VERSION_MAKE(1, 0, 0), base_hw_issues_tBEx_r1p0},
-		  {GPU_ID2_VERSION_MAKE(1, 1, 0), base_hw_issues_tBEx_r1p1},
+		 {{GPU_ID2_VERSION_MAKE(1, 0, 0), base_hw_issues_lBEx_r1p0},
+		  {GPU_ID2_VERSION_MAKE(1, 1, 0), base_hw_issues_lBEx_r1p1},
+		  {U32_MAX, NULL} } },
+
+		/* Workaround for G-57 on MT8192 */
+		{GPU_ID2_PRODUCT_TNAX_MT8192,
+		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tNAx_r0p0},
 		  {U32_MAX, NULL} } },
 
 		{GPU_ID2_PRODUCT_TBEX,
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tBEx_r0p0},
 		  {GPU_ID2_VERSION_MAKE(0, 0, 3), base_hw_issues_tBEx_r0p0},
-		  {GPU_ID2_VERSION_MAKE(0, 1, 0), base_hw_issues_tBEx_r0p0},
+		  {GPU_ID2_VERSION_MAKE(0, 1, 0), base_hw_issues_tBEx_r0p1},
 		  {GPU_ID2_VERSION_MAKE(1, 0, 0), base_hw_issues_tBEx_r1p0},
 		  {U32_MAX, NULL} } },
 
@@ -239,7 +244,10 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		  {U32_MAX, NULL} } },
 	};
 
-	u32 gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
+	/* Replacing gpu_id with orig_gpu_id to identify the special G-57 on
+	 * MT8192, and reconfigure its base hw issues.
+	 */
+	u32 gpu_id = kbdev->gpu_props.props.raw_props.orig_gpu_id;
 	const u32 product_model = gpu_id & GPU_ID2_PRODUCT_MODEL;
 	const struct base_hw_product *product = NULL;
 	size_t p;

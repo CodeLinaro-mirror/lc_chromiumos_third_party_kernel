@@ -208,6 +208,12 @@ static int cros_ec_get_host_event_wake_mask(struct cros_ec_device *ec_dev,
 	msg->insize = sizeof(*r);
 
 	ret = send_command(ec_dev, msg);
+	if (ret >= 0) {
+		if (msg->result == EC_RES_INVALID_COMMAND)
+			return -EOPNOTSUPP;
+		if (msg->result != EC_RES_SUCCESS)
+			return -EPROTO;
+	}
 	if (ret > 0) {
 		r = (struct ec_response_host_event_mask *)msg->data;
 		*mask = r->mask;
@@ -469,14 +475,33 @@ int cros_ec_query_all(struct cros_ec_device *ec_dev)
 						    &ver_mask);
 	ec_dev->host_sleep_v1 = (ret >= 0 && (ver_mask & EC_VER_MASK(1)));
 
-	/*
-	 * Get host event wake mask, assume all events are wake events
-	 * if unavailable.
-	 */
+	/* Get host event wake mask. */
 	ret = cros_ec_get_host_event_wake_mask(ec_dev, proto_msg,
 					       &ec_dev->host_event_wake_mask);
-	if (ret < 0)
-		ec_dev->host_event_wake_mask = U32_MAX;
+	if (ret < 0) {
+		/*
+		 * If the EC doesn't support EC_CMD_HOST_EVENT_GET_WAKE_MASK,
+		 * use a reasonable default. Note that we ignore various
+		 * battery, AC status, and power-state events, because (a)
+		 * those can be quite common (e.g., when sitting at full
+		 * charge, on AC) and (b) these are not actionable wake events;
+		 * if anything, we'd like to continue suspending (to save
+		 * power), not wake up.
+		 */
+		ec_dev->host_event_wake_mask = U32_MAX &
+			~(BIT(EC_HOST_EVENT_AC_DISCONNECTED) |
+			  BIT(EC_HOST_EVENT_BATTERY_LOW) |
+			  BIT(EC_HOST_EVENT_BATTERY_CRITICAL) |
+			  BIT(EC_HOST_EVENT_PD_MCU) |
+			  BIT(EC_HOST_EVENT_BATTERY_STATUS));
+		/*
+		 * Old ECs may not support this command. Complain about all
+		 * other errors.
+		 */
+		if (ret != -EOPNOTSUPP)
+			dev_err(ec_dev->dev,
+				"failed to retrieve wake mask: %d\n", ret);
+	}
 
 	ret = 0;
 
@@ -553,7 +578,10 @@ EXPORT_SYMBOL(cros_ec_cmd_xfer);
  * replied with success status. It's not necessary to check msg->result when
  * using this function.
  *
- * Return: The number of bytes transferred on success or negative error code.
+ * Return:
+ * >=0 - The number of bytes transferred
+ * -ENOTSUPP - Operation not supported
+ * -EPROTO - Protocol error
  */
 int cros_ec_cmd_xfer_status(struct cros_ec_device *ec_dev,
 			    struct cros_ec_command *msg)
@@ -563,6 +591,10 @@ int cros_ec_cmd_xfer_status(struct cros_ec_device *ec_dev,
 	ret = cros_ec_cmd_xfer(ec_dev, msg);
 	if (ret < 0) {
 		dev_err(ec_dev->dev, "Command xfer error (err:%d)\n", ret);
+	} else if (msg->result == EC_RES_INVALID_VERSION) {
+		dev_dbg(ec_dev->dev, "Command invalid version (err:%d)\n",
+			msg->result);
+		return -ENOTSUPP;
 	} else if (msg->result != EC_RES_SUCCESS) {
 		dev_dbg(ec_dev->dev, "Command result (err: %d)\n", msg->result);
 		return -EPROTO;
@@ -698,12 +730,16 @@ int cros_ec_get_next_event(struct cros_ec_device *ec_dev,
 		 * Sensor events need to be parsed by the sensor sub-device.
 		 * Defer them, and don't report the wakeup here.
 		 */
-		if (event_type == EC_MKBP_EVENT_SENSOR_FIFO)
+		if (event_type == EC_MKBP_EVENT_SENSOR_FIFO) {
 			*wake_event = false;
-		/* Masked host-events should not count as wake events. */
-		else if (host_event &&
-			 !(host_event & ec_dev->host_event_wake_mask))
-			*wake_event = false;
+		} else if (host_event) {
+			/* rtc_update_irq() already handles wakeup events. */
+			if (host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_RTC))
+				*wake_event = false;
+			/* Masked host-events should not count as wake events. */
+			if (!(host_event & ec_dev->host_event_wake_mask))
+				*wake_event = false;
+		}
 	}
 
 	return ret;

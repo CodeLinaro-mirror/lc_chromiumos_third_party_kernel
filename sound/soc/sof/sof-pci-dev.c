@@ -35,7 +35,27 @@ static int sof_pci_debug;
 module_param_named(sof_pci_debug, sof_pci_debug, int, 0444);
 MODULE_PARM_DESC(sof_pci_debug, "SOF PCI debug options (0x0 all off)");
 
+static const char *sof_override_tplg_name;
+
 #define SOF_PCI_DISABLE_PM_RUNTIME BIT(0)
+
+static int sof_tplg_cb(const struct dmi_system_id *id)
+{
+	sof_override_tplg_name = id->driver_data;
+	return 1;
+}
+
+static const struct dmi_system_id sof_tplg_table[] = {
+	{
+		.callback = sof_tplg_cb,
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_FAMILY, "Google_Volteer"),
+			DMI_MATCH(DMI_OEM_STRING, "AUDIO-MAX98373_ALC5682I_I2S_UP4"),
+		},
+		.driver_data = "sof-tgl-rt5682-ssp0-max98373-ssp2.tplg",
+	},
+	{}
+};
 
 static const struct dmi_system_id community_key_platforms[] = {
 	{
@@ -151,9 +171,7 @@ static const struct sof_dev_desc cfl_desc = {
 };
 #endif
 
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_COMETLAKE_LP) || \
-	IS_ENABLED(CONFIG_SND_SOC_SOF_COMETLAKE_H)
-
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_COMETLAKE)
 static const struct sof_dev_desc cml_desc = {
 	.machines		= snd_soc_acpi_intel_cml_machines,
 	.alt_machines		= snd_soc_acpi_intel_cml_sdw_machines,
@@ -203,7 +221,23 @@ static const struct sof_dev_desc tgl_desc = {
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-tgl.ri",
 	.nocodec_tplg_filename = "sof-tgl-nocodec.tplg",
-	.ops = &sof_cnl_ops,
+	.ops = &sof_tgl_ops,
+};
+
+static const struct sof_dev_desc tglh_desc = {
+	.machines               = snd_soc_acpi_intel_tgl_machines,
+	.alt_machines		= snd_soc_acpi_intel_tgl_sdw_machines,
+	.resindex_lpe_base      = 0,
+	.resindex_pcicfg_base   = -1,
+	.resindex_imr_base      = -1,
+	.irqindex_host_ipc      = -1,
+	.resindex_dma_base      = -1,
+	.chip_info = &tglh_chip_info,
+	.default_fw_path = "intel/sof",
+	.default_tplg_path = "intel/sof-tplg",
+	.default_fw_filename = "sof-tgl-h.ri",
+	.nocodec_tplg_filename = "sof-tgl-nocodec.tplg",
+	.ops = &sof_tgl_ops,
 };
 #endif
 
@@ -284,10 +318,10 @@ static int sof_pci_probe(struct pci_dev *pci,
 	int ret;
 
 	ret = snd_intel_dsp_driver_probe(pci);
-	if (ret != SND_INTEL_DSP_DRIVER_ANY &&
-	    ret != SND_INTEL_DSP_DRIVER_SOF)
+	if (ret != SND_INTEL_DSP_DRIVER_ANY && ret != SND_INTEL_DSP_DRIVER_SOF) {
+		dev_dbg(&pci->dev, "SOF PCI driver not selected, aborting probe\n");
 		return -ENODEV;
-
+	}
 	dev_dbg(&pci->dev, "PCI DSP detected");
 
 	/* get ops for platform */
@@ -349,6 +383,10 @@ static int sof_pci_probe(struct pci_dev *pci,
 		sof_pdata->tplg_filename_prefix =
 			sof_pdata->desc->default_tplg_path;
 
+	dmi_check_system(sof_tplg_table);
+	if (sof_override_tplg_name)
+		sof_pdata->tplg_filename = sof_override_tplg_name;
+
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE)
 	/* set callback to enable runtime_pm */
 	sof_pdata->sof_probe_complete = sof_pci_probe_complete;
@@ -385,6 +423,11 @@ static void sof_pci_remove(struct pci_dev *pci)
 	pci_release_regions(pci);
 }
 
+static void sof_pci_shutdown(struct pci_dev *pci)
+{
+	snd_sof_device_shutdown(&pci->dev);
+}
+
 /* PCI IDs */
 static const struct pci_device_id sof_pci_ids[] = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_MERRIFIELD)
@@ -411,8 +454,11 @@ static const struct pci_device_id sof_pci_ids[] = {
 		.driver_data = (unsigned long)&cfl_desc},
 #endif
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_ICELAKE)
-	{ PCI_DEVICE(0x8086, 0x34C8),
+	{ PCI_DEVICE(0x8086, 0x34C8), /* ICL-LP */
 		.driver_data = (unsigned long)&icl_desc},
+	{ PCI_DEVICE(0x8086, 0x3dc8), /* ICL-H */
+		.driver_data = (unsigned long)&icl_desc},
+
 #endif
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_JASPERLAKE)
 	{ PCI_DEVICE(0x8086, 0x38c8),
@@ -420,17 +466,20 @@ static const struct pci_device_id sof_pci_ids[] = {
 	{ PCI_DEVICE(0x8086, 0x4dc8),
 		.driver_data = (unsigned long)&jsl_desc},
 #endif
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_COMETLAKE_LP)
-	{ PCI_DEVICE(0x8086, 0x02c8),
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_COMETLAKE)
+	{ PCI_DEVICE(0x8086, 0x02c8), /* CML-LP */
 		.driver_data = (unsigned long)&cml_desc},
-#endif
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_COMETLAKE_H)
-	{ PCI_DEVICE(0x8086, 0x06c8),
+	{ PCI_DEVICE(0x8086, 0x06c8), /* CML-H */
+		.driver_data = (unsigned long)&cml_desc},
+	{ PCI_DEVICE(0x8086, 0xa3f0), /* CML-S */
 		.driver_data = (unsigned long)&cml_desc},
 #endif
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_TIGERLAKE)
-	{ PCI_DEVICE(0x8086, 0xa0c8),
+	{ PCI_DEVICE(0x8086, 0xa0c8), /* TGL-LP */
 		.driver_data = (unsigned long)&tgl_desc},
+	{ PCI_DEVICE(0x8086, 0x43c8), /* TGL-H */
+		.driver_data = (unsigned long)&tglh_desc},
+
 #endif
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_ELKHARTLAKE)
 	{ PCI_DEVICE(0x8086, 0x4b55),
@@ -448,6 +497,7 @@ static struct pci_driver snd_sof_pci_driver = {
 	.id_table = sof_pci_ids,
 	.probe = sof_pci_probe,
 	.remove = sof_pci_remove,
+	.shutdown = sof_pci_shutdown,
 	.driver = {
 		.pm = &sof_pci_pm,
 	},

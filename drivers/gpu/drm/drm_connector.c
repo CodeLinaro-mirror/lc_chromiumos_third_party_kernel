@@ -27,6 +27,7 @@
 #include <drm/drm_print.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_file.h>
+#include <drm/drm_sysfs.h>
 
 #include <linux/uaccess.h>
 
@@ -498,6 +499,10 @@ int drm_connector_register(struct drm_connector *connector)
 	drm_mode_object_register(connector->dev, &connector->base);
 
 	connector->registration_state = DRM_CONNECTOR_REGISTERED;
+
+	/* Let userspace know we have a new connector */
+	drm_sysfs_hotplug_event(connector->dev);
+
 	goto unlock;
 
 err_debugfs:
@@ -816,7 +821,7 @@ static const struct drm_prop_enum_list drm_dvi_i_select_enum_list[] = {
 DRM_ENUM_NAME_FN(drm_get_dvi_i_select_name, drm_dvi_i_select_enum_list)
 
 static const struct drm_prop_enum_list drm_dvi_i_subconnector_enum_list[] = {
-	{ DRM_MODE_SUBCONNECTOR_Unknown,   "Unknown"   }, /* DVI-I and TV-out */
+	{ DRM_MODE_SUBCONNECTOR_Unknown,   "Unknown"   }, /* DVI-I, TV-out and DP */
 	{ DRM_MODE_SUBCONNECTOR_DVID,      "DVI-D"     }, /* DVI-I  */
 	{ DRM_MODE_SUBCONNECTOR_DVIA,      "DVI-A"     }, /* DVI-I  */
 };
@@ -833,7 +838,7 @@ static const struct drm_prop_enum_list drm_tv_select_enum_list[] = {
 DRM_ENUM_NAME_FN(drm_get_tv_select_name, drm_tv_select_enum_list)
 
 static const struct drm_prop_enum_list drm_tv_subconnector_enum_list[] = {
-	{ DRM_MODE_SUBCONNECTOR_Unknown,   "Unknown"   }, /* DVI-I and TV-out */
+	{ DRM_MODE_SUBCONNECTOR_Unknown,   "Unknown"   }, /* DVI-I, TV-out and DP */
 	{ DRM_MODE_SUBCONNECTOR_Composite, "Composite" }, /* TV-out */
 	{ DRM_MODE_SUBCONNECTOR_SVIDEO,    "SVIDEO"    }, /* TV-out */
 	{ DRM_MODE_SUBCONNECTOR_Component, "Component" }, /* TV-out */
@@ -841,6 +846,19 @@ static const struct drm_prop_enum_list drm_tv_subconnector_enum_list[] = {
 };
 DRM_ENUM_NAME_FN(drm_get_tv_subconnector_name,
 		 drm_tv_subconnector_enum_list)
+
+static const struct drm_prop_enum_list drm_dp_subconnector_enum_list[] = {
+	{ DRM_MODE_SUBCONNECTOR_Unknown,     "Unknown"   }, /* DVI-I, TV-out and DP */
+	{ DRM_MODE_SUBCONNECTOR_VGA,	     "VGA"       }, /* DP */
+	{ DRM_MODE_SUBCONNECTOR_DVID,	     "DVI-D"     }, /* DP */
+	{ DRM_MODE_SUBCONNECTOR_HDMIA,	     "HDMI"      }, /* DP */
+	{ DRM_MODE_SUBCONNECTOR_DisplayPort, "DP"        }, /* DP */
+	{ DRM_MODE_SUBCONNECTOR_Wireless,    "Wireless"  }, /* DP */
+	{ DRM_MODE_SUBCONNECTOR_Native,	     "Native"    }, /* DP */
+};
+
+DRM_ENUM_NAME_FN(drm_get_dp_subconnector_name,
+		 drm_dp_subconnector_enum_list)
 
 static const struct drm_prop_enum_list hdmi_colorspaces[] = {
 	/* For Default case, driver will set the colorspace */
@@ -867,6 +885,38 @@ static const struct drm_prop_enum_list hdmi_colorspaces[] = {
 	/* Added as part of Additional Colorimetry Extension in 861.G */
 	{ DRM_MODE_COLORIMETRY_DCI_P3_RGB_D65, "DCI-P3_RGB_D65" },
 	{ DRM_MODE_COLORIMETRY_DCI_P3_RGB_THEATER, "DCI-P3_RGB_Theater" },
+};
+
+/*
+ * As per DP 1.4a spec, 2.2.5.7.5 VSC SDP Payload for Pixel Encoding/Colorimetry
+ * Format Table 2-120
+ */
+static const struct drm_prop_enum_list dp_colorspaces[] = {
+	/* For Default case, driver will set the colorspace */
+	{ DRM_MODE_COLORIMETRY_DEFAULT, "Default" },
+	{ DRM_MODE_COLORIMETRY_RGB_WIDE_FIXED, "RGB_Wide_Gamut_Fixed_Point" },
+	/* Colorimetry based on scRGB (IEC 61966-2-2) */
+	{ DRM_MODE_COLORIMETRY_RGB_WIDE_FLOAT, "RGB_Wide_Gamut_Floating_Point" },
+	/* Colorimetry based on IEC 61966-2-5 */
+	{ DRM_MODE_COLORIMETRY_OPRGB, "opRGB" },
+	/* Colorimetry based on SMPTE RP 431-2 */
+	{ DRM_MODE_COLORIMETRY_DCI_P3_RGB_D65, "DCI-P3_RGB_D65" },
+	/* Colorimetry based on ITU-R BT.2020 */
+	{ DRM_MODE_COLORIMETRY_BT2020_RGB, "BT2020_RGB" },
+	{ DRM_MODE_COLORIMETRY_BT601_YCC, "BT601_YCC" },
+	{ DRM_MODE_COLORIMETRY_BT709_YCC, "BT709_YCC" },
+	/* Standard Definition Colorimetry based on IEC 61966-2-4 */
+	{ DRM_MODE_COLORIMETRY_XVYCC_601, "XVYCC_601" },
+	/* High Definition Colorimetry based on IEC 61966-2-4 */
+	{ DRM_MODE_COLORIMETRY_XVYCC_709, "XVYCC_709" },
+	/* Colorimetry based on IEC 61966-2-1/Amendment 1 */
+	{ DRM_MODE_COLORIMETRY_SYCC_601, "SYCC_601" },
+	/* Colorimetry based on IEC 61966-2-5 [33] */
+	{ DRM_MODE_COLORIMETRY_OPYCC_601, "opYCC_601" },
+	/* Colorimetry based on ITU-R BT.2020 */
+	{ DRM_MODE_COLORIMETRY_BT2020_CYCC, "BT2020_CYCC" },
+	/* Colorimetry based on ITU-R BT.2020 */
+	{ DRM_MODE_COLORIMETRY_BT2020_YCC, "BT2020_YCC" },
 };
 
 /**
@@ -1101,7 +1151,8 @@ static const struct drm_prop_enum_list hdmi_colorspaces[] = {
  *	coordinates, so if userspace rotates the picture to adjust for
  *	the orientation it must also apply the same transformation to the
  *	touchscreen input coordinates. This property is initialized by calling
- *	drm_connector_init_panel_orientation_property().
+ *	drm_connector_set_panel_orientation() or
+ *	drm_connector_set_panel_orientation_with_quirk()
  *
  * scaling mode:
  *	This property defines how a non-native mode is upscaled to the native
@@ -1125,6 +1176,14 @@ static const struct drm_prop_enum_list hdmi_colorspaces[] = {
  *	can also expose this property to external outputs, in which case they
  *	must support "None", which should be the default (since external screens
  *	have a built-in scaler).
+ *
+ * subconnector:
+ *	This property is used by DVI-I, TVout and DisplayPort to indicate different
+ *	connector subtypes. Enum values more or less match with those from main
+ *	connector types.
+ *	For DVI-I and TVout there is also a matching property "select subconnector"
+ *	allowing to switch between signal types.
+ *	DP subconnector corresponds to a downstream port.
  */
 
 int drm_connector_create_standard_properties(struct drm_device *dev)
@@ -1212,6 +1271,30 @@ int drm_mode_create_dvi_i_properties(struct drm_device *dev)
 	return 0;
 }
 EXPORT_SYMBOL(drm_mode_create_dvi_i_properties);
+
+/**
+ * drm_connector_attach_dp_subconnector_property - create subconnector property for DP
+ * @connector: drm_connector to attach property
+ *
+ * Called by a driver when DP connector is created.
+ */
+void drm_connector_attach_dp_subconnector_property(struct drm_connector *connector)
+{
+	struct drm_mode_config *mode_config = &connector->dev->mode_config;
+
+	if (!mode_config->dp_subconnector_property)
+		mode_config->dp_subconnector_property =
+			drm_property_create_enum(connector->dev,
+				DRM_MODE_PROP_IMMUTABLE,
+				"subconnector",
+				drm_dp_subconnector_enum_list,
+				ARRAY_SIZE(drm_dp_subconnector_enum_list));
+
+	drm_object_attach_property(&connector->base,
+				   mode_config->dp_subconnector_property,
+				   DRM_MODE_SUBCONNECTOR_Unknown);
+}
+EXPORT_SYMBOL(drm_connector_attach_dp_subconnector_property);
 
 /**
  * DOC: HDMI connector properties
@@ -1681,7 +1764,8 @@ EXPORT_SYMBOL(drm_mode_create_aspect_ratio_property);
  *        source is trying to drive.
  *
  * Because between HDMI and DP have different colorspaces,
- * drm_mode_create_hdmi_colorspace_property() is used for HDMI connector.
+ * drm_mode_create_hdmi_colorspace_property() is used for HDMI connector and
+ * drm_mode_create_dp_colorspace_property() is used for DP connector.
  */
 
 /**
@@ -1712,6 +1796,35 @@ int drm_mode_create_hdmi_colorspace_property(struct drm_connector *connector)
 	return 0;
 }
 EXPORT_SYMBOL(drm_mode_create_hdmi_colorspace_property);
+
+/**
+ * drm_mode_create_dp_colorspace_property - create dp colorspace property
+ * @connector: connector to create the Colorspace property on.
+ *
+ * Called by a driver the first time it's needed, must be attached to desired
+ * DP connectors.
+ *
+ * Returns:
+ * Zero on success, negative errono on failure.
+ */
+int drm_mode_create_dp_colorspace_property(struct drm_connector *connector)
+{
+	struct drm_device *dev = connector->dev;
+
+	if (connector->colorspace_property)
+		return 0;
+
+	connector->colorspace_property =
+		drm_property_create_enum(dev, DRM_MODE_PROP_ENUM, "Colorspace",
+					 dp_colorspaces,
+					 ARRAY_SIZE(dp_colorspaces));
+
+	if (!connector->colorspace_property)
+		return -ENOMEM;
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_mode_create_dp_colorspace_property);
 
 /**
  * drm_mode_create_content_type_property - create content type property
@@ -1978,29 +2091,40 @@ void drm_connector_set_vrr_capable_property(
 EXPORT_SYMBOL(drm_connector_set_vrr_capable_property);
 
 /**
- * drm_connector_init_panel_orientation_property -
- *	initialize the connecters panel_orientation property
- * @connector: connector for which to init the panel-orientation property.
+ * drm_connector_set_panel_orientation - sets the connecter's panel_orientation
+ * @connector: connector for which to set the panel-orientation property.
+ * @panel_orientation: drm_panel_orientation value to set
  *
- * This function should only be called for built-in panels, after setting
- * connector->display_info.panel_orientation first (if known).
+ * This function sets the connector's panel_orientation and attaches
+ * a "panel orientation" property to the connector.
  *
- * This function will check if the panel_orientation is not
- * DRM_MODE_PANEL_ORIENTATION_UNKNOWN. If not, it will attach the "panel
- * orientation" property to the connector.
+ * Calling this function on a connector where the panel_orientation has
+ * already been set is a no-op (e.g. the orientation has been overridden with
+ * a kernel commandline option).
+ *
+ * It is allowed to call this function with a panel_orientation of
+ * DRM_MODE_PANEL_ORIENTATION_UNKNOWN, in which case it is a no-op.
  *
  * Returns:
  * Zero on success, negative errno on failure.
  */
-int drm_connector_init_panel_orientation_property(
-	struct drm_connector *connector)
+int drm_connector_set_panel_orientation(
+	struct drm_connector *connector,
+	enum drm_panel_orientation panel_orientation)
 {
 	struct drm_device *dev = connector->dev;
 	struct drm_display_info *info = &connector->display_info;
 	struct drm_property *prop;
 
-	if (info->panel_orientation == DRM_MODE_PANEL_ORIENTATION_UNKNOWN)
+	/* Already set? */
+	if (info->panel_orientation != DRM_MODE_PANEL_ORIENTATION_UNKNOWN)
 		return 0;
+
+	/* Don't attach the property if the orientation is unknown */
+	if (panel_orientation == DRM_MODE_PANEL_ORIENTATION_UNKNOWN)
+		return 0;
+
+	info->panel_orientation = panel_orientation;
 
 	prop = dev->mode_config.panel_orientation_property;
 	if (!prop) {
@@ -2018,36 +2142,37 @@ int drm_connector_init_panel_orientation_property(
 				   info->panel_orientation);
 	return 0;
 }
-EXPORT_SYMBOL(drm_connector_init_panel_orientation_property);
+EXPORT_SYMBOL(drm_connector_set_panel_orientation);
 
 /**
- * drm_connector_init_panel_orientation_property_quirk -
- *	initialize the connecters panel_orientation property with a quirk
- *	override
+ * drm_connector_set_panel_orientation_with_quirk -
+ *	set the connecter's panel_orientation after checking for quirks
  * @connector: connector for which to init the panel-orientation property.
+ * @panel_orientation: drm_panel_orientation value to set
  * @width: width in pixels of the panel, used for panel quirk detection
  * @height: height in pixels of the panel, used for panel quirk detection
  *
- * This function will check for platform specific (e.g. DMI based) quirks
- * overriding display_info.panel_orientation first, then if panel_orientation
- * is not DRM_MODE_PANEL_ORIENTATION_UNKNOWN it will attach the
- * "panel orientation" property to the connector.
+ * Like drm_connector_set_panel_orientation(), but with a check for platform
+ * specific (e.g. DMI based) quirks overriding the passed in panel_orientation.
  *
  * Returns:
  * Zero on success, negative errno on failure.
  */
-int drm_connector_init_panel_orientation_property_quirk(
-	struct drm_connector *connector, int width, int height)
+int drm_connector_set_panel_orientation_with_quirk(
+	struct drm_connector *connector,
+	enum drm_panel_orientation panel_orientation,
+	int width, int height)
 {
 	int orientation_quirk;
 
 	orientation_quirk = drm_get_panel_orientation_quirk(width, height);
 	if (orientation_quirk != DRM_MODE_PANEL_ORIENTATION_UNKNOWN)
-		connector->display_info.panel_orientation = orientation_quirk;
+		panel_orientation = orientation_quirk;
 
-	return drm_connector_init_panel_orientation_property(connector);
+	return drm_connector_set_panel_orientation(connector,
+						   panel_orientation);
 }
-EXPORT_SYMBOL(drm_connector_init_panel_orientation_property_quirk);
+EXPORT_SYMBOL(drm_connector_set_panel_orientation_with_quirk);
 
 int drm_connector_set_obj_prop(struct drm_mode_object *obj,
 				    struct drm_property *property,

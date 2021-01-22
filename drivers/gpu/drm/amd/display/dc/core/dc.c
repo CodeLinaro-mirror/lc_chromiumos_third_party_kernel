@@ -922,15 +922,11 @@ static void program_timing_sync(
 
 		/* set first pipe with plane as master */
 		for (j = 0; j < group_size; j++) {
-			struct pipe_ctx *temp;
-
 			if (pipe_set[j]->plane_state) {
 				if (j == 0)
 					break;
 
-				temp = pipe_set[0];
-				pipe_set[0] = pipe_set[j];
-				pipe_set[j] = temp;
+				swap(pipe_set[0], pipe_set[j]);
 				break;
 			}
 		}
@@ -2273,6 +2269,14 @@ void dc_commit_updates_for_stream(struct dc *dc,
 
 	copy_stream_update_to_stream(dc, context, stream, stream_update);
 
+	if (update_type > UPDATE_TYPE_FAST) {
+		if (!dc->res_pool->funcs->validate_bandwidth(dc, context, false)) {
+			DC_ERROR("Mode validation failed for stream update!\n");
+			dc_release_state(context);
+			return;
+		}
+	}
+
 	commit_planes_for_stream(
 				dc,
 				srf_updates,
@@ -2577,4 +2581,28 @@ void dc_get_clock(struct dc *dc, enum dc_clock_type clock_type, struct dc_clock_
 {
 	if (dc->hwss.get_clock)
 		dc->hwss.get_clock(dc, clock_type, clock_cfg);
+}
+
+/* enable/disable eDP PSR without specify stream for eDP */
+bool dc_set_psr_allow_active(struct dc *dc, bool enable)
+{
+	int i;
+
+	for (i = 0; i < dc->current_state->stream_count ; i++) {
+		struct dc_link *link;
+		struct dc_stream_state *stream = dc->current_state->streams[i];
+
+		link = stream->link;
+		if (!link)
+			continue;
+
+		if (link->psr_feature_enabled) {
+			if (enable && !link->psr_allow_active)
+				return dc_link_set_psr_allow_active(link, true, false);
+			else if (!enable && link->psr_allow_active)
+				return dc_link_set_psr_allow_active(link, false, true);
+		}
+	}
+
+	return true;
 }

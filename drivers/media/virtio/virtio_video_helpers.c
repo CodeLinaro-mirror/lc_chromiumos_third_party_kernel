@@ -158,6 +158,8 @@ static struct virtio_video_convert_table control_table[] = {
 	{ VIRTIO_VIDEO_CONTROL_BITRATE, V4L2_CID_MPEG_VIDEO_BITRATE },
 	{ VIRTIO_VIDEO_CONTROL_PROFILE, V4L2_CID_MPEG_VIDEO_H264_PROFILE },
 	{ VIRTIO_VIDEO_CONTROL_LEVEL, V4L2_CID_MPEG_VIDEO_H264_LEVEL },
+	{ VIRTIO_VIDEO_CONTROL_FORCE_KEYFRAME,
+			V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME },
 	{ 0 },
 };
 
@@ -181,24 +183,6 @@ uint32_t virtio_video_v4l2_control_to_virtio(uint32_t v4l2_control)
 		if (control_table[idx].v4l2_value == v4l2_control)
 			return control_table[idx].virtio_value;
 	}
-
-	return 0;
-}
-
-uint32_t virtio_video_get_format_from_virtio_profile(uint32_t virtio_profile)
-{
-	if (virtio_profile >= VIRTIO_VIDEO_PROFILE_H264_MIN &&
-	    virtio_profile <= VIRTIO_VIDEO_PROFILE_H264_MAX)
-		return VIRTIO_VIDEO_FORMAT_H264;
-	else if (virtio_profile >= VIRTIO_VIDEO_PROFILE_HEVC_MIN &&
-		 virtio_profile <= VIRTIO_VIDEO_PROFILE_HEVC_MAX)
-		return VIRTIO_VIDEO_FORMAT_HEVC;
-	else if (virtio_profile >= VIRTIO_VIDEO_PROFILE_VP8_MIN &&
-		 virtio_profile <= VIRTIO_VIDEO_PROFILE_VP8_MAX)
-		return VIRTIO_VIDEO_FORMAT_VP8;
-	else if (virtio_profile >= VIRTIO_VIDEO_PROFILE_VP9_MIN &&
-		 virtio_profile <= VIRTIO_VIDEO_PROFILE_VP9_MAX)
-		return VIRTIO_VIDEO_FORMAT_VP9;
 
 	return 0;
 }

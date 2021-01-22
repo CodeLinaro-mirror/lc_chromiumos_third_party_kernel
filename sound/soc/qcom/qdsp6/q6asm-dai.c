@@ -171,7 +171,7 @@ static const struct snd_compr_codec_caps q6asm_compr_caps = {
 };
 
 static void event_handler(uint32_t opcode, uint32_t token,
-			  uint32_t *payload, void *priv)
+			  void *payload, void *priv)
 {
 	struct q6asm_dai_rtd *prtd = priv;
 	struct snd_pcm_substream *substream = prtd->substream;
@@ -210,7 +210,7 @@ static int q6asm_dai_prepare(struct snd_soc_component *component,
 			     struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
+	struct snd_soc_pcm_runtime *soc_prtd = asoc_substream_to_rtd(substream);
 	struct q6asm_dai_rtd *prtd = runtime->private_data;
 	struct q6asm_dai_data *pdata;
 	int ret, i;
@@ -327,7 +327,7 @@ static int q6asm_dai_open(struct snd_soc_component *component,
 			  struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
+	struct snd_soc_pcm_runtime *soc_prtd = asoc_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(soc_prtd, 0);
 	struct q6asm_dai_rtd *prtd;
 	struct q6asm_dai_data *pdata;
@@ -419,7 +419,7 @@ static int q6asm_dai_close(struct snd_soc_component *component,
 			   struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
+	struct snd_soc_pcm_runtime *soc_prtd = asoc_substream_to_rtd(substream);
 	struct q6asm_dai_rtd *prtd = runtime->private_data;
 
 	if (prtd->audio_client) {
@@ -485,7 +485,7 @@ static int q6asm_dai_hw_params(struct snd_soc_component *component,
 }
 
 static void compress_event_handler(uint32_t opcode, uint32_t token,
-				   uint32_t *payload, void *priv)
+				   void *payload, void *priv)
 {
 	struct q6asm_dai_rtd *prtd = priv;
 	struct snd_compr_stream *substream = prtd->cstream;
@@ -934,11 +934,13 @@ static int q6asm_dai_probe(struct platform_device *pdev)
 					ARRAY_SIZE(q6asm_fe_dais));
 }
 
+#ifdef CONFIG_OF
 static const struct of_device_id q6asm_dai_device_id[] = {
 	{ .compatible = "qcom,q6asm-dais" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, q6asm_dai_device_id);
+#endif
 
 static struct platform_driver q6asm_dai_platform_driver = {
 	.driver = {

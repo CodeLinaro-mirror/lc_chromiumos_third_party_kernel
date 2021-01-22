@@ -1820,7 +1820,7 @@ out:
  * use ->readpage() or do the necessary surgery to decouple ->readpages()
  * from read-ahead.
  */
-static int f2fs_mpage_readpages(struct address_space *mapping,
+int f2fs_mpage_readpages(struct address_space *mapping,
 			struct list_head *pages, struct page *page,
 			unsigned nr_pages, bool is_readahead)
 {
@@ -2824,6 +2824,9 @@ static int check_direct_IO(struct inode *inode, struct iov_iter *iter,
 	unsigned blocksize_mask = (1 << blkbits) - 1;
 	unsigned long align = offset | iov_iter_alignment(iter);
 	struct block_device *bdev = inode->i_sb->s_bdev;
+
+	if (iov_iter_rw(iter) == READ && offset >= i_size_read(inode))
+		return 1;
 
 	if (align & blocksize_mask) {
 		if (bdev)

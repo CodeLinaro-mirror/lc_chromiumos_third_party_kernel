@@ -9,7 +9,7 @@
  * Copyright 2009, Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright(c) 2016 Intel Deutschland GmbH
- * Copyright(c) 2018-2019 Intel Corporation
+ * Copyright(c) 2018-2020 Intel Corporation
  */
 
 #include <linux/delay.h>
@@ -538,7 +538,6 @@ int ieee80211_ibss_finish_csa(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_ibss *ifibss = &sdata->u.ibss;
 	struct cfg80211_bss *cbss;
-	int err, changed = 0;
 
 	sdata_assert_lock(sdata);
 
@@ -560,13 +559,7 @@ int ieee80211_ibss_finish_csa(struct ieee80211_sub_if_data *sdata)
 	ifibss->chandef = sdata->csa_chandef;
 
 	/* generate the beacon */
-	err = ieee80211_ibss_csa_beacon(sdata, NULL);
-	if (err < 0)
-		return err;
-
-	changed |= err;
-
-	return changed;
+	return ieee80211_ibss_csa_beacon(sdata, NULL);
 }
 
 void ieee80211_ibss_stop(struct ieee80211_sub_if_data *sdata)
@@ -775,6 +768,7 @@ ieee80211_ibss_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 	enum nl80211_channel_type ch_type;
 	int err;
 	u32 sta_flags;
+	u32 vht_cap_info = 0;
 
 	sdata_assert_lock(sdata);
 
@@ -784,7 +778,7 @@ ieee80211_ibss_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 	case NL80211_CHAN_WIDTH_10:
 	case NL80211_CHAN_WIDTH_20_NOHT:
 		sta_flags |= IEEE80211_STA_DISABLE_HT;
-		/* fall through */
+		fallthrough;
 	case NL80211_CHAN_WIDTH_20:
 		sta_flags |= IEEE80211_STA_DISABLE_40MHZ;
 		break;
@@ -792,9 +786,13 @@ ieee80211_ibss_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 		break;
 	}
 
+	if (elems->vht_cap_elem)
+		vht_cap_info = le32_to_cpu(elems->vht_cap_elem->vht_cap_info);
+
 	memset(&params, 0, sizeof(params));
 	err = ieee80211_parse_ch_switch_ie(sdata, elems,
 					   ifibss->chandef.chan->band,
+					   vht_cap_info,
 					   sta_flags, ifibss->bssid, &csa_ie);
 	/* can't switch to destination channel, fail */
 	if (err < 0)
@@ -1054,8 +1052,10 @@ static void ieee80211_update_sta_info(struct ieee80211_sub_if_data *sdata,
 			/* we both use VHT */
 			struct ieee80211_vht_cap cap_ie;
 			struct ieee80211_sta_vht_cap cap = sta->sta.vht_cap;
+			u32 vht_cap_info =
+				le32_to_cpu(elems->vht_cap_elem->vht_cap_info);
 
-			ieee80211_chandef_vht_oper(&local->hw,
+			ieee80211_chandef_vht_oper(&local->hw, vht_cap_info,
 						   elems->vht_operation,
 						   elems->ht_operation,
 						   &chandef);
@@ -1365,7 +1365,7 @@ ieee80211_ibss_setup_scan_channels(struct wiphy *wiphy,
 		break;
 	case NL80211_CHAN_WIDTH_80P80:
 		cf2 = chandef->center_freq2;
-		/* fall through */
+		fallthrough;
 	case NL80211_CHAN_WIDTH_80:
 		width = 80;
 		break;
@@ -1713,6 +1713,11 @@ int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 	int i;
 	int ret;
 
+	if (cfg80211_chan_freq_offset(params->chandef.chan)) {
+		/* this may work, but is untested */
+		return -EOPNOTSUPP;
+	}
+
 	ret = cfg80211_chandef_dfs_required(local->hw.wiphy,
 					    &params->chandef,
 					    sdata->wdev.iftype);
@@ -1720,7 +1725,7 @@ int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 		return ret;
 
 	if (ret > 0) {
-		if (!cfg80211_ibss_userspace_handles_dfs(params))
+		if (!params->userspace_handles_dfs)
 			return -EINVAL;
 		radar_detect_width = BIT(params->chandef.width);
 	}
@@ -1743,7 +1748,7 @@ int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 
 	sdata->u.ibss.privacy = params->privacy;
 	sdata->u.ibss.control_port = params->control_port;
-	sdata->u.ibss.userspace_handles_dfs = cfg80211_ibss_userspace_handles_dfs(params);
+	sdata->u.ibss.userspace_handles_dfs = params->userspace_handles_dfs;
 	sdata->u.ibss.basic_rates = params->basic_rates;
 	sdata->u.ibss.last_scan_completed = jiffies;
 
@@ -1775,12 +1780,10 @@ int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 	memcpy(sdata->u.ibss.ssid, params->ssid, params->ssid_len);
 	sdata->u.ibss.ssid_len = params->ssid_len;
 
-#if CFG80211_VERSION >= KERNEL_VERSION(3,12,0)
 	memcpy(&sdata->u.ibss.ht_capa, &params->ht_capa,
 	       sizeof(sdata->u.ibss.ht_capa));
 	memcpy(&sdata->u.ibss.ht_capa_mask, &params->ht_capa_mask,
 	       sizeof(sdata->u.ibss.ht_capa_mask));
-#endif
 
 	/*
 	 * 802.11n-2009 9.13.3.1: In an IBSS, the HT Protection field is

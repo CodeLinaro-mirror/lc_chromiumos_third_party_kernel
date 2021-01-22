@@ -1,64 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ */
 #include <linux/vmalloc.h>
 #include <linux/ieee80211.h>
 #include <linux/netdevice.h>
@@ -220,7 +165,7 @@ static ssize_t iwl_dbgfs_tx_flush_write(struct iwl_mvm *mvm, char *buf,
 				    "FLUSHING all tids queues on sta_id = %d\n",
 				    flush_arg);
 		mutex_lock(&mvm->mutex);
-		ret = iwl_mvm_flush_sta_tids(mvm, flush_arg, 0xFFFF, 0)
+		ret = iwl_mvm_flush_sta_tids(mvm, flush_arg, 0xFFFF)
 			? : count;
 		mutex_unlock(&mvm->mutex);
 		return ret;
@@ -230,7 +175,7 @@ static ssize_t iwl_dbgfs_tx_flush_write(struct iwl_mvm *mvm, char *buf,
 			    flush_arg);
 
 	mutex_lock(&mvm->mutex);
-	ret =  iwl_mvm_flush_tx_path(mvm, flush_arg, 0) ? : count;
+	ret =  iwl_mvm_flush_tx_path(mvm, flush_arg) ? : count;
 	mutex_unlock(&mvm->mutex);
 
 	return ret;
@@ -248,7 +193,7 @@ static ssize_t iwl_dbgfs_sta_drain_write(struct iwl_mvm *mvm, char *buf,
 
 	if (sscanf(buf, "%d %d", &sta_id, &drain) != 2)
 		return -EINVAL;
-	if (sta_id < 0 || sta_id >= IWL_MVM_STATION_COUNT)
+	if (sta_id < 0 || sta_id >= mvm->fw->ucode_capa.num_stations)
 		return -EINVAL;
 	if (drain < 0 || drain > 1)
 		return -EINVAL;
@@ -455,10 +400,10 @@ static ssize_t iwl_dbgfs_sar_geo_profile_read(struct file *file,
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "Use geographic profile %d\n", tbl_idx);
 		pos += scnprintf(buf + pos, bufsz - pos,
-				 "2.4GHz:\n\tChain A offset: %hhd dBm\n\tChain B offset: %hhd dBm\n\tmax tx power: %hhd dBm\n",
+				 "2.4GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
 				 value[1], value[2], value[0]);
 		pos += scnprintf(buf + pos, bufsz - pos,
-				 "5.2GHz:\n\tChain A offset: %hhd dBm\n\tChain B offset: %hhd dBm\n\tmax tx power: %hhd dBm\n",
+				 "5.2GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
 				 value[4], value[5], value[3]);
 	}
 	mutex_unlock(&mvm->mutex);
@@ -477,7 +422,7 @@ static ssize_t iwl_dbgfs_stations_read(struct file *file, char __user *user_buf,
 
 	mutex_lock(&mvm->mutex);
 
-	for (i = 0; i < ARRAY_SIZE(mvm->fw_id_to_mac_id); i++) {
+	for (i = 0; i < mvm->fw->ucode_capa.num_stations; i++) {
 		pos += scnprintf(buf + pos, bufsz - pos, "%.2d: ", i);
 		sta = rcu_dereference_protected(mvm->fw_id_to_mac_id[i],
 						lockdep_is_held(&mvm->mutex));
@@ -838,6 +783,30 @@ static ssize_t iwl_dbgfs_fw_ver_read(struct file *file, char __user *user_buf,
 	ret = simple_read_from_buffer(user_buf, count, ppos, buff, pos - buff);
 	kfree(buff);
 
+	return ret;
+}
+
+static ssize_t iwl_dbgfs_phy_integration_ver_read(struct file *file,
+						  char __user *user_buf,
+						  size_t count, loff_t *ppos)
+{
+	struct iwl_mvm *mvm = file->private_data;
+	char *buf;
+	size_t bufsz;
+	int pos;
+	ssize_t ret;
+
+	bufsz = mvm->fw->phy_integration_ver_len + 2;
+	buf = kmalloc(bufsz, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	pos = scnprintf(buf, bufsz, "%.*s\n", mvm->fw->phy_integration_ver_len,
+			mvm->fw->phy_integration_ver);
+
+	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+
+	kfree(buf);
 	return ret;
 }
 
@@ -1246,24 +1215,22 @@ static ssize_t iwl_dbgfs_inject_packet_write(struct iwl_mvm *mvm,
 					     char *buf, size_t count,
 					     loff_t *ppos)
 {
+	struct iwl_op_mode *opmode = container_of((void *)mvm,
+						  struct iwl_op_mode,
+						  op_mode_specific);
 	struct iwl_rx_cmd_buffer rxb = {
 		._rx_page_order = 0,
 		.truesize = 0, /* not used */
 		._offset = 0,
 	};
 	struct iwl_rx_packet *pkt;
-	struct iwl_rx_mpdu_desc *desc;
 	int bin_len = count / 2;
 	int ret = -EINVAL;
-	size_t mpdu_cmd_hdr_size = (mvm->trans->trans_cfg->device_family >=
-				    IWL_DEVICE_FAMILY_AX210) ?
-		sizeof(struct iwl_rx_mpdu_desc) :
-		IWL_RX_DESC_SIZE_V1;
 
 	if (!iwl_mvm_firmware_running(mvm))
 		return -EIO;
 
-	/* supporting only 9000 descriptor */
+	/* supporting only MQ RX */
 	if (!mvm->trans->trans_cfg->mq_rx_supported)
 		return -ENOTSUPP;
 
@@ -1276,23 +1243,13 @@ static ssize_t iwl_dbgfs_inject_packet_write(struct iwl_mvm *mvm,
 	if (ret)
 		goto out;
 
-	/* avoid invalid memory access */
-	if (bin_len < sizeof(*pkt) + mpdu_cmd_hdr_size)
-		goto out;
-
-	/* check this is RX packet */
-	if (WIDE_ID(pkt->hdr.group_id, pkt->hdr.cmd) !=
-	    WIDE_ID(LEGACY_GROUP, REPLY_RX_MPDU_CMD))
-		goto out;
-
-	/* check the length in metadata matches actual received length */
-	desc = (void *)pkt->data;
-	if (le16_to_cpu(desc->mpdu_len) !=
-	    (bin_len - mpdu_cmd_hdr_size - sizeof(*pkt)))
+	/* avoid invalid memory access and malformed packet */
+	if (bin_len < sizeof(*pkt) ||
+	    bin_len != sizeof(*pkt) + iwl_rx_packet_payload_len(pkt))
 		goto out;
 
 	local_bh_disable();
-	iwl_mvm_rx_mpdu_mq(mvm, NULL, &rxb, 0);
+	iwl_mvm_rx_mq(opmode, NULL, &rxb);
 	local_bh_enable();
 	ret = 0;
 
@@ -1462,6 +1419,24 @@ static ssize_t iwl_dbgfs_fw_dbg_collect_write(struct iwl_mvm *mvm,
 
 	iwl_fw_dbg_collect(&mvm->fwrt, FW_DBG_TRIGGER_USER, buf,
 			   (count - 1), NULL);
+
+	return count;
+}
+
+static ssize_t iwl_dbgfs_dbg_time_point_write(struct iwl_mvm *mvm,
+					      char *buf, size_t count,
+					      loff_t *ppos)
+{
+	u32 timepoint;
+
+	if (kstrtou32(buf, 0, &timepoint))
+		return -EINVAL;
+
+	if (timepoint == IWL_FW_INI_TIME_POINT_INVALID ||
+	    timepoint >= IWL_FW_INI_TIME_POINT_NUM)
+		return -EINVAL;
+
+	iwl_dbg_tlv_time_point(&mvm->fwrt, timepoint, NULL);
 
 	return count;
 }
@@ -1852,11 +1827,11 @@ static ssize_t iwl_dbgfs_tx_power_status_read(struct file *file,
 	char buf[64];
 	int bufsz = sizeof(buf);
 	int pos = 0;
-	u32 mode = le32_to_cpu(mvm->txp_cmd.v5.v3.set_mode);
+	u32 mode = le32_to_cpu(mvm->txp_cmd.common.set_mode);
 	bool txp_cmd_valid = mode == IWL_TX_POWER_MODE_SET_DEVICE;
-	u16 val_24 = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_24);
-	u16 val_52l = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_52_low);
-	u16 val_52h = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_52_high);
+	u16 val_24 = le16_to_cpu(mvm->txp_cmd.common.dev_24);
+	u16 val_52l = le16_to_cpu(mvm->txp_cmd.common.dev_52_low);
+	u16 val_52h = le16_to_cpu(mvm->txp_cmd.common.dev_52_high);
 	char buf_24[15] = "(not limited)";
 	char buf_52l[15] = "(not limited)";
 	char buf_52h[15] = "(not limited)";
@@ -2193,6 +2168,7 @@ MVM_DEBUGFS_READ_WRITE_FILE_OPS(disable_power_off, 64);
 MVM_DEBUGFS_READ_FILE_OPS(fw_rx_stats);
 MVM_DEBUGFS_READ_FILE_OPS(drv_rx_stats);
 MVM_DEBUGFS_READ_FILE_OPS(fw_ver);
+MVM_DEBUGFS_READ_FILE_OPS(phy_integration_ver);
 MVM_DEBUGFS_WRITE_FILE_OPS(fw_restart, 10);
 MVM_DEBUGFS_WRITE_FILE_OPS(fw_nmi, 10);
 MVM_DEBUGFS_WRITE_FILE_OPS(bt_tx_prio, 10);
@@ -2200,6 +2176,7 @@ MVM_DEBUGFS_WRITE_FILE_OPS(bt_force_ant, 10);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(scan_ant_rxchain, 8);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(fw_dbg_conf, 8);
 MVM_DEBUGFS_WRITE_FILE_OPS(fw_dbg_collect, 64);
+MVM_DEBUGFS_WRITE_FILE_OPS(dbg_time_point, 64);
 MVM_DEBUGFS_WRITE_FILE_OPS(indirection_tbl,
 			   (IWL_RSS_INDIRECTION_TABLE_SIZE * 2));
 MVM_DEBUGFS_WRITE_FILE_OPS(inject_packet, 512);
@@ -2422,6 +2399,9 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm, struct dentry *dbgfs_dir)
 	MVM_DEBUGFS_ADD_FILE(inject_packet, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(inject_beacon_ie, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(inject_beacon_ie_restore, mvm->debugfs_dir, 0200);
+
+	if (mvm->fw->phy_integration_ver)
+		MVM_DEBUGFS_ADD_FILE(phy_integration_ver, mvm->debugfs_dir, 0400);
 #ifdef CONFIG_ACPI
 	MVM_DEBUGFS_ADD_FILE(sar_geo_profile, dbgfs_dir, 0400);
 #endif

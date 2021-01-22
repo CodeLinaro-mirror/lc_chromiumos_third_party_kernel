@@ -11,26 +11,32 @@
 #include "intel_uc_fw_abi.h"
 #include "i915_drv.h"
 
-#ifdef CONFIG_DRM_I915_DEBUG_GUC
-static inline struct intel_gt *__uc_fw_to_gt(struct intel_uc_fw *uc_fw)
+static inline struct intel_gt *
+____uc_fw_to_gt(struct intel_uc_fw *uc_fw, enum intel_uc_fw_type type)
 {
-	GEM_BUG_ON(uc_fw->status == INTEL_UC_FIRMWARE_UNINITIALIZED);
-	if (uc_fw->type == INTEL_UC_FW_TYPE_GUC)
+	if (type == INTEL_UC_FW_TYPE_GUC)
 		return container_of(uc_fw, struct intel_gt, uc.guc.fw);
 
-	GEM_BUG_ON(uc_fw->type != INTEL_UC_FW_TYPE_HUC);
+	GEM_BUG_ON(type != INTEL_UC_FW_TYPE_HUC);
 	return container_of(uc_fw, struct intel_gt, uc.huc.fw);
 }
 
+static inline struct intel_gt *__uc_fw_to_gt(struct intel_uc_fw *uc_fw)
+{
+	GEM_BUG_ON(uc_fw->status == INTEL_UC_FIRMWARE_UNINITIALIZED);
+	return ____uc_fw_to_gt(uc_fw, uc_fw->type);
+}
+
+#ifdef CONFIG_DRM_I915_DEBUG_GUC
 void intel_uc_fw_change_status(struct intel_uc_fw *uc_fw,
 			       enum intel_uc_fw_status status)
 {
 	uc_fw->__status =  status;
-	DRM_DEV_DEBUG_DRIVER(__uc_fw_to_gt(uc_fw)->i915->drm.dev,
-			     "%s firmware -> %s\n",
-			     intel_uc_fw_type_repr(uc_fw->type),
-			     status == INTEL_UC_FIRMWARE_SELECTED ?
-			     uc_fw->path : intel_uc_fw_status_repr(status));
+	drm_dbg(&__uc_fw_to_gt(uc_fw)->i915->drm,
+		"%s firmware -> %s\n",
+		intel_uc_fw_type_repr(uc_fw->type),
+		status == INTEL_UC_FIRMWARE_SELECTED ?
+		uc_fw->path : intel_uc_fw_status_repr(status));
 }
 #endif
 
@@ -41,12 +47,16 @@ void intel_uc_fw_change_status(struct intel_uc_fw *uc_fw,
  * TGL 35.2 is interface-compatible with 33.0 for previous Gens. The deltas
  * between 33.0 and 35.2 are only related to new additions to support new Gen12
  * features.
+ *
+ * Note that RKL uses the same firmware as TGL.
  */
 #define INTEL_UC_FIRMWARE_DEFS(fw_def, guc_def, huc_def) \
-	fw_def(TIGERLAKE,   0, guc_def(tgl, 35, 2, 0), huc_def(tgl,  7, 0, 3)) \
+	fw_def(ROCKETLAKE,  0, guc_def(tgl, 35, 2, 0), huc_def(tgl,  7, 0, 12)) \
+	fw_def(TIGERLAKE,   0, guc_def(tgl, 35, 2, 0), huc_def(tgl,  7, 0, 12)) \
+	fw_def(JASPERLAKE,  0, guc_def(ehl, 33, 0, 4), huc_def(ehl,  9, 0, 0)) \
 	fw_def(ELKHARTLAKE, 0, guc_def(ehl, 33, 0, 4), huc_def(ehl,  9, 0, 0)) \
 	fw_def(ICELAKE,     0, guc_def(icl, 33, 0, 0), huc_def(icl,  9, 0, 0)) \
-	fw_def(COFFEELAKE,  5, guc_def(cml, 33, 0, 0), huc_def(cml,  4, 0, 0)) \
+	fw_def(COMETLAKE,   5, guc_def(cml, 33, 0, 0), huc_def(cml,  4, 0, 0)) \
 	fw_def(COFFEELAKE,  0, guc_def(kbl, 33, 0, 0), huc_def(kbl,  4, 0, 0)) \
 	fw_def(GEMINILAKE,  0, guc_def(glk, 33, 0, 0), huc_def(glk,  4, 0, 0)) \
 	fw_def(KABYLAKE,    0, guc_def(kbl, 33, 0, 0), huc_def(kbl,  4, 0, 0)) \
@@ -106,11 +116,13 @@ struct __packed uc_fw_platform_requirement {
 },
 
 static void
-__uc_fw_auto_select(struct intel_uc_fw *uc_fw, enum intel_platform p, u8 rev)
+__uc_fw_auto_select(struct drm_i915_private *i915, struct intel_uc_fw *uc_fw)
 {
 	static const struct uc_fw_platform_requirement fw_blobs[] = {
 		INTEL_UC_FIRMWARE_DEFS(MAKE_FW_LIST, GUC_FW_BLOB, HUC_FW_BLOB)
 	};
+	enum intel_platform p = INTEL_INFO(i915)->platform;
+	u8 rev = INTEL_REVID(i915);
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(fw_blobs) && p <= fw_blobs[i].p; i++) {
@@ -145,35 +157,35 @@ __uc_fw_auto_select(struct intel_uc_fw *uc_fw, enum intel_platform p, u8 rev)
 	}
 
 	/* We don't want to enable GuC/HuC on pre-Gen11 by default */
-	if (i915_modparams.enable_guc == -1 && p < INTEL_ICELAKE)
+	if (i915->params.enable_guc == -1 && p < INTEL_ICELAKE)
 		uc_fw->path = NULL;
 }
 
-static const char *__override_guc_firmware_path(void)
+static const char *__override_guc_firmware_path(struct drm_i915_private *i915)
 {
-	if (i915_modparams.enable_guc & (ENABLE_GUC_SUBMISSION |
-					 ENABLE_GUC_LOAD_HUC))
-		return i915_modparams.guc_firmware_path;
+	if (i915->params.enable_guc & (ENABLE_GUC_SUBMISSION |
+				       ENABLE_GUC_LOAD_HUC))
+		return i915->params.guc_firmware_path;
 	return "";
 }
 
-static const char *__override_huc_firmware_path(void)
+static const char *__override_huc_firmware_path(struct drm_i915_private *i915)
 {
-	if (i915_modparams.enable_guc & ENABLE_GUC_LOAD_HUC)
-		return i915_modparams.huc_firmware_path;
+	if (i915->params.enable_guc & ENABLE_GUC_LOAD_HUC)
+		return i915->params.huc_firmware_path;
 	return "";
 }
 
-static void __uc_fw_user_override(struct intel_uc_fw *uc_fw)
+static void __uc_fw_user_override(struct drm_i915_private *i915, struct intel_uc_fw *uc_fw)
 {
 	const char *path = NULL;
 
 	switch (uc_fw->type) {
 	case INTEL_UC_FW_TYPE_GUC:
-		path = __override_guc_firmware_path();
+		path = __override_guc_firmware_path(i915);
 		break;
 	case INTEL_UC_FW_TYPE_HUC:
-		path = __override_huc_firmware_path();
+		path = __override_huc_firmware_path(i915);
 		break;
 	}
 
@@ -195,9 +207,10 @@ static void __uc_fw_user_override(struct intel_uc_fw *uc_fw)
  * firmware to fetch and load.
  */
 void intel_uc_fw_init_early(struct intel_uc_fw *uc_fw,
-			    enum intel_uc_fw_type type, bool supported,
-			    enum intel_platform platform, u8 rev)
+			    enum intel_uc_fw_type type)
 {
+	struct drm_i915_private *i915 = ____uc_fw_to_gt(uc_fw, type)->i915;
+
 	/*
 	 * we use FIRMWARE_UNINITIALIZED to detect checks against uc_fw->status
 	 * before we're looked at the HW caps to see if we have uc support
@@ -208,9 +221,9 @@ void intel_uc_fw_init_early(struct intel_uc_fw *uc_fw,
 
 	uc_fw->type = type;
 
-	if (supported) {
-		__uc_fw_auto_select(uc_fw, platform, rev);
-		__uc_fw_user_override(uc_fw);
+	if (HAS_GT_UC(i915)) {
+		__uc_fw_auto_select(i915, uc_fw);
+		__uc_fw_user_override(i915, uc_fw);
 	}
 
 	intel_uc_fw_change_status(uc_fw, uc_fw->path ? *uc_fw->path ?
@@ -219,35 +232,36 @@ void intel_uc_fw_init_early(struct intel_uc_fw *uc_fw,
 				  INTEL_UC_FIRMWARE_NOT_SUPPORTED);
 }
 
-static void __force_fw_fetch_failures(struct intel_uc_fw *uc_fw,
-				      struct drm_i915_private *i915,
-				      int e)
+static void __force_fw_fetch_failures(struct intel_uc_fw *uc_fw, int e)
 {
+	struct drm_i915_private *i915 = __uc_fw_to_gt(uc_fw)->i915;
 	bool user = e == -EINVAL;
 
-	if (i915_inject_load_error(i915, e)) {
+	if (i915_inject_probe_error(i915, e)) {
 		/* non-existing blob */
 		uc_fw->path = "<invalid>";
 		uc_fw->user_overridden = user;
-	} else if (i915_inject_load_error(i915, e)) {
+	} else if (i915_inject_probe_error(i915, e)) {
 		/* require next major version */
 		uc_fw->major_ver_wanted += 1;
 		uc_fw->minor_ver_wanted = 0;
 		uc_fw->user_overridden = user;
-	} else if (i915_inject_load_error(i915, e)) {
+	} else if (i915_inject_probe_error(i915, e)) {
 		/* require next minor version */
 		uc_fw->minor_ver_wanted += 1;
 		uc_fw->user_overridden = user;
-	} else if (uc_fw->major_ver_wanted && i915_inject_load_error(i915, e)) {
+	} else if (uc_fw->major_ver_wanted &&
+		   i915_inject_probe_error(i915, e)) {
 		/* require prev major version */
 		uc_fw->major_ver_wanted -= 1;
 		uc_fw->minor_ver_wanted = 0;
 		uc_fw->user_overridden = user;
-	} else if (uc_fw->minor_ver_wanted && i915_inject_load_error(i915, e)) {
+	} else if (uc_fw->minor_ver_wanted &&
+		   i915_inject_probe_error(i915, e)) {
 		/* require prev minor version - hey, this should work! */
 		uc_fw->minor_ver_wanted -= 1;
 		uc_fw->user_overridden = user;
-	} else if (user && i915_inject_load_error(i915, e)) {
+	} else if (user && i915_inject_probe_error(i915, e)) {
 		/* officially unsupported platform */
 		uc_fw->major_ver_wanted = 0;
 		uc_fw->minor_ver_wanted = 0;
@@ -258,14 +272,14 @@ static void __force_fw_fetch_failures(struct intel_uc_fw *uc_fw,
 /**
  * intel_uc_fw_fetch - fetch uC firmware
  * @uc_fw: uC firmware
- * @i915: device private
  *
  * Fetch uC firmware into GEM obj.
  *
  * Return: 0 on success, a negative errno code on failure.
  */
-int intel_uc_fw_fetch(struct intel_uc_fw *uc_fw, struct drm_i915_private *i915)
+int intel_uc_fw_fetch(struct intel_uc_fw *uc_fw)
 {
+	struct drm_i915_private *i915 = __uc_fw_to_gt(uc_fw)->i915;
 	struct device *dev = i915->drm.dev;
 	struct drm_i915_gem_object *obj;
 	const struct firmware *fw = NULL;
@@ -276,12 +290,12 @@ int intel_uc_fw_fetch(struct intel_uc_fw *uc_fw, struct drm_i915_private *i915)
 	GEM_BUG_ON(!i915->wopcm.size);
 	GEM_BUG_ON(!intel_uc_fw_is_enabled(uc_fw));
 
-	err = i915_inject_load_error(i915, -ENXIO);
+	err = i915_inject_probe_error(i915, -ENXIO);
 	if (err)
-		return err;
+		goto fail;
 
-	__force_fw_fetch_failures(uc_fw, i915, -EINVAL);
-	__force_fw_fetch_failures(uc_fw, i915, -ESTALE);
+	__force_fw_fetch_failures(uc_fw, -EINVAL);
+	__force_fw_fetch_failures(uc_fw, -ESTALE);
 
 	err = request_firmware(&fw, uc_fw->path, dev);
 	if (err)
@@ -388,24 +402,24 @@ fail:
 	return err;
 }
 
-static u32 uc_fw_ggtt_offset(struct intel_uc_fw *uc_fw, struct i915_ggtt *ggtt)
+static u32 uc_fw_ggtt_offset(struct intel_uc_fw *uc_fw)
 {
+	struct i915_ggtt *ggtt = __uc_fw_to_gt(uc_fw)->ggtt;
 	struct drm_mm_node *node = &ggtt->uc_fw;
 
-	GEM_BUG_ON(!node->allocated);
+	GEM_BUG_ON(!drm_mm_node_allocated(node));
 	GEM_BUG_ON(upper_32_bits(node->start));
 	GEM_BUG_ON(upper_32_bits(node->start + node->size - 1));
 
 	return lower_32_bits(node->start);
 }
 
-static void intel_uc_fw_ggtt_bind(struct intel_uc_fw *uc_fw,
-				  struct intel_gt *gt)
+static void uc_fw_bind_ggtt(struct intel_uc_fw *uc_fw)
 {
 	struct drm_i915_gem_object *obj = uc_fw->obj;
-	struct i915_ggtt *ggtt = gt->ggtt;
+	struct i915_ggtt *ggtt = __uc_fw_to_gt(uc_fw)->ggtt;
 	struct i915_vma dummy = {
-		.node.start = uc_fw_ggtt_offset(uc_fw, ggtt),
+		.node.start = uc_fw_ggtt_offset(uc_fw),
 		.node.size = obj->base.size,
 		.pages = obj->mm.pages,
 		.vm = &ggtt->vm,
@@ -420,37 +434,36 @@ static void intel_uc_fw_ggtt_bind(struct intel_uc_fw *uc_fw,
 	ggtt->vm.insert_entries(&ggtt->vm, &dummy, I915_CACHE_NONE, 0);
 }
 
-static void intel_uc_fw_ggtt_unbind(struct intel_uc_fw *uc_fw,
-				    struct intel_gt *gt)
+static void uc_fw_unbind_ggtt(struct intel_uc_fw *uc_fw)
 {
 	struct drm_i915_gem_object *obj = uc_fw->obj;
-	struct i915_ggtt *ggtt = gt->ggtt;
-	u64 start = uc_fw_ggtt_offset(uc_fw, ggtt);
+	struct i915_ggtt *ggtt = __uc_fw_to_gt(uc_fw)->ggtt;
+	u64 start = uc_fw_ggtt_offset(uc_fw);
 
 	ggtt->vm.clear_range(&ggtt->vm, start, obj->base.size);
 }
 
-static int uc_fw_xfer(struct intel_uc_fw *uc_fw, struct intel_gt *gt,
-		      u32 wopcm_offset, u32 dma_flags)
+static int uc_fw_xfer(struct intel_uc_fw *uc_fw, u32 dst_offset, u32 dma_flags)
 {
+	struct intel_gt *gt = __uc_fw_to_gt(uc_fw);
 	struct intel_uncore *uncore = gt->uncore;
 	u64 offset;
 	int ret;
 
-	ret = i915_inject_load_error(gt->i915, -ETIMEDOUT);
+	ret = i915_inject_probe_error(gt->i915, -ETIMEDOUT);
 	if (ret)
 		return ret;
 
 	intel_uncore_forcewake_get(uncore, FORCEWAKE_ALL);
 
 	/* Set the source address for the uCode */
-	offset = uc_fw_ggtt_offset(uc_fw, gt->ggtt);
+	offset = uc_fw_ggtt_offset(uc_fw);
 	GEM_BUG_ON(upper_32_bits(offset) & 0xFFFF0000);
 	intel_uncore_write_fw(uncore, DMA_ADDR_0_LOW, lower_32_bits(offset));
 	intel_uncore_write_fw(uncore, DMA_ADDR_0_HIGH, upper_32_bits(offset));
 
 	/* Set the DMA destination */
-	intel_uncore_write_fw(uncore, DMA_ADDR_1_LOW, wopcm_offset);
+	intel_uncore_write_fw(uncore, DMA_ADDR_1_LOW, dst_offset);
 	intel_uncore_write_fw(uncore, DMA_ADDR_1_HIGH, DMA_ADDRESS_SPACE_WOPCM);
 
 	/*
@@ -482,33 +495,32 @@ static int uc_fw_xfer(struct intel_uc_fw *uc_fw, struct intel_gt *gt,
 /**
  * intel_uc_fw_upload - load uC firmware using custom loader
  * @uc_fw: uC firmware
- * @gt: the intel_gt structure
- * @wopcm_offset: destination offset in wopcm
+ * @dst_offset: destination offset
  * @dma_flags: flags for flags for dma ctrl
  *
  * Loads uC firmware and updates internal flags.
  *
  * Return: 0 on success, non-zero on failure.
  */
-int intel_uc_fw_upload(struct intel_uc_fw *uc_fw, struct intel_gt *gt,
-		       u32 wopcm_offset, u32 dma_flags)
+int intel_uc_fw_upload(struct intel_uc_fw *uc_fw, u32 dst_offset, u32 dma_flags)
 {
+	struct intel_gt *gt = __uc_fw_to_gt(uc_fw);
 	int err;
 
 	/* make sure the status was cleared the last time we reset the uc */
 	GEM_BUG_ON(intel_uc_fw_is_loaded(uc_fw));
 
-	err = i915_inject_load_error(gt->i915, -ENOEXEC);
+	err = i915_inject_probe_error(gt->i915, -ENOEXEC);
 	if (err)
 		return err;
 
-	if (!intel_uc_fw_is_available(uc_fw))
+	if (!intel_uc_fw_is_loadable(uc_fw))
 		return -ENOEXEC;
 
 	/* Call custom loader */
-	intel_uc_fw_ggtt_bind(uc_fw, gt);
-	err = uc_fw_xfer(uc_fw, gt, wopcm_offset, dma_flags);
-	intel_uc_fw_ggtt_unbind(uc_fw, gt);
+	uc_fw_bind_ggtt(uc_fw);
+	err = uc_fw_xfer(uc_fw, dst_offset, dma_flags);
+	uc_fw_unbind_ggtt(uc_fw);
 	if (err)
 		goto fail;
 
@@ -545,10 +557,10 @@ int intel_uc_fw_init(struct intel_uc_fw *uc_fw)
 
 void intel_uc_fw_fini(struct intel_uc_fw *uc_fw)
 {
-	if (!intel_uc_fw_is_available(uc_fw))
-		return;
+	if (i915_gem_object_has_pinned_pages(uc_fw->obj))
+		i915_gem_object_unpin_pages(uc_fw->obj);
 
-	i915_gem_object_unpin_pages(uc_fw->obj);
+	intel_uc_fw_change_status(uc_fw, INTEL_UC_FIRMWARE_AVAILABLE);
 }
 
 /**

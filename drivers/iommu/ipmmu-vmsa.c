@@ -368,7 +368,6 @@ static void ipmmu_tlb_flush(unsigned long iova, size_t size,
 static const struct iommu_flush_ops ipmmu_flush_ops = {
 	.tlb_flush_all = ipmmu_tlb_flush_all,
 	.tlb_flush_walk = ipmmu_tlb_flush,
-	.tlb_flush_leaf = ipmmu_tlb_flush,
 };
 
 /* -----------------------------------------------------------------------------
@@ -729,7 +728,7 @@ static int ipmmu_map(struct iommu_domain *io_domain, unsigned long iova,
 	if (!domain)
 		return -ENODEV;
 
-	return domain->iop->map(domain->iop, iova, paddr, size, prot);
+	return domain->iop->map(domain->iop, iova, paddr, size, prot, gfp);
 }
 
 static size_t ipmmu_unmap(struct iommu_domain *io_domain, unsigned long iova,

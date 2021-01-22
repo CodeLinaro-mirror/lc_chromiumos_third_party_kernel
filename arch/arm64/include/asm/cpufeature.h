@@ -262,6 +262,8 @@ extern struct arm64_ftr_reg arm64_ftr_reg_ctrel0;
 /*
  * CPU feature detected at boot time based on feature of one or more CPUs.
  * All possible conflicts for a late CPU are ignored.
+ * NOTE: this means that a late CPU with the feature will *not* cause the
+ * capability to be advertised by cpus_have_*cap()!
  */
 #define ARM64_CPUCAP_WEAK_LOCAL_CPU_FEATURE		\
 	(ARM64_CPUCAP_SCOPE_LOCAL_CPU		|	\
@@ -629,7 +631,7 @@ static inline bool system_supports_generic_auth(void)
 		cpus_have_const_cap(ARM64_HAS_GENERIC_AUTH);
 }
 
-static inline bool system_uses_irq_prio_masking(void)
+static __always_inline bool system_uses_irq_prio_masking(void)
 {
 	return IS_ENABLED(CONFIG_ARM64_PSEUDO_NMI) &&
 	       cpus_have_const_cap(ARM64_HAS_IRQ_PRIO_MASKING);
@@ -705,6 +707,24 @@ static inline bool cpu_has_hw_af(void)
 /* Check whether the cpu supports the Activity Monitors Unit (AMU) */
 extern bool cpu_has_amu_feat(int cpu);
 #endif
+
+static inline unsigned int get_vmid_bits(u64 mmfr1)
+{
+	int vmid_bits;
+
+	vmid_bits = cpuid_feature_extract_unsigned_field(mmfr1,
+						ID_AA64MMFR1_VMIDBITS_SHIFT);
+	if (vmid_bits == ID_AA64MMFR1_VMIDBITS_16)
+		return 16;
+
+	/*
+	 * Return the default here even if any reserved
+	 * value is fetched from the system register.
+	 */
+	return 8;
+}
+
+u32 get_kvm_ipa_limit(void);
 
 #endif /* __ASSEMBLY__ */
 

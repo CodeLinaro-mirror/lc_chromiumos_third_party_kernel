@@ -1,65 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2007 - 2014, 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2005 - 2014, 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
-
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2015-2017 Intel Deutschland GmbH
+ */
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -162,6 +106,16 @@ void iwl_xvt_send_user_rx_notif(struct iwl_xvt *xvt,
 	case WIDE_ID(XVT_GROUP, IQ_CALIB_CONFIG_NOTIF):
 		iwl_xvt_user_send_notif(xvt,
 					IWL_TM_USER_CMD_NOTIF_IQ_CALIB,
+					data, size, GFP_ATOMIC);
+		break;
+	case WIDE_ID(XVT_GROUP, DTS_MEASUREMENT_TRIGGER_NOTIF):
+		iwl_xvt_user_send_notif(xvt,
+					IWL_TM_USER_CMD_NOTIF_DTS_MEASUREMENTS_XVT,
+					data, size, GFP_ATOMIC);
+		break;
+	case WIDE_ID(XVT_GROUP, MPAPD_EXEC_DONE_NOTIF):
+		iwl_xvt_user_send_notif(xvt,
+					IWL_TM_USER_CMD_NOTIF_MPAPD_EXEC_DONE,
 					data, size, GFP_ATOMIC);
 		break;
 	case WIDE_ID(XVT_GROUP, RUN_TIME_CALIB_DONE_NOTIF):
@@ -438,7 +392,8 @@ static int iwl_xvt_send_phy_cfg_cmd(struct iwl_xvt *xvt, u32 ucode_type)
 		calib_cmd_cfg->calib_control.flow_trigger = 0;
 	}
 	cmd_size = iwl_fw_lookup_cmd_ver(xvt->fw, IWL_ALWAYS_LONG_GROUP,
-					 PHY_CONFIGURATION_CMD) == 3 ?
+					 PHY_CONFIGURATION_CMD,
+					 IWL_FW_CMD_VER_UNKNOWN) == 3 ?
 					    sizeof(struct iwl_phy_cfg_cmd_v3) :
 					    sizeof(struct iwl_phy_cfg_cmd_v1);
 
@@ -1090,7 +1045,7 @@ static struct sk_buff *iwl_xvt_set_skb(struct iwl_xvt *xvt,
 	/* copy MAC header into skb */
 	memcpy(skb_put(skb, header_size), hdr, header_size);
 	/* copy frame payload into skb */
-	memcpy(skb_put(skb, payload_length), payload, payload_length);
+	memcpy(skb_put(skb, payload_length), payload->payload, payload_length);
 
 	return skb;
 }
@@ -1201,7 +1156,7 @@ static int iwl_xvt_transmit_packet(struct iwl_xvt *xvt,
 	if (time_remain <= 0) {
 		/* This should really not happen */
 		WARN_ON_ONCE(queue_data->txq_full);
-		IWL_ERR(xvt, "Error while sending Tx\n");
+		IWL_ERR(xvt, "Error while sending Tx - queue full\n");
 		*status = XVT_TX_DRIVER_QUEUE_FULL;
 		err = -EIO;
 		goto on_err;
@@ -1348,27 +1303,30 @@ static int iwl_xvt_start_tx_handler(void *data)
 							      frame_index,
 							      frag_num,
 							      &status);
-				sent_packets++;
 				if (err) {
 					IWL_ERR(xvt, "stop due to err %d\n",
 						err);
 					goto on_exit;
 				}
 
+				sent_packets++;
 				++frag_idx;
 			}
 		}
 	}
-	time_remain = wait_event_interruptible_timeout(
-			xvt->tx_done_wq,
-			xvt->num_of_tx_resp == sent_packets,
-			5 * HZ * CPTCFG_IWL_TIMEOUT_FACTOR);
-	if (time_remain <= 0) {
-		IWL_ERR(xvt, "Not all Tx messages were sent\n");
-		status = XVT_TX_DRIVER_TIMEOUT;
-	}
 
 on_exit:
+	if (sent_packets > 0 && !xvt->fw_error) {
+		time_remain = wait_event_interruptible_timeout(xvt->tx_done_wq,
+					xvt->num_of_tx_resp == sent_packets,
+					5 * HZ * CPTCFG_IWL_TIMEOUT_FACTOR);
+		if (time_remain <= 0) {
+			IWL_ERR(xvt, "Not all Tx messages were sent\n");
+			if (status == 0)
+				status = XVT_TX_DRIVER_TIMEOUT;
+		}
+	}
+
 	err = iwl_xvt_send_tx_done_notif(xvt, status);
 
 	xvt->is_enhanced_tx = false;
@@ -2046,6 +2004,99 @@ out_free:
 	return err;
 }
 
+static int iwl_xvt_get_fw_tlv(struct iwl_xvt *xvt,
+			      u32 img_id,
+			      u32 tlv_id,
+			      const u8 **out_tlv_data,
+			      u32 *out_tlv_len)
+{
+	int err = 0;
+
+	switch (tlv_id) {
+	case IWL_UCODE_TLV_CMD_VERSIONS:
+		*out_tlv_data = (const u8 *)xvt->fw->ucode_capa.cmd_versions;
+		*out_tlv_len = xvt->fw->ucode_capa.n_cmd_versions *
+			sizeof(struct iwl_fw_cmd_version);
+		break;
+
+	case IWL_UCODE_TLV_PHY_INTEGRATION_VERSION:
+		*out_tlv_data = xvt->fw->phy_integration_ver;
+		*out_tlv_len = xvt->fw->phy_integration_ver_len;
+		break;
+
+	default:
+		IWL_ERR(xvt, "TLV type not supported, type = %u\n", tlv_id);
+
+		*out_tlv_data = NULL;
+		*out_tlv_len = 0;
+		err = -EOPNOTSUPP;
+	}
+
+	return err;
+}
+
+static int iwl_xvt_handle_get_fw_tlv_len(struct iwl_xvt *xvt,
+					 struct iwl_tm_data *data_in,
+					 struct iwl_tm_data *data_out)
+{
+	struct iwl_xvt_get_fw_tlv_len_request *req = data_in->data;
+	struct iwl_xvt_fw_tlv_len_response *resp;
+	const u8 *tlv_data;
+	u32 tlv_len;
+	int err = 0;
+
+	IWL_DEBUG_INFO(xvt, "handle get fw tlv len, type = %u\n",
+		       req->tlv_type_id);
+
+	err = iwl_xvt_get_fw_tlv(xvt, req->fw_img_type, req->tlv_type_id,
+				 &tlv_data, &tlv_len);
+	if (err)
+		return err;
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp)
+		return -ENOMEM;
+
+	resp->bytes_len = tlv_len;
+
+	data_out->len = sizeof(*resp);
+	data_out->data = resp;
+
+	return 0;
+}
+
+static int iwl_xvt_handle_get_fw_tlv_data(struct iwl_xvt *xvt,
+					  struct iwl_tm_data *data_in,
+					  struct iwl_tm_data *data_out)
+{
+	struct iwl_xvt_get_fw_tlv_data_request *req = data_in->data;
+	struct iwl_xvt_fw_tlv_data_response *resp;
+	const u8 *tlv_data;
+	u32 tlv_len;
+	int err;
+
+	IWL_DEBUG_INFO(xvt, "handle get fw tlv data, type = %u\n",
+		       req->tlv_type_id);
+
+	err = iwl_xvt_get_fw_tlv(xvt, req->fw_img_type, req->tlv_type_id,
+				 &tlv_data, &tlv_len);
+	if (err)
+		return err;
+
+	data_out->len = sizeof(*resp) + tlv_len;
+	resp = kzalloc(data_out->len, GFP_KERNEL);
+	if (!resp)
+		return -ENOMEM;
+
+	resp->bytes_len = tlv_len;
+	if (tlv_data)
+		memcpy(resp->data, tlv_data, tlv_len);
+
+	data_out->data = resp;
+
+	return 0;
+}
+
 int iwl_xvt_user_cmd_execute(struct iwl_testmode *testmode, u32 cmd,
 			     struct iwl_tm_data *data_in,
 			     struct iwl_tm_data *data_out, bool *supported_cmd)
@@ -2138,6 +2189,14 @@ int iwl_xvt_user_cmd_execute(struct iwl_testmode *testmode, u32 cmd,
 		break;
 	case IWL_XVT_CMD_DRIVER_CMD:
 		ret = iwl_xvt_handle_driver_cmd(xvt, data_in, data_out);
+		break;
+
+	case IWL_XVT_CMD_FW_TLV_GET_LEN:
+		ret = iwl_xvt_handle_get_fw_tlv_len(xvt, data_in, data_out);
+		break;
+
+	case IWL_XVT_CMD_FW_TLV_GET_DATA:
+		ret = iwl_xvt_handle_get_fw_tlv_data(xvt, data_in, data_out);
 		break;
 
 	default:

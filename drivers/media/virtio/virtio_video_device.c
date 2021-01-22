@@ -18,6 +18,7 @@
  */
 
 #include <linux/dma-buf.h>
+#include <linux/virtio_dma_buf.h>
 #include <media/v4l2-event.h>
 #include <media/v4l2-ioctl.h>
 #include <media/videobuf2-dma-sg.h>
@@ -56,9 +57,11 @@ static int virtio_video_get_dma_buf_id(struct virtio_video_device *vvd,
 	/**
 	 * For multiplanar formats, we assume all planes are on one DMA buffer.
 	 */
-	struct dma_buf *dma_buf = dma_buf_get(vb->planes[0].m.fd);
-
-	return dma_buf_get_uuid(dma_buf, uuid);
+	if (vb->planes[0].dbuf) {
+		return virtio_dma_buf_get_uuid(vb->planes[0].dbuf, uuid);
+	} else {
+		return -EINVAL;
+	}
 }
 
 static int virtio_video_send_resource_create_object(struct vb2_buffer *vb,
@@ -490,11 +493,20 @@ int virtio_video_g_selection(struct file *file, void *fh,
 	}
 
 	switch (sel->target) {
-	case V4L2_SEL_TGT_COMPOSE:
-	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
-	case V4L2_SEL_TGT_COMPOSE_PADDED:
+	case V4L2_SEL_TGT_CROP_BOUNDS:
 		sel->r.width = info->frame_width;
 		sel->r.height = info->frame_height;
+		break;
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+	case V4L2_SEL_TGT_CROP:
+	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+	case V4L2_SEL_TGT_COMPOSE:
+	case V4L2_SEL_TGT_COMPOSE_PADDED:
+		sel->r.left = info->crop.left;
+		sel->r.top = info->crop.top;
+		sel->r.width = info->crop.width;
+		sel->r.height = info->crop.height;
 		break;
 	default:
 		v4l2_dbg(1, vvd->vv->debug, &vvd->vv->v4l2_dev,
@@ -1007,6 +1019,7 @@ static int virtio_video_device_release(struct file *file)
 	virtio_video_cmd_stream_destroy(vv, stream->stream_id);
 	virtio_video_stream_id_put(vv, stream->stream_id);
 
+	v4l2_ctrl_handler_free(&stream->ctrl_handler);
 	kfree(stream);
 
 	return 0;
@@ -1185,7 +1198,7 @@ err:
 	return ERR_CAST(m2m_dev);
 }
 
-void virtio_video_device_destroy(struct virtio_video_device *vvd)
+static void virtio_video_device_destroy(struct virtio_video_device *vvd)
 {
 	if (!vvd)
 		return;

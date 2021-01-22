@@ -105,7 +105,7 @@ void amdgpu_gem_force_release(struct amdgpu_device *adev)
 		spin_lock(&file->table_lock);
 		idr_for_each_entry(&file->object_idr, gobj, handle) {
 			WARN_ONCE(1, "And also active allocations!\n");
-			drm_gem_object_put_unlocked(gobj);
+			drm_gem_object_put(gobj);
 		}
 		idr_destroy(&file->object_idr);
 		spin_unlock(&file->table_lock);
@@ -161,16 +161,17 @@ void amdgpu_gem_object_close(struct drm_gem_object *obj,
 
 	struct amdgpu_bo_list_entry vm_pd;
 	struct list_head list, duplicates;
+	struct dma_fence *fence = NULL;
 	struct ttm_validate_buffer tv;
 	struct ww_acquire_ctx ticket;
 	struct amdgpu_bo_va *bo_va;
-	int r;
+	long r;
 
 	INIT_LIST_HEAD(&list);
 	INIT_LIST_HEAD(&duplicates);
 
 	tv.bo = &bo->tbo;
-	tv.num_shared = 1;
+	tv.num_shared = 2;
 	list_add(&tv.head, &list);
 
 	amdgpu_vm_get_pd_bo(vm, &list, &vm_pd);
@@ -178,28 +179,34 @@ void amdgpu_gem_object_close(struct drm_gem_object *obj,
 	r = ttm_eu_reserve_buffers(&ticket, &list, false, &duplicates, false);
 	if (r) {
 		dev_err(adev->dev, "leaking bo va because "
-			"we fail to reserve bo (%d)\n", r);
+			"we fail to reserve bo (%ld)\n", r);
 		return;
 	}
 	bo_va = amdgpu_vm_bo_find(vm, bo);
-	if (bo_va && --bo_va->ref_count == 0) {
-		amdgpu_vm_bo_rmv(adev, bo_va);
+	if (!bo_va || --bo_va->ref_count)
+		goto out_unlock;
 
-		if (amdgpu_vm_ready(vm)) {
-			struct dma_fence *fence = NULL;
+	amdgpu_vm_bo_rmv(adev, bo_va);
+	if (!amdgpu_vm_ready(vm))
+		goto out_unlock;
 
-			r = amdgpu_vm_clear_freed(adev, vm, &fence);
-			if (unlikely(r)) {
-				dev_err(adev->dev, "failed to clear page "
-					"tables on GEM object close (%d)\n", r);
-			}
-
-			if (fence) {
-				amdgpu_bo_fence(bo, fence, true);
-				dma_fence_put(fence);
-			}
-		}
+	fence = dma_resv_get_excl(bo->tbo.base.resv);
+	if (fence) {
+		amdgpu_bo_fence(bo, fence, true);
+		fence = NULL;
 	}
+
+	r = amdgpu_vm_clear_freed(adev, vm, &fence);
+	if (r || !fence)
+		goto out_unlock;
+
+	amdgpu_bo_fence(bo, fence, true);
+	dma_fence_put(fence);
+
+out_unlock:
+	if (unlikely(r < 0))
+		dev_err(adev->dev, "failed to clear page "
+			"tables on GEM object close (%ld)\n", r);
 	ttm_eu_backoff_reservation(&ticket, &list);
 }
 
@@ -271,7 +278,7 @@ int amdgpu_gem_create_ioctl(struct drm_device *dev, void *data,
 
 	r = drm_gem_handle_create(filp, gobj, &handle);
 	/* drop reference from allocate - handle holds it now */
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 	if (r)
 		return r;
 
@@ -355,7 +362,7 @@ user_pages_done:
 		amdgpu_ttm_tt_get_user_pages_done(bo->tbo.ttm);
 
 release_object:
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 
 	return r;
 }
@@ -374,11 +381,11 @@ int amdgpu_mode_dumb_mmap(struct drm_file *filp,
 	robj = gem_to_amdgpu_bo(gobj);
 	if (amdgpu_ttm_tt_get_usermm(robj->tbo.ttm) ||
 	    (robj->flags & AMDGPU_GEM_CREATE_NO_CPU_ACCESS)) {
-		drm_gem_object_put_unlocked(gobj);
+		drm_gem_object_put(gobj);
 		return -EPERM;
 	}
 	*offset_p = amdgpu_bo_mmap_offset(robj);
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 	return 0;
 }
 
@@ -448,7 +455,7 @@ int amdgpu_gem_wait_idle_ioctl(struct drm_device *dev, void *data,
 	} else
 		r = ret;
 
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 	return r;
 }
 
@@ -491,7 +498,7 @@ int amdgpu_gem_metadata_ioctl(struct drm_device *dev, void *data,
 unreserve:
 	amdgpu_bo_unreserve(robj);
 out:
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 	return r;
 }
 
@@ -554,6 +561,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	struct ww_acquire_ctx ticket;
 	struct list_head list, duplicates;
 	uint64_t va_flags;
+	uint64_t vm_size;
 	int r = 0;
 
 	if (args->va_address < AMDGPU_VA_RESERVED_SIZE) {
@@ -573,6 +581,15 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	}
 
 	args->va_address &= AMDGPU_GMC_HOLE_MASK;
+
+	vm_size = adev->vm_manager.max_pfn * AMDGPU_GPU_PAGE_SIZE;
+	vm_size -= AMDGPU_VA_RESERVED_SIZE;
+	if (args->va_address + args->map_size > vm_size) {
+		dev_dbg(&dev->pdev->dev,
+			"va_address 0x%llx is in top reserved area 0x%llx\n",
+			args->va_address + args->map_size, vm_size);
+		return -EINVAL;
+	}
 
 	if ((args->flags & ~valid_flags) && (args->flags & ~prt_flags)) {
 		dev_dbg(&dev->pdev->dev, "invalid flags combination 0x%08X\n",
@@ -662,7 +679,7 @@ error_backoff:
 	ttm_eu_backoff_reservation(&ticket, &list);
 
 error_unref:
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 	return r;
 }
 
@@ -738,7 +755,7 @@ int amdgpu_gem_op_ioctl(struct drm_device *dev, void *data,
 	}
 
 out:
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 	return r;
 }
 
@@ -775,7 +792,7 @@ int amdgpu_mode_dumb_create(struct drm_file *file_priv,
 
 	r = drm_gem_handle_create(file_priv, gobj, &handle);
 	/* drop reference from allocate - handle holds it now */
-	drm_gem_object_put_unlocked(gobj);
+	drm_gem_object_put(gobj);
 	if (r) {
 		return r;
 	}

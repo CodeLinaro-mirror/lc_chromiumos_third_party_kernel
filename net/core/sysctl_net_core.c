@@ -277,7 +277,7 @@ static int proc_dointvec_minmax_bpf_enable(struct ctl_table *table, int write,
 	ret = proc_dointvec_minmax(&tmp, write, buffer, lenp, ppos);
 	if (write && !ret) {
 		if (jit_enable < 2 ||
-		    (jit_enable == 2 && bpf_dump_raw_ok())) {
+		    (jit_enable == 2 && bpf_dump_raw_ok(current_cred()))) {
 			*(int *)table->data = jit_enable;
 			if (jit_enable == 2)
 				pr_warn("bpf_jit_enable = 2 was set! NEVER use this in production, only for JIT debugging!\n");
@@ -582,20 +582,20 @@ static struct ctl_table net_core_table[] = {
 
 static struct ctl_table netns_core_table[] = {
 	{
-		.procname	= "somaxconn",
-		.data		= &init_net.core.sysctl_somaxconn,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.extra1		= SYSCTL_ZERO,
-		.proc_handler	= proc_dointvec_minmax
-	},
-	{
 		.procname	= "android_paranoid",
 		.data		= &init_net.core.sysctl_android_paranoid,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_ONE,
+		.proc_handler	= proc_dointvec_minmax
+	},
+	{
+		.procname	= "somaxconn",
+		.data		= &init_net.core.sysctl_somaxconn,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.extra1		= SYSCTL_ZERO,
 		.proc_handler	= proc_dointvec_minmax
 	},
 	{ }
@@ -613,12 +613,14 @@ static __net_init int sysctl_core_net_init(struct net *net)
 		if (tbl == NULL)
 			goto err_dup;
 
-		tbl[0].data = &net->core.sysctl_somaxconn;
-		tbl[1].data = &net->core.sysctl_android_paranoid;
+		tbl[0].data = &net->core.sysctl_android_paranoid;
+		tbl[1].data = &net->core.sysctl_somaxconn;
 
-		/* Don't export any sysctls to unprivileged users */
+		/* Don't export sysctls other than android_paranoid
+		 * to unprivileged users
+		 */
 		if (net->user_ns != &init_user_ns) {
-			tbl[0].procname = NULL;
+			tbl[1].procname = NULL;
 		}
 	}
 

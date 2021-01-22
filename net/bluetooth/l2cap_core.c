@@ -1363,8 +1363,14 @@ static bool l2cap_check_enc_key_size(struct hci_conn *hcon)
 	 * that have no key size requirements. Ensure that the link is
 	 * actually encrypted before enforcing a key size.
 	 */
+	int min_key_size = hcon->hdev->min_enc_key_size;
+
+	/* On FIPS security level, key size must be 16 bytes */
+	if (hcon->sec_level == BT_SECURITY_FIPS)
+		min_key_size = 16;
+
 	return (!test_bit(HCI_CONN_ENCRYPT, &hcon->flags) ||
-		hcon->enc_key_size >= hcon->hdev->min_enc_key_size);
+		hcon->enc_key_size >= min_key_size);
 }
 
 static void l2cap_do_start(struct l2cap_chan *chan)
@@ -3428,7 +3434,7 @@ static int l2cap_parse_conf_req(struct l2cap_chan *chan, void *data, size_t data
 			if (hint)
 				break;
 			result = L2CAP_CONF_UNKNOWN;
-			*((u8 *) ptr++) = type;
+			l2cap_add_conf_opt(&ptr, (u8)type, sizeof(u8), type, endptr - ptr);
 			break;
 		}
 	}
@@ -5318,6 +5324,13 @@ static inline int l2cap_conn_param_update_req(struct l2cap_conn *conn,
 	l2cap_send_cmd(conn, cmd->ident, L2CAP_CONN_PARAM_UPDATE_RSP,
 		       sizeof(rsp), &rsp);
 
+	if (hcon->type == LE_LINK && restrict_le_conn_params(hcon->hdev)) {
+		if (min == 6 && max == 9) {
+			min = 6;
+			max = 6;
+		}
+	}
+
 	if (!err) {
 		u8 store_hint;
 
@@ -6702,9 +6715,10 @@ static int l2cap_data_rcv(struct l2cap_chan *chan, struct sk_buff *skb)
 		goto drop;
 	}
 
-	if ((chan->mode == L2CAP_MODE_ERTM ||
-	     chan->mode == L2CAP_MODE_STREAMING) && sk_filter(chan->data, skb))
-		goto drop;
+	if (chan->ops->filter) {
+		if (chan->ops->filter(chan, skb))
+			goto drop;
+	}
 
 	if (!control->sframe) {
 		int err;
@@ -7257,11 +7271,13 @@ int l2cap_chan_connect(struct l2cap_chan *chan, __le16 psm, u16 cid,
 		else
 			hcon = hci_connect_le_scan(hdev, dst, dst_type,
 						   chan->sec_level,
-						   HCI_LE_CONN_TIMEOUT);
+						   HCI_LE_CONN_TIMEOUT,
+						   CONN_REASON_L2CAP_CHAN);
 
 	} else {
 		u8 auth_type = l2cap_get_auth_type(chan);
-		hcon = hci_connect_acl(hdev, dst, chan->sec_level, auth_type);
+		hcon = hci_connect_acl(hdev, dst, chan->sec_level, auth_type,
+				       CONN_REASON_L2CAP_CHAN);
 	}
 
 	if (IS_ERR(hcon)) {

@@ -25,7 +25,7 @@ struct ipa_gsi_endpoint_data;
 #define IPA_MTU			ETH_DATA_LEN
 
 enum ipa_endpoint_name {
-	IPA_ENDPOINT_AP_MODEM_TX	= 0,
+	IPA_ENDPOINT_AP_MODEM_TX,
 	IPA_ENDPOINT_MODEM_LAN_TX,
 	IPA_ENDPOINT_MODEM_COMMAND_TX,
 	IPA_ENDPOINT_AP_COMMAND_TX,
@@ -41,7 +41,6 @@ enum ipa_endpoint_name {
 
 /**
  * struct ipa_endpoint - IPA endpoint information
- * @client:	Client associated with the endpoint
  * @channel_id:	EP's GSI channel
  * @evt_ring_id: EP's GSI channel event ring
  */

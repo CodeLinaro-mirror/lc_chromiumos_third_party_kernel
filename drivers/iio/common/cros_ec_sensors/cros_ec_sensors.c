@@ -8,6 +8,7 @@
  * EC about sensors data. Data access is presented through iio sysfs.
  */
 
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/iio/buffer.h>
 #include <linux/iio/common/cros_ec_sensors_core.h>
@@ -16,7 +17,6 @@
 #include <linux/iio/trigger_consumer.h>
 #include <linux/iio/triggered_buffer.h>
 #include <linux/kernel.h>
-#include <linux/mfd/cros_ec.h>
 #include <linux/module.h>
 #include <linux/platform_data/cros_ec_commands.h>
 #include <linux/platform_data/cros_ec_proto.h>
@@ -201,6 +201,10 @@ static int cros_ec_sensors_write(struct iio_dev *indio_dev,
 		st->core.param.sensor_range.roundup = 1;
 
 		ret = cros_ec_motion_send_host_cmd(&st->core, 0);
+		if (ret == 0) {
+			st->core.range_updated = true;
+			st->core.curr_range = val;
+		}
 		break;
 	default:
 		ret = cros_ec_sensors_core_write(
@@ -210,6 +214,17 @@ static int cros_ec_sensors_write(struct iio_dev *indio_dev,
 
 	mutex_unlock(&st->core.cmd_lock);
 
+	if ((ret == 0) &&
+	    ((mask == IIO_CHAN_INFO_FREQUENCY) ||
+	     (mask == IIO_CHAN_INFO_SAMP_FREQ))) {
+		/*
+		 * Add a delay to allow the EC to flush older datum.
+		 * Assuming 1Mb link to the EC and 20 bytes per event, with 200
+		 * elements in the FIFO, we need 4ms. Add time for interrupt
+		 * handling and waking up requestor.
+		 */
+		usleep_range(10000, 15000);
+	}
 	return ret;
 }
 
@@ -236,6 +251,8 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 					cros_ec_sensors_push_data);
 	if (ret)
 		return ret;
+
+	iio_buffer_set_attrs(indio_dev->buffer, cros_ec_sensor_fifo_attributes);
 
 	indio_dev->info = &ec_sensors_info;
 	state = iio_priv(indio_dev);
@@ -294,8 +311,6 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 	else
 		state->core.read_ec_sensors_data = cros_ec_sensors_read_cmd;
 
-	iio_buffer_set_attrs(indio_dev->buffer, cros_ec_sensor_fifo_attributes);
-
 	return devm_iio_device_register(dev, indio_dev);
 }
 
@@ -316,6 +331,7 @@ MODULE_DEVICE_TABLE(platform, cros_ec_sensors_ids);
 static struct platform_driver cros_ec_sensors_platform_driver = {
 	.driver = {
 		.name	= "cros-ec-sensors",
+		.pm	= &cros_ec_sensors_pm_ops,
 	},
 	.probe		= cros_ec_sensors_probe,
 	.id_table	= cros_ec_sensors_ids,

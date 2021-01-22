@@ -1525,6 +1525,16 @@ static void dcn10_pipe_control_lock(
 		dcn10_verify_allow_pstate_change_high(dc);
 }
 
+void dcn10_cursor_lock(struct dc *dc, struct pipe_ctx *pipe, bool lock)
+{
+	/* cursor lock is per MPCC tree, so only need to lock one pipe per stream */
+	if (!pipe || pipe->top_pipe)
+		return;
+
+	dc->res_pool->mpc->funcs->cursor_lock(dc->res_pool->mpc,
+			pipe->stream_res.opp->inst, lock);
+}
+
 static bool wait_for_reset_trigger_to_occur(
 	struct dc_context *dc_ctx,
 	struct timing_generator *tg)
@@ -2286,14 +2296,46 @@ void update_dchubp_dpp(
 	struct dc_plane_state *plane_state = pipe_ctx->plane_state;
 	struct plane_size size = plane_state->plane_size;
 	unsigned int compat_level = 0;
+	bool should_divided_by_2 = false;
 
 	/* depends on DML calculation, DPP clock value may change dynamically */
 	/* If request max dpp clk is lower than current dispclk, no need to
 	 * divided by 2
 	 */
 	if (plane_state->update_flags.bits.full_update) {
-		bool should_divided_by_2 = context->bw_ctx.bw.dcn.clk.dppclk_khz <=
-				dc->clk_mgr->clks.dispclk_khz / 2;
+
+		/* new calculated dispclk, dppclk are stored in
+		 * context->bw_ctx.bw.dcn.clk.dispclk_khz / dppclk_khz. current
+		 * dispclk, dppclk are from dc->clk_mgr->clks.dispclk_khz.
+		 * dcn_validate_bandwidth compute new dispclk, dppclk.
+		 * dispclk will put in use after optimize_bandwidth when
+		 * ramp_up_dispclk_with_dpp is called.
+		 * there are two places for dppclk be put in use. One location
+		 * is the same as the location as dispclk. Another is within
+		 * update_dchubp_dpp which happens between pre_bandwidth and
+		 * optimize_bandwidth.
+		 * dppclk updated within update_dchubp_dpp will cause new
+		 * clock values of dispclk and dppclk not be in use at the same
+		 * time. when clocks are decreased, this may cause dppclk is
+		 * lower than previous configuration and let pipe stuck.
+		 * for example, eDP + external dp,  change resolution of DP from
+		 * 1920x1080x144hz to 1280x960x60hz.
+		 * before change: dispclk = 337889 dppclk = 337889
+		 * change mode, dcn_validate_bandwidth calculate
+		 *                dispclk = 143122 dppclk = 143122
+		 * update_dchubp_dpp be executed before dispclk be updated,
+		 * dispclk = 337889, but dppclk use new value dispclk /2 =
+		 * 168944. this will cause pipe pstate warning issue.
+		 * solution: between pre_bandwidth and optimize_bandwidth, while
+		 * dispclk is going to be decreased, keep dppclk = dispclk
+		 **/
+		if (context->bw_ctx.bw.dcn.clk.dispclk_khz <
+				dc->clk_mgr->clks.dispclk_khz)
+			should_divided_by_2 = false;
+		else
+			should_divided_by_2 =
+					context->bw_ctx.bw.dcn.clk.dppclk_khz <=
+					dc->clk_mgr->clks.dispclk_khz / 2;
 
 		dpp->funcs->dpp_dppclk_control(
 				dpp,
@@ -3366,6 +3408,7 @@ static const struct hw_sequencer_funcs dcn10_funcs = {
 	.disable_plane = dcn10_disable_plane,
 	.blank_pixel_data = dcn10_blank_pixel_data,
 	.pipe_control_lock = dcn10_pipe_control_lock,
+	.cursor_lock = dcn10_cursor_lock,
 	.prepare_bandwidth = dcn10_prepare_bandwidth,
 	.optimize_bandwidth = dcn10_optimize_bandwidth,
 	.reset_hw_ctx_wrap = dcn10_reset_hw_ctx_wrap,

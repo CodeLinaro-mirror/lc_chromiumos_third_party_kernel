@@ -17,6 +17,7 @@
 #include <linux/delay.h>
 #include <linux/log2.h>
 #include <linux/hwspinlock.h>
+#include <asm/unaligned.h>
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
@@ -249,22 +250,20 @@ static void regmap_format_8(void *buf, unsigned int val, unsigned int shift)
 
 static void regmap_format_16_be(void *buf, unsigned int val, unsigned int shift)
 {
-	__be16 *b = buf;
-
-	b[0] = cpu_to_be16(val << shift);
+	put_unaligned_be16(val << shift, buf);
 }
 
 static void regmap_format_16_le(void *buf, unsigned int val, unsigned int shift)
 {
-	__le16 *b = buf;
-
-	b[0] = cpu_to_le16(val << shift);
+	put_unaligned_le16(val << shift, buf);
 }
 
 static void regmap_format_16_native(void *buf, unsigned int val,
 				    unsigned int shift)
 {
-	*(u16 *)buf = val << shift;
+	u16 v = val << shift;
+
+	memcpy(buf, &v, sizeof(v));
 }
 
 static void regmap_format_24(void *buf, unsigned int val, unsigned int shift)
@@ -280,43 +279,39 @@ static void regmap_format_24(void *buf, unsigned int val, unsigned int shift)
 
 static void regmap_format_32_be(void *buf, unsigned int val, unsigned int shift)
 {
-	__be32 *b = buf;
-
-	b[0] = cpu_to_be32(val << shift);
+	put_unaligned_be32(val << shift, buf);
 }
 
 static void regmap_format_32_le(void *buf, unsigned int val, unsigned int shift)
 {
-	__le32 *b = buf;
-
-	b[0] = cpu_to_le32(val << shift);
+	put_unaligned_le32(val << shift, buf);
 }
 
 static void regmap_format_32_native(void *buf, unsigned int val,
 				    unsigned int shift)
 {
-	*(u32 *)buf = val << shift;
+	u32 v = val << shift;
+
+	memcpy(buf, &v, sizeof(v));
 }
 
 #ifdef CONFIG_64BIT
 static void regmap_format_64_be(void *buf, unsigned int val, unsigned int shift)
 {
-	__be64 *b = buf;
-
-	b[0] = cpu_to_be64((u64)val << shift);
+	put_unaligned_be64((u64) val << shift, buf);
 }
 
 static void regmap_format_64_le(void *buf, unsigned int val, unsigned int shift)
 {
-	__le64 *b = buf;
-
-	b[0] = cpu_to_le64((u64)val << shift);
+	put_unaligned_le64((u64) val << shift, buf);
 }
 
 static void regmap_format_64_native(void *buf, unsigned int val,
 				    unsigned int shift)
 {
-	*(u64 *)buf = (u64)val << shift;
+	u64 v = (u64) val << shift;
+
+	memcpy(buf, &v, sizeof(v));
 }
 #endif
 
@@ -333,35 +328,34 @@ static unsigned int regmap_parse_8(const void *buf)
 
 static unsigned int regmap_parse_16_be(const void *buf)
 {
-	const __be16 *b = buf;
-
-	return be16_to_cpu(b[0]);
+	return get_unaligned_be16(buf);
 }
 
 static unsigned int regmap_parse_16_le(const void *buf)
 {
-	const __le16 *b = buf;
-
-	return le16_to_cpu(b[0]);
+	return get_unaligned_le16(buf);
 }
 
 static void regmap_parse_16_be_inplace(void *buf)
 {
-	__be16 *b = buf;
+	u16 v = get_unaligned_be16(buf);
 
-	b[0] = be16_to_cpu(b[0]);
+	memcpy(buf, &v, sizeof(v));
 }
 
 static void regmap_parse_16_le_inplace(void *buf)
 {
-	__le16 *b = buf;
+	u16 v = get_unaligned_le16(buf);
 
-	b[0] = le16_to_cpu(b[0]);
+	memcpy(buf, &v, sizeof(v));
 }
 
 static unsigned int regmap_parse_16_native(const void *buf)
 {
-	return *(u16 *)buf;
+	u16 v;
+
+	memcpy(&v, buf, sizeof(v));
+	return v;
 }
 
 static unsigned int regmap_parse_24(const void *buf)
@@ -376,69 +370,67 @@ static unsigned int regmap_parse_24(const void *buf)
 
 static unsigned int regmap_parse_32_be(const void *buf)
 {
-	const __be32 *b = buf;
-
-	return be32_to_cpu(b[0]);
+	return get_unaligned_be32(buf);
 }
 
 static unsigned int regmap_parse_32_le(const void *buf)
 {
-	const __le32 *b = buf;
-
-	return le32_to_cpu(b[0]);
+	return get_unaligned_le32(buf);
 }
 
 static void regmap_parse_32_be_inplace(void *buf)
 {
-	__be32 *b = buf;
+	u32 v = get_unaligned_be32(buf);
 
-	b[0] = be32_to_cpu(b[0]);
+	memcpy(buf, &v, sizeof(v));
 }
 
 static void regmap_parse_32_le_inplace(void *buf)
 {
-	__le32 *b = buf;
+	u32 v = get_unaligned_le32(buf);
 
-	b[0] = le32_to_cpu(b[0]);
+	memcpy(buf, &v, sizeof(v));
 }
 
 static unsigned int regmap_parse_32_native(const void *buf)
 {
-	return *(u32 *)buf;
+	u32 v;
+
+	memcpy(&v, buf, sizeof(v));
+	return v;
 }
 
 #ifdef CONFIG_64BIT
 static unsigned int regmap_parse_64_be(const void *buf)
 {
-	const __be64 *b = buf;
-
-	return be64_to_cpu(b[0]);
+	return get_unaligned_be64(buf);
 }
 
 static unsigned int regmap_parse_64_le(const void *buf)
 {
-	const __le64 *b = buf;
-
-	return le64_to_cpu(b[0]);
+	return get_unaligned_le64(buf);
 }
 
 static void regmap_parse_64_be_inplace(void *buf)
 {
-	__be64 *b = buf;
+	u64 v =  get_unaligned_be64(buf);
 
-	b[0] = be64_to_cpu(b[0]);
+	memcpy(buf, &v, sizeof(v));
 }
 
 static void regmap_parse_64_le_inplace(void *buf)
 {
-	__le64 *b = buf;
+	u64 v = get_unaligned_le64(buf);
 
-	b[0] = le64_to_cpu(b[0]);
+	memcpy(buf, &v, sizeof(v));
 }
 
 static unsigned int regmap_parse_64_native(const void *buf)
 {
-	return *(u64 *)buf;
+	u64 v;
+
+	memcpy(&v, buf, sizeof(v));
+	return v;
 }
 #endif
 
@@ -1239,6 +1231,106 @@ struct regmap_field *devm_regmap_field_alloc(struct device *dev,
 }
 EXPORT_SYMBOL_GPL(devm_regmap_field_alloc);
 
+
+/**
+ * regmap_field_bulk_alloc() - Allocate and initialise a bulk register field.
+ *
+ * @regmap: regmap bank in which this register field is located.
+ * @rm_field: regmap register fields within the bank.
+ * @reg_field: Register fields within the bank.
+ * @num_fields: Number of register fields.
+ *
+ * The return value will be an -ENOMEM on error or zero for success.
+ * Newly allocated regmap_fields should be freed by calling
+ * regmap_field_bulk_free()
+ */
+int regmap_field_bulk_alloc(struct regmap *regmap,
+			    struct regmap_field **rm_field,
+			    struct reg_field *reg_field,
+			    int num_fields)
+{
+	struct regmap_field *rf;
+	int i;
+
+	rf = kcalloc(num_fields, sizeof(*rf), GFP_KERNEL);
+	if (!rf)
+		return -ENOMEM;
+
+	for (i = 0; i < num_fields; i++) {
+		regmap_field_init(&rf[i], regmap, reg_field[i]);
+		rm_field[i] = &rf[i];
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(regmap_field_bulk_alloc);
+
+/**
+ * devm_regmap_field_bulk_alloc() - Allocate and initialise a bulk register
+ * fields.
+ *
+ * @dev: Device that will be interacted with
+ * @regmap: regmap bank in which this register field is located.
+ * @rm_field: regmap register fields within the bank.
+ * @reg_field: Register fields within the bank.
+ * @num_fields: Number of register fields.
+ *
+ * The return value will be an -ENOMEM on error or zero for success.
+ * Newly allocated regmap_fields will be automatically freed by the
+ * device management code.
+ */
+int devm_regmap_field_bulk_alloc(struct device *dev,
+				 struct regmap *regmap,
+				 struct regmap_field **rm_field,
+				 struct reg_field *reg_field,
+				 int num_fields)
+{
+	struct regmap_field *rf;
+	int i;
+
+	rf = devm_kcalloc(dev, num_fields, sizeof(*rf), GFP_KERNEL);
+	if (!rf)
+		return -ENOMEM;
+
+	for (i = 0; i < num_fields; i++) {
+		regmap_field_init(&rf[i], regmap, reg_field[i]);
+		rm_field[i] = &rf[i];
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(devm_regmap_field_bulk_alloc);
+
+/**
+ * regmap_field_bulk_free() - Free register field allocated using
+ *                       regmap_field_bulk_alloc.
+ *
+ * @field: regmap fields which should be freed.
+ */
+void regmap_field_bulk_free(struct regmap_field *field)
+{
+	kfree(field);
+}
+EXPORT_SYMBOL_GPL(regmap_field_bulk_free);
+
+/**
+ * devm_regmap_field_bulk_free() - Free a bulk register field allocated using
+ *                            devm_regmap_field_bulk_alloc.
+ *
+ * @dev: Device that will be interacted with
+ * @field: regmap field which should be freed.
+ *
+ * Free register field allocated using devm_regmap_field_bulk_alloc(). Usually
+ * drivers need not call this function, as the memory allocated via devm
+ * will be freed as per device-driver life-cycle.
+ */
+void devm_regmap_field_bulk_free(struct device *dev,
+				 struct regmap_field *field)
+{
+	devm_kfree(dev, field);
+}
+EXPORT_SYMBOL_GPL(devm_regmap_field_bulk_free);
+
 /**
  * devm_regmap_field_free() - Free a register field allocated using
  *                            devm_regmap_field_alloc.
@@ -1356,6 +1448,7 @@ void regmap_exit(struct regmap *map)
 	if (map->hwlock)
 		hwspin_lock_free(map->hwlock);
 	kfree_const(map->name);
+	kfree(map->patch);
 	kfree(map);
 }
 EXPORT_SYMBOL_GPL(regmap_exit);
@@ -1370,7 +1463,7 @@ static int dev_get_regmap_match(struct device *dev, void *res, void *data)
 
 	/* If the user didn't specify a name match any */
 	if (data)
-		return (*r)->name == data;
+		return !strcmp((*r)->name, data);
 	else
 		return 1;
 }
@@ -1475,7 +1568,7 @@ static void regmap_set_work_buf_flag_mask(struct regmap *map, int max_bytes,
 }
 
 static int _regmap_raw_write_impl(struct regmap *map, unsigned int reg,
-				  const void *val, size_t val_len)
+				  const void *val, size_t val_len, bool noinc)
 {
 	struct regmap_range_node *range;
 	unsigned long flags;
@@ -1534,7 +1627,7 @@ static int _regmap_raw_write_impl(struct regmap *map, unsigned int reg,
 				win_residue, val_len / map->format.val_bytes);
 			ret = _regmap_raw_write_impl(map, reg, val,
 						     win_residue *
-						     map->format.val_bytes);
+						     map->format.val_bytes, noinc);
 			if (ret != 0)
 				return ret;
 
@@ -1548,7 +1641,7 @@ static int _regmap_raw_write_impl(struct regmap *map, unsigned int reg,
 			win_residue = range->window_len - win_offset;
 		}
 
-		ret = _regmap_select_page(map, &reg, range, val_num);
+		ret = _regmap_select_page(map, &reg, range, noinc ? 1 : val_num);
 		if (ret != 0)
 			return ret;
 	}
@@ -1756,7 +1849,8 @@ static int _regmap_bus_raw_write(void *context, unsigned int reg,
 				      map->work_buf +
 				      map->format.reg_bytes +
 				      map->format.pad_bytes,
-				      map->format.val_bytes);
+				      map->format.val_bytes,
+				      false);
 }
 
 static inline void *_regmap_map_get_context(struct regmap *map)
@@ -1850,7 +1944,7 @@ int regmap_write_async(struct regmap *map, unsigned int reg, unsigned int val)
 EXPORT_SYMBOL_GPL(regmap_write_async);
 
 int _regmap_raw_write(struct regmap *map, unsigned int reg,
-		      const void *val, size_t val_len)
+		      const void *val, size_t val_len, bool noinc)
 {
 	size_t val_bytes = map->format.val_bytes;
 	size_t val_count = val_len / val_bytes;
@@ -1871,7 +1965,7 @@ int _regmap_raw_write(struct regmap *map, unsigned int reg,
 
 	/* Write as many bytes as possible with chunk_size */
 	for (i = 0; i < chunk_count; i++) {
-		ret = _regmap_raw_write_impl(map, reg, val, chunk_bytes);
+		ret = _regmap_raw_write_impl(map, reg, val, chunk_bytes, noinc);
 		if (ret)
 			return ret;
 
@@ -1882,7 +1976,7 @@ int _regmap_raw_write(struct regmap *map, unsigned int reg,
 
 	/* Write remaining bytes */
 	if (val_len)
-		ret = _regmap_raw_write_impl(map, reg, val, val_len);
+		ret = _regmap_raw_write_impl(map, reg, val, val_len, noinc);
 
 	return ret;
 }
@@ -1915,7 +2009,7 @@ int regmap_raw_write(struct regmap *map, unsigned int reg,
 
 	map->lock(map->lock_arg);
 
-	ret = _regmap_raw_write(map, reg, val, val_len);
+	ret = _regmap_raw_write(map, reg, val, val_len, false);
 
 	map->unlock(map->lock_arg);
 
@@ -1973,7 +2067,7 @@ int regmap_noinc_write(struct regmap *map, unsigned int reg,
 			write_len = map->max_raw_write;
 		else
 			write_len = val_len;
-		ret = _regmap_raw_write(map, reg, val, write_len);
+		ret = _regmap_raw_write(map, reg, val, write_len, true);
 		if (ret)
 			goto out_unlock;
 		val = ((u8 *)val) + write_len;
@@ -2450,7 +2544,7 @@ int regmap_raw_write_async(struct regmap *map, unsigned int reg,
 
 	map->async = true;
 
-	ret = _regmap_raw_write(map, reg, val, val_len);
+	ret = _regmap_raw_write(map, reg, val, val_len, false);
 
 	map->async = false;
 
@@ -2461,7 +2555,7 @@ int regmap_raw_write_async(struct regmap *map, unsigned int reg,
 EXPORT_SYMBOL_GPL(regmap_raw_write_async);
 
 static int _regmap_raw_read(struct regmap *map, unsigned int reg, void *val,
-			    unsigned int val_len)
+			    unsigned int val_len, bool noinc)
 {
 	struct regmap_range_node *range;
 	int ret;
@@ -2474,7 +2568,7 @@ static int _regmap_raw_read(struct regmap *map, unsigned int reg, void *val,
 	range = _regmap_range_lookup(map, reg);
 	if (range) {
 		ret = _regmap_select_page(map, &reg, range,
-					  val_len / map->format.val_bytes);
+					  noinc ? 1 : val_len / map->format.val_bytes);
 		if (ret != 0)
 			return ret;
 	}
@@ -2512,7 +2606,7 @@ static int _regmap_bus_read(void *context, unsigned int reg,
 	if (!map->format.parse_val)
 		return -EINVAL;
 
-	ret = _regmap_raw_read(map, reg, work_val, map->format.val_bytes);
+	ret = _regmap_raw_read(map, reg, work_val, map->format.val_bytes, false);
 	if (ret == 0)
 		*val = map->format.parse_val(work_val);
 
@@ -2628,7 +2722,7 @@ int regmap_raw_read(struct regmap *map, unsigned int reg, void *val,
 
 		/* Read bytes that fit into whole chunks */
 		for (i = 0; i < chunk_count; i++) {
-			ret = _regmap_raw_read(map, reg, val, chunk_bytes);
+			ret = _regmap_raw_read(map, reg, val, chunk_bytes, false);
 			if (ret != 0)
 				goto out;
 
@@ -2639,7 +2733,7 @@ int regmap_raw_read(struct regmap *map, unsigned int reg, void *val,
 
 		/* Read remaining bytes */
 		if (val_len) {
-			ret = _regmap_raw_read(map, reg, val, val_len);
+			ret = _regmap_raw_read(map, reg, val, val_len, false);
 			if (ret != 0)
 				goto out;
 		}
@@ -2714,7 +2808,7 @@ int regmap_noinc_read(struct regmap *map, unsigned int reg,
 			read_len = map->max_raw_read;
 		else
 			read_len = val_len;
-		ret = _regmap_raw_read(map, reg, val, read_len);
+		ret = _regmap_raw_read(map, reg, val, read_len, true);
 		if (ret)
 			goto out_unlock;
 		val = ((u8 *)val) + read_len;
@@ -2935,6 +3029,29 @@ int regmap_update_bits_base(struct regmap *map, unsigned int reg,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(regmap_update_bits_base);
+
+/**
+ * regmap_test_bits() - Check if all specified bits are set in a register.
+ *
+ * @map: Register map to operate on
+ * @reg: Register to read from
+ * @bits: Bits to test
+ *
+ * Returns 0 if at least one of the tested bits is not set, 1 if all tested
+ * bits are set and a negative error number if the underlying regmap_read()
+ * fails.
+ */
+int regmap_test_bits(struct regmap *map, unsigned int reg, unsigned int bits)
+{
+	unsigned int val, ret;
+
+	ret = regmap_read(map, reg, &val);
+	if (ret)
+		return ret;
+
+	return (val & bits) == bits;
+}
+EXPORT_SYMBOL_GPL(regmap_test_bits);
 
 void regmap_async_complete_cb(struct regmap_async *async, int ret)
 {

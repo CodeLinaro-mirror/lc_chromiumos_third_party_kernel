@@ -112,6 +112,11 @@ static int msm_gem_show(struct drm_device *dev, struct seq_file *m)
 {
 	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_gpu *gpu = priv->gpu;
+	int ret;
+
+	ret = mutex_lock_interruptible(&priv->mm_lock);
+	if (ret)
+		return ret;
 
 	if (gpu) {
 		seq_printf(m, "Active Objects (%s):\n", gpu->name);
@@ -120,6 +125,8 @@ static int msm_gem_show(struct drm_device *dev, struct seq_file *m)
 
 	seq_printf(m, "Inactive Objects:\n");
 	msm_gem_describe_objects(&priv->inactive_list, m);
+
+	mutex_unlock(&priv->mm_lock);
 
 	return 0;
 }
@@ -220,14 +227,9 @@ int msm_debugfs_init(struct drm_minor *minor)
 	struct msm_drm_private *priv = dev->dev_private;
 	int ret;
 
-	ret = drm_debugfs_create_files(msm_debugfs_list,
-			ARRAY_SIZE(msm_debugfs_list),
-			minor->debugfs_root, minor);
-
-	if (ret) {
-		DRM_DEV_ERROR(dev->dev, "could not install msm_debugfs_list\n");
-		return ret;
-	}
+	drm_debugfs_create_files(msm_debugfs_list,
+				 ARRAY_SIZE(msm_debugfs_list),
+				 minor->debugfs_root, minor);
 
 	debugfs_create_file("gpu", S_IRUSR, minor->debugfs_root,
 		dev, &msm_gpu_fops);
@@ -238,7 +240,7 @@ int msm_debugfs_init(struct drm_minor *minor)
 			return ret;
 	}
 
-	return ret;
+	return 0;
 }
 #endif
 
