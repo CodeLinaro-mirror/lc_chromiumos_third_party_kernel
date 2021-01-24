@@ -1218,6 +1218,7 @@ static void set_closed_name(struct i915_gem_context *ctx)
 static void context_close(struct i915_gem_context *ctx)
 {
 	struct i915_address_space *vm;
+	struct i915_drm_client *client;
 
 	/* Flush any concurrent set_engines() */
 	mutex_lock(&ctx->engines_mutex);
@@ -1245,6 +1246,13 @@ static void context_close(struct i915_gem_context *ctx)
 	spin_lock(&ctx->i915->gem.contexts.lock);
 	list_del(&ctx->link);
 	spin_unlock(&ctx->i915->gem.contexts.lock);
+
+	client = ctx->client;
+	if (client) {
+		spin_lock(&client->ctx_lock);
+		list_del_rcu(&ctx->client_link);
+		spin_unlock(&client->ctx_lock);
+	}
 
 	mutex_unlock(&ctx->mutex);
 
@@ -1472,6 +1480,10 @@ static void gem_context_register(struct i915_gem_context *ctx,
 	WARN_ON(old);
 
 	ctx->client = client;
+
+	spin_lock(&client->ctx_lock);
+	list_add_tail_rcu(&ctx->client_link, &client->ctx_list);
+	spin_unlock(&client->ctx_lock);
 
 	spin_lock(&i915->gem.contexts.lock);
 	list_add_tail(&ctx->link, &i915->gem.contexts.list);
