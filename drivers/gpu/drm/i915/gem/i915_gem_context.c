@@ -77,6 +77,7 @@
 #include "gt/intel_gpu_commands.h"
 #include "gt/intel_ring.h"
 
+#include "i915_drm_client.h"
 #include "i915_gem_context.h"
 #include "i915_trace.h"
 #include "i915_user_extensions.h"
@@ -1981,6 +1982,10 @@ int i915_gem_context_create_ioctl(struct drm_device *dev, void *data,
 			current->comm, task_pid_nr(current));
 		return -EIO;
 	}
+
+	ret = i915_drm_client_update(ext_data.fpriv->client, current);
+	if (ret)
+		return ret;
 
 	ext_data.pc = proto_context_create(i915, args->flags);
 	if (IS_ERR(ext_data.pc))
