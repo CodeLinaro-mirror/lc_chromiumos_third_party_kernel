@@ -20,22 +20,20 @@
 
 static const char * const regulator_names[] = {
 	"vdda",
-	//TODO: External regulator is being used in LC
-	//Make this generic. Commenting for now.
-	//"vdispp",
-	//"vdispn",
+	"vdispp",
+	"vdispn",
 };
 
 static unsigned long const regulator_enable_loads[] = {
 	62000,
-	//100000,
-	//100000,
+	100000,
+	100000,
 };
 
 static unsigned long const regulator_disable_loads[] = {
 	80,
-	//100,
-	//100,
+	100,
+	100,
 };
 
 struct truly_nt36672e {
@@ -89,10 +87,6 @@ static int truly_nt36672e_1080x2408_60hz_init(struct mipi_dsi_device *dsi)
 	dsi_dcs_write_seq(dsi, 0xc1, 0x89, 0x28, 0x00, 0x08, 0x00, 0xaa, 0x02,
 				0x0e, 0x00, 0x2b, 0x00, 0x07, 0x0d, 0xb7, 0x0c,
 				0xb7);
-
-	//{0x14, 0x00, 0x00, 0x01, 0x11, 0x01, {0xc1);//Read cmd
-	//dsi_dcs_write_seq(dsi, 0xc1);//TODO: check if required
-	//msleep(17);
 
 	dsi_dcs_write_seq(dsi, 0xc2, 0x1b, 0xa0);
 	dsi_dcs_write_seq(dsi, 0xff, 0x20);
@@ -421,19 +415,16 @@ static int truly_nt36672e_power_on(struct truly_nt36672e *ctx)
 	if (ret < 0)
 		return ret;
 
-	//TODO: check if qcom,supply-post-on-sleep is required
-	// In that case use regulator_enable instead of regulator_bulk_enable
-
-	/* TODO: verify from datasheet
+	/*
 	 * Reset sequence of truly panel requires the panel to be
 	 * out of reset for 10ms, followed by being held in reset
 	 * for 10ms and then out again
 	 */
-	gpiod_set_value(ctx->reset_gpio, 0);
-	usleep_range(10000, 20000);
 	gpiod_set_value(ctx->reset_gpio, 1);
 	usleep_range(10000, 20000);
 	gpiod_set_value(ctx->reset_gpio, 0);
+	usleep_range(10000, 20000);
+	gpiod_set_value(ctx->reset_gpio, 1);
 	usleep_range(10000, 20000);
 
 	return 0;
@@ -632,8 +623,8 @@ static const struct drm_display_mode truly_nt36672e_1080x2408_60hz = {
 static const struct panel_desc truly_nt36672e_panel_desc = {
 	.display_mode = &truly_nt36672e_1080x2408_60hz,
 	.bpc = 8,
-	.width_mm = 74, //TODO: check
-	.height_mm = 131,//TODO: check
+	.width_mm = 74,
+	.height_mm = 131,
 	.mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_LPM | MIPI_DSI_CLOCK_NON_CONTINUOUS,
 	.format = MIPI_DSI_FMT_RGB888,
 	.lanes = 4,
@@ -668,12 +659,12 @@ static int truly_nt36672e_probe(struct mipi_dsi_device *dsi)
 	for (i = 0; i < ARRAY_SIZE(ctx->supplies); i++)
 		ctx->supplies[i].supply = regulator_names[i];
 
-	ret = devm_regulator_bulk_get(ctx->panel.dev, ARRAY_SIZE(ctx->supplies),
+	ret = devm_regulator_bulk_get(ctx->dev, ARRAY_SIZE(ctx->supplies),
 				      ctx->supplies);
 	if (ret < 0)
 		return ret;
 
-	ctx->reset_gpio = devm_gpiod_get(ctx->panel.dev, "reset", GPIOD_OUT_LOW);
+	ctx->reset_gpio = devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(ctx->reset_gpio)) {
 		dev_err(dev, "cannot get reset gpio %ld\n", PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
