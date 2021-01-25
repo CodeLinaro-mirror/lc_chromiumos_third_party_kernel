@@ -1221,12 +1221,10 @@
 					compatible = "truly,nt36672e-fhd-plus-display";
 					reg = <0>;
 					vdda-supply = <&vreg_l8c_1p8>;
-					//vdispp-supply = <&lcdb_ldo_vreg>; //external supplies
-					//vdispn-supply = <&lcdb_ncp_vreg>;
+					vdispp-supply = <&lcdb_ldo_vreg>;
+					vdispn-supply = <&lcdb_ncp_vreg>;
 
-					//backlight = <&backlight>;
-					//pinctrl-names = "default";
-					//pinctrl-0 = <&disp_pins>;
+					backlight = <&pm7325b_wled>;
 
 					reset-gpios = <&tlmm 44 GPIO_ACTIVE_HIGH>;
 
@@ -1343,4 +1341,5 @@
 	};
 };
 
+#include "pm7325b.dtsi"
 #include "sc7280-regulator.dtsi"
