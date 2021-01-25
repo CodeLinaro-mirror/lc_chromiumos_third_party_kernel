@@ -1270,11 +1270,20 @@ static int sfe_ipv4_recv_udp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 	 * From this point on we're good to modify the packet.
 	 */
 
+	/* Apply packet Mark
+	 * If Mark was set by the Ingress Qdisc that takes precedence over
+	 * flow policy.
+	 */
+	if (likely(skb->mark == 0))
+		skb->mark = cm->mark;
+	if (skb->mark)
+		DEBUG_TRACE("SKB MARK is NON ZERO %x\n", skb->mark);
+
 	/* Update DSCP
 	 * DSCP rewrite table takes precedence over flow policy.
 	 */
 	if (unlikely(sfe_ipv4_dscp_rewrite_mark_to_match != 0 &&
-		     sfe_ipv4_dscp_rewrite_mark_to_match == cm->mark))
+		     sfe_ipv4_dscp_rewrite_mark_to_match == skb->mark))
 		iph->tos = (iph->tos & SFE_IPV4_DSCP_MASK) |
 			   sfe_ipv4_dscp_rewrite_dscp_to_set;
 	else if (unlikely(cm->flags &
@@ -1398,14 +1407,6 @@ static int sfe_ipv4_recv_udp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 	 */
 	if (unlikely(cm->flags & SFE_IPV4_CONNECTION_MATCH_FLAG_PRIORITY_REMARK)) {
 		skb->priority = cm->priority;
-	}
-
-	/*
-	 * Mark outgoing packet.
-	 */
-	skb->mark = cm->mark;
-	if (skb->mark) {
-		DEBUG_TRACE("SKB MARK is NON ZERO %x\n", skb->mark);
 	}
 
 	si->packets_forwarded++;
@@ -1855,11 +1856,20 @@ static int sfe_ipv4_recv_tcp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 	 * From this point on we're good to modify the packet.
 	 */
 
+	/* Apply packet Mark
+	 * If Mark was set by the Ingress Qdisc that takes precedence over
+	 * flow policy.
+	 */
+	if (likely(skb->mark == 0))
+		skb->mark = cm->mark;
+	if (skb->mark)
+		DEBUG_TRACE("SKB MARK is NON ZERO %x\n", skb->mark);
+
 	/* Update DSCP
 	 * DSCP rewrite table takes precedence over flow policy.
 	 */
 	if (unlikely(sfe_ipv4_dscp_rewrite_mark_to_match != 0 &&
-		     sfe_ipv4_dscp_rewrite_mark_to_match == cm->mark))
+		     sfe_ipv4_dscp_rewrite_mark_to_match == skb->mark))
 		iph->tos = (iph->tos & SFE_IPV4_DSCP_MASK) |
 			   sfe_ipv4_dscp_rewrite_dscp_to_set;
 	else if (unlikely(cm->flags &
@@ -1977,14 +1987,6 @@ static int sfe_ipv4_recv_tcp(struct sfe_ipv4 *si, struct sk_buff *skb, struct ne
 	 */
 	if (unlikely(cm->flags & SFE_IPV4_CONNECTION_MATCH_FLAG_PRIORITY_REMARK)) {
 		skb->priority = cm->priority;
-	}
-
-	/*
-	 * Mark outgoing packet
-	 */
-	skb->mark = cm->mark;
-	if (skb->mark) {
-		DEBUG_TRACE("SKB MARK is NON ZERO %x\n", skb->mark);
 	}
 
 	si->packets_forwarded++;
@@ -2419,6 +2421,19 @@ sfe_ipv4_update_qos_state(struct sfe_ipv4_connection *c,
 		cm = c->original_match;
 	else
 		cm = c->reply_match;
+
+	/* Once QoS has been resolved and the flow acceleration delay is
+	 * expired then no further update of the flow QoS parameters is allowed.
+	 * Normally under this condition all packets will be cut-through
+	 * accelerated and thus not hit this slow path intercept, however that
+	 * assumption may be violated when sfe_bypass_mode==2 is enabled.  The
+	 * goal is to avoid adopting QoS parameters from the bypass packets,
+	 * which may have special QoS markings applied.
+	 */
+	if ((cm->flags & SFE_IPV4_CONNECTION_MATCH_FLAG_QOS_RESOLVED) &&
+	    c->flow_accel_delay_pkts == 0)
+		return;
+
 	cm->mark = sic->mark;
 	if (sic->flags & SFE_CREATE_FLAG_REMARK_PRIORITY) {
 		cm->priority = sic->priority;
