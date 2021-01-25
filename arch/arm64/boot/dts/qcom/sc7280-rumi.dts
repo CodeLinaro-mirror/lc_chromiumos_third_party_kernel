@@ -16,6 +16,7 @@
 
 	aliases {
 		serial0 = &uart5;
+		hsuart0 = &uart7;
 	};
 
 	chosen {
@@ -78,6 +79,10 @@
 	status = "okay";
 };
 
+&qupv3_id_1 {
+	status = "okay";
+};
+
 &remoteproc_mpss {
 	status = "okay";
 	compatible = "qcom,sc7280-mss-pil";
@@ -104,6 +109,18 @@
 
 &uart5 {
 	status = "okay";
+};
+
+&uart7 {
+	status = "okay";
+
+	/delete-property/interrupts;
+	interrupts-extended = <&intc GIC_SPI 608 IRQ_TYPE_LEVEL_HIGH>,
+				<&tlmm 41 IRQ_TYPE_EDGE_FALLING>;
+
+//	pinctrl-names = "default", "sleep";
+//	pinctrl-1 = <&qup_uart7_sleep>;
+
 };
 
 /* PINCTRL - additions to nodes defined in sc7280.dtsi */
@@ -133,13 +150,13 @@
 
 &qup_uart5_default {
 	pinconf-tx {
-		pins = "gpio46";
+		pins = "gpio22";
 		drive-strength = <2>;
 		bias-disable;
 	};
 
 	pinconf-rx {
-		pins = "gpio47";
+		pins = "gpio23";
 		drive-strength = <2>;
 		bias-pull-up;
 	};
@@ -174,4 +191,33 @@
 
 	cd-gpios = <&tlmm 91 GPIO_ACTIVE_LOW>;
 
+};
+
+&qup_uart7_default {
+	pinconf-cts {
+		/*
+		 * Configure a pull-down on CTS to match the pull of
+		 * the Bluetooth module.
+		 */
+		pins = "gpio28";
+		bias-pull-down;
+	};
+
+	pinconf-rts-tx {
+		/* We'll drive RTS and TX, so no pull */
+		pins = "gpio29", "gpio30";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	pinconf-rx {
+		/*
+		 * Configure a pull-up on RX. This is needed to avoid
+		 * garbage data when the TX pin of the Bluetooth module is
+		 * in tri-state (module powered off or not driving the
+		 * signal yet).
+		 */
+		pins = "gpio31";
+		bias-pull-up;
+	};
 };
