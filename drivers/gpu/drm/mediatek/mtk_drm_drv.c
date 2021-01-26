@@ -10,7 +10,6 @@
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/pm_runtime.h>
-#include <linux/soc/mediatek/mtk-mmsys.h>
 #include <linux/dma-mapping.h>
 
 #include <drm/drm_atomic.h>
@@ -25,8 +24,9 @@
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
 
+#include <drm/mediatek_drm.h>
+
 #include "mtk_drm_crtc.h"
-#include "mtk_drm_ddp.h"
 #include "mtk_drm_ddp_comp.h"
 #include "mtk_drm_drv.h"
 #include "mtk_drm_gem.h"
@@ -277,6 +277,14 @@ static void mtk_drm_kms_deinit(struct drm_device *drm)
 	component_unbind_all(drm->dev, drm);
 }
 
+static const struct drm_ioctl_desc mtk_ioctls[] = {
+	DRM_IOCTL_DEF_DRV(MTK_GEM_CREATE, mtk_gem_create_ioctl,
+			  DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(MTK_GEM_MAP_OFFSET,
+			  mtk_gem_map_offset_ioctl,
+			  DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+};
+
 static const struct file_operations mtk_drm_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
@@ -301,7 +309,8 @@ static struct drm_gem_object *mtk_drm_gem_prime_import(struct drm_device *dev,
 }
 
 static const struct drm_driver mtk_drm_driver = {
-	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
+	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC |
+			   DRIVER_RENDER,
 
 	.dumb_create = mtk_drm_gem_dumb_create,
 
@@ -310,6 +319,10 @@ static const struct drm_driver mtk_drm_driver = {
 	.gem_prime_import = mtk_drm_gem_prime_import,
 	.gem_prime_import_sg_table = mtk_gem_prime_import_sg_table,
 	.gem_prime_mmap = mtk_drm_gem_mmap_buf,
+
+	.ioctls = mtk_ioctls,
+	.num_ioctls = ARRAY_SIZE(mtk_ioctls),
+
 	.fops = &mtk_drm_fops,
 
 	.name = DRIVER_NAME,
@@ -502,24 +515,12 @@ static int mtk_drm_probe(struct platform_device *pdev)
 				 node);
 			drm_of_component_match_add(dev, &match, compare_of,
 						   node);
-		} else {
-			struct mtk_ddp_comp *comp;
+		}
 
-			comp = devm_kzalloc(dev, sizeof(*comp), GFP_KERNEL);
-			if (!comp) {
-				ret = -ENOMEM;
-				of_node_put(node);
-				goto err_node;
-			}
-
-			ret = mtk_ddp_comp_init(dev->parent, node, comp,
-						comp_id, NULL);
-			if (ret) {
-				of_node_put(node);
-				goto err_node;
-			}
-
-			private->ddp_comp[comp_id] = comp;
+		ret = mtk_ddp_comp_init(node, &private->ddp_comp[comp_id], comp_id);
+		if (ret) {
+			of_node_put(node);
+			goto err_node;
 		}
 	}
 
@@ -545,10 +546,8 @@ err_node:
 	of_node_put(private->mutex_node);
 	for (i = 0; i < DDP_COMPONENT_ID_MAX; i++) {
 		of_node_put(private->comp_node[i]);
-		if (private->ddp_comp[i]) {
-			put_device(private->ddp_comp[i]->larb_dev);
-			private->ddp_comp[i] = NULL;
-		}
+		if (private->ddp_comp[i].larb_dev)
+			put_device(private->ddp_comp[i].larb_dev);
 	}
 	return ret;
 }
@@ -604,7 +603,6 @@ static struct platform_driver mtk_drm_platform_driver = {
 };
 
 static struct platform_driver * const mtk_drm_drivers[] = {
-	&mtk_ddp_driver,
 	&mtk_disp_color_driver,
 	&mtk_disp_ovl_driver,
 	&mtk_disp_rdma_driver,
