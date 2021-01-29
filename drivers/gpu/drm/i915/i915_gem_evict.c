@@ -293,7 +293,7 @@ int i915_gem_evict_for_vma(struct i915_vma *target, unsigned int flags)
 		}
 
 		/* Overlap of objects in the same batch? */
-		if (i915_vma_is_pinned(vma)) {
+		if (i915_vma_is_pinned(vma) || !list_empty(&vma->exec_list)) {
 			ret = -ENOSPC;
 			if (vma->exec_entry &&
 			    vma->exec_entry->flags & EXEC_OBJECT_PINNED)

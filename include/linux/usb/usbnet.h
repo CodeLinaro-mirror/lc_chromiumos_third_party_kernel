@@ -79,6 +79,7 @@ struct usbnet {
 #		define EVENT_RX_KILL	10
 #		define EVENT_LINK_CHANGE	11
 #		define EVENT_SET_RX_MODE	12
+#		define EVENT_NO_IP_ALIGN	13
 };
 
 static inline struct usb_driver *driver_of(struct usb_interface *intf)
@@ -265,6 +266,10 @@ extern int usbnet_get_settings(struct net_device *net,
 			       struct ethtool_cmd *cmd);
 extern int usbnet_set_settings(struct net_device *net,
 			       struct ethtool_cmd *cmd);
+extern int usbnet_get_link_ksettings(struct net_device *net,
+				     struct ethtool_link_ksettings *cmd);
+extern int usbnet_set_link_ksettings(struct net_device *net,
+				     const struct ethtool_link_ksettings *cmd);
 extern u32 usbnet_get_link(struct net_device *net);
 extern u32 usbnet_get_msglevel(struct net_device *);
 extern void usbnet_set_msglevel(struct net_device *, u32);

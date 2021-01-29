@@ -56,7 +56,6 @@ source "net/bluetooth/hidp/Kconfig"
 config BT_HS
 	bool "Bluetooth High Speed (HS) features"
 	depends on BT_BREDR
-	default y
 
 config BT_LE
 	bool "Bluetooth Low Energy (LE) features"
@@ -119,16 +118,6 @@ config BT_DEBUGFS
 	help
 	  Provide extensive information about internal Bluetooth states
 	  in debugfs.
-
-config BT_EVE_HACKS
-	bool "Enable Special kernel hacks for EVE launch (do not ask)"
-	depends on BT
-	default n
-	help
-	  Eve needed hacks. Testing them on all other devices needs time.
-	  I have no time to get to this, nor does anyone else, so...
-	  this option will be on for eve and off for every other device
-	  for now. Yes, this is beyond ugly. Accepting patches :)
 
 config BT_ENFORCE_CLASSIC_SECURITY
 	bool "Enforces security requirements for Bluetooth classic"
