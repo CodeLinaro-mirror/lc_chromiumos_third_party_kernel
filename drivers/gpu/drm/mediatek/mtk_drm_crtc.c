@@ -99,7 +99,6 @@ static void mtk_drm_crtc_finish_page_flip(struct mtk_drm_crtc *mtk_crtc)
 
 static void mtk_drm_finish_page_flip(struct mtk_drm_crtc *mtk_crtc)
 {
-	drm_crtc_handle_vblank(&mtk_crtc->base);
 	if (mtk_crtc->pending_needs_vblank) {
 		mtk_drm_crtc_finish_page_flip(mtk_crtc);
 		mtk_crtc->pending_needs_vblank = false;
@@ -250,7 +249,35 @@ struct mtk_ddp_comp *mtk_drm_ddp_comp_for_plane(struct drm_crtc *crtc,
 #if IS_REACHABLE(CONFIG_MTK_CMDQ)
 static void ddp_cmdq_cb(struct cmdq_cb_data data)
 {
-	cmdq_pkt_destroy(data.data);
+	struct mtk_cmdq_cb_data *cb_data = data.data;
+
+	if (cb_data) {
+		struct mtk_drm_crtc *mtk_crtc = cb_data->mtk_crtc;
+
+		if (data.sta == CMDQ_CB_ERROR) {
+			if (mtk_crtc) {
+				u32 pipe;
+
+				pipe = drm_crtc_index(&mtk_crtc->base);
+
+				mtk_drm_dbg("pipe %d timed out!\n", pipe);
+				mtk_drm_dbg_dump_path(pipe);
+			} else {
+				mtk_drm_err("cmdq mtk_crtc null pointer\n");
+			}
+		}
+
+		mtk_drm_finish_page_flip(mtk_crtc);
+
+		if (cb_data->cmdq_handle)
+			cmdq_pkt_destroy(cb_data->cmdq_handle);
+		else
+			mtk_drm_err("cmdq cmdq_handle null pointer\n");
+
+		kfree(cb_data);
+	} else {
+		mtk_drm_err("cmdq cb_data null pointer\n");
+	}
 }
 #endif
 
@@ -705,7 +732,8 @@ void mtk_crtc_ddp_irq(struct drm_crtc *crtc, struct mtk_ddp_comp *comp)
 #endif
 		mtk_crtc_ddp_config(crtc, NULL);
 
-	mtk_drm_finish_page_flip(mtk_crtc);
+
+	drm_crtc_handle_vblank(&mtk_crtc->base);
 }
 
 static int mtk_drm_crtc_num_comp_planes(struct mtk_drm_crtc *mtk_crtc,
