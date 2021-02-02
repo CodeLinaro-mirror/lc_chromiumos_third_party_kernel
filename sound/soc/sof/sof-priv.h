@@ -94,10 +94,9 @@ struct snd_sof_pdata;
  */
 struct snd_sof_dsp_ops {
 
-	/* probe/remove/shutdown */
+	/* probe and remove */
 	int (*probe)(struct snd_sof_dev *sof_dev); /* mandatory */
 	int (*remove)(struct snd_sof_dev *sof_dev); /* optional */
-	int (*shutdown)(struct snd_sof_dev *sof_dev); /* optional */
 
 	/* DSP core boot / reset */
 	int (*run)(struct snd_sof_dev *sof_dev); /* mandatory */
@@ -454,7 +453,6 @@ struct snd_sof_dev {
 
 int snd_sof_device_probe(struct device *dev, struct snd_sof_pdata *plat_data);
 int snd_sof_device_remove(struct device *dev);
-int snd_sof_device_shutdown(struct device *dev);
 
 int snd_sof_runtime_suspend(struct device *dev);
 int snd_sof_runtime_resume(struct device *dev);
