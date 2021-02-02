@@ -423,11 +423,6 @@ static void sof_pci_remove(struct pci_dev *pci)
 	pci_release_regions(pci);
 }
 
-static void sof_pci_shutdown(struct pci_dev *pci)
-{
-	snd_sof_device_shutdown(&pci->dev);
-}
-
 /* PCI IDs */
 static const struct pci_device_id sof_pci_ids[] = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_MERRIFIELD)
@@ -497,7 +492,6 @@ static struct pci_driver snd_sof_pci_driver = {
 	.id_table = sof_pci_ids,
 	.probe = sof_pci_probe,
 	.remove = sof_pci_remove,
-	.shutdown = sof_pci_shutdown,
 	.driver = {
 		.pm = &sof_pci_pm,
 	},
