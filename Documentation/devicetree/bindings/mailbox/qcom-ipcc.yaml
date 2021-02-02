@@ -24,6 +24,7 @@ properties:
   compatible:
     items:
       - enum:
+          - qcom,sc7280-ipcc
           - qcom,sm8250-ipcc
       - const: qcom,ipcc
 
