@@ -398,7 +398,7 @@ static struct gdsc cx_gdsc = {
 	.pd = {
 		.name = "cx_gdsc",
 	},
-	.pwrsts = PWRSTS_ON,
+	.pwrsts = PWRSTS_OFF_ON,
 	.flags = VOTABLE | RETAIN_FF_ENABLE,
 };
 
@@ -409,7 +409,7 @@ static struct gdsc gx_gdsc = {
 		.name = "gx_gdsc",
 		.power_on = gdsc_gx_do_nothing_enable,
 	},
-	.pwrsts = PWRSTS_ON,
+	.pwrsts = PWRSTS_OFF_ON,
 	.flags = CLAMP_IO | RETAIN_FF_ENABLE,
 };
 
