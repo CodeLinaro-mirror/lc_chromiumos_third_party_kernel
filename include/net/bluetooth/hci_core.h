@@ -302,6 +302,7 @@ struct hci_dev {
 	__u8		dev_name[HCI_MAX_NAME_LENGTH];
 	__u8		short_name[HCI_MAX_SHORT_NAME_LENGTH];
 	__u8		eir[HCI_MAX_EIR_LENGTH];
+	__u16		eir_max_name_len;
 	__u16		appearance;
 	__u8		dev_class[3];
 	__u8		major_class;
@@ -426,6 +427,7 @@ struct hci_dev {
 	unsigned int	acl_pkts;
 	unsigned int	sco_pkts;
 	unsigned int	le_pkts;
+	unsigned int	wbs_pkt_len;
 
 	__u16		block_len;
 	__u16		block_mtu;
@@ -457,7 +459,8 @@ struct hci_dev {
 	struct work_struct	cmd_work;
 	struct work_struct	tx_work;
 
-	struct work_struct	discov_update;
+	struct work_struct	start_discov_update;
+	struct work_struct	stop_discov_update;
 	struct work_struct	bg_scan_update;
 	struct work_struct	scan_update;
 	struct work_struct	connectable_update;
