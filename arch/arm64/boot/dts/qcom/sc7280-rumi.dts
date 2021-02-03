@@ -58,13 +58,6 @@
 	vmmc = <&vreg_l7b_2p9>;
 	vqmmc = <&vreg_l19b_1p8>;
 
-	cap-mmc-highspeed;
-	max-frequency = <50000000>;
-
-	/delete-property/mmc-ddr-1_8v;
-	/delete-property/mmc-hs200-1_8v;
-	/delete-property/mmc-hs400-1_8v;
-	/delete-property/mmc-hs400-enhanced-strobe;
 
 };
 
@@ -79,10 +72,7 @@
 	vmmc = <&vreg_l9c_2p9>;
 	vqmmc = <&vreg_l6c_2p9>;
 
-	cap-sd-highspeed;
-	max-frequency = <50000000>;
 
-	no-1-8-v;
 
 	cd-gpios = <&tlmm 91 GPIO_ACTIVE_LOW>;
 
