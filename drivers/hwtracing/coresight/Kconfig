@@ -114,6 +114,7 @@ config CORESIGHT_STM
 	tristate "CoreSight System Trace Macrocell driver"
 	depends on (ARM && !(CPU_32v3 || CPU_32v4 || CPU_32v4T)) || ARM64
 	select CORESIGHT_LINKS_AND_SINKS
+	select CORESIGHT_OST
 	select STM
 	help
 	  This driver provides support for hardware assisted software
@@ -165,4 +166,13 @@ config CORESIGHT_CTI_INTEGRATION_REGS
 	  CTI trigger connections between this and other devices.These
 	  registers are not used in normal operation and can leave devices in
 	  an inconsistent state.
+
+config CORESIGHT_OST
+	bool "CoreSight OST framework"
+	depends on CORESIGHT_STM
+	help
+	  This driver enables the support for Open System Trace packets in STM.
+	  This is primarily intended to be used as a layer on top of underlying
+	  physical byte transport mechanisms.The additional header can be used
+	  to provide more information.
 endif
