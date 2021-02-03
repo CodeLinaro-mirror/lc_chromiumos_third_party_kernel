@@ -21,7 +21,7 @@ static inline bool vcpu_is_preempted(int cpu)
 	return paravirt_vcpu_is_preempted(cpu);
 }
 #else
-static inline bool vcpu_is_preempted(int cpu)
+static inline bool vcpu_is_preempted(int val)
 {
 	return false;
 }

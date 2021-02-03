@@ -23,6 +23,10 @@ bool native_vcpu_is_preempted(int cpu)
 	return false;
 }
 
+void native_vcpu_preempt_count_update(int val)
+{
+}
+
 static bool pv_vcpu_is_preempted(int cpu)
 {
 	struct pvstate_vcpu_info *st;
@@ -34,6 +38,18 @@ static bool pv_vcpu_is_preempted(int cpu)
 bool paravirt_vcpu_is_preempted(int cpu)
 {
 	return pv_ops.state.vcpu_is_preempted(cpu);
+}
+
+static void pv_vcpu_preempt_count_update(int val)
+{
+	struct pvstate_vcpu_info *info = this_cpu_ptr(&vcpus_states);
+
+	WRITE_ONCE(info->preempt_count, val);
+}
+
+void paravirt_vcpu_preempt_count_update(int val)
+{
+	pv_ops.state.vcpu_preempt_count_update(val);
 }
 
 static bool has_pvstate(void)
@@ -113,5 +129,6 @@ int __init pv_state_init(void)
 		return ret;
 
 	pv_ops.state.vcpu_is_preempted = pv_vcpu_is_preempted;
+	pv_ops.state.vcpu_preempt_count_update = pv_vcpu_preempt_count_update;
 	return 0;
 }

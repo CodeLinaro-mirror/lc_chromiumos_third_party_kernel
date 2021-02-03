@@ -7,6 +7,21 @@
 #define PREEMPT_NEED_RESCHED	BIT(32)
 #define PREEMPT_ENABLED	(PREEMPT_NEED_RESCHED)
 
+#define vcpu_preempt_count_update vcpu_preempt_count_update
+
+#ifdef CONFIG_PARAVIRT
+extern void paravirt_vcpu_preempt_count_update(int val);
+
+static inline void vcpu_preempt_count_update(int val)
+{
+	paravirt_vcpu_preempt_count_update(val);
+}
+#else
+static inline void vcpu_preempt_count_update(int val)
+{
+}
+#endif /* CONFIG_PARAVIRT */
+
 static inline int preempt_count(void)
 {
 	return READ_ONCE(current_thread_info()->preempt.count);
@@ -16,14 +31,17 @@ static inline void preempt_count_set(u64 pc)
 {
 	/* Preserve existing value of PREEMPT_NEED_RESCHED */
 	WRITE_ONCE(current_thread_info()->preempt.count, pc);
+	vcpu_preempt_count_update(preempt_count());
 }
 
 #define init_task_preempt_count(p) do { \
-	task_thread_info(p)->preempt_count = FORK_PREEMPT_COUNT; \
+	task_thread_info(p)->preempt_count = FORK_PREEMPT_COUNT;	\
+	vcpu_preempt_count_update(preempt_count());			\
 } while (0)
 
 #define init_idle_preempt_count(p, cpu) do { \
-	task_thread_info(p)->preempt_count = PREEMPT_ENABLED; \
+	task_thread_info(p)->preempt_count = PREEMPT_ENABLED;		\
+	vcpu_preempt_count_update(preempt_count());			\
 } while (0)
 
 static inline void set_preempt_need_resched(void)
@@ -46,6 +64,7 @@ static inline void __preempt_count_add(int val)
 	u32 pc = READ_ONCE(current_thread_info()->preempt.count);
 	pc += val;
 	WRITE_ONCE(current_thread_info()->preempt.count, pc);
+	vcpu_preempt_count_update(pc);
 }
 
 static inline void __preempt_count_sub(int val)
@@ -53,6 +72,7 @@ static inline void __preempt_count_sub(int val)
 	u32 pc = READ_ONCE(current_thread_info()->preempt.count);
 	pc -= val;
 	WRITE_ONCE(current_thread_info()->preempt.count, pc);
+	vcpu_preempt_count_update(pc);
 }
 
 static inline bool __preempt_count_dec_and_test(void)
@@ -63,6 +83,7 @@ static inline bool __preempt_count_dec_and_test(void)
 	/* Update only the count field, leaving need_resched unchanged */
 	WRITE_ONCE(ti->preempt.count, --pc);
 
+	vcpu_preempt_count_update(preempt_count());
 	/*
 	 * If we wrote back all zeroes, then we're preemptible and in
 	 * need of a reschedule. Otherwise, we need to reload the
