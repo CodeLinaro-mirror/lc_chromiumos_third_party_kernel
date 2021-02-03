@@ -86,6 +86,16 @@ static int handle_no_fpsimd(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	return 1;
 }
 
+static bool skip_wfi(int pc)
+{
+	return pc & (HARDIRQ_MASK | SOFTIRQ_MASK | NMI_MASK);
+}
+
+static bool skip_wfe(int pc)
+{
+	return pc;
+}
+
 /**
  * kvm_handle_wfx - handle a wait-for-interrupts or wait-for-event
  *		    instruction executed by a guest
@@ -100,6 +110,29 @@ static int handle_no_fpsimd(struct kvm_vcpu *vcpu, struct kvm_run *run)
  */
 static int kvm_handle_wfx(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
+	int pc = kvm_vcpu_preempt_count(vcpu);
+
+//	pr_err("WFX vcpu-%d pc %d on %s\n", vcpu->vcpu_id,
+//	       pc, kvm_vcpu_get_hsr(vcpu) & ESR_ELx_WFx_ISS_WFE ? "WFE" : "WFI");
+
+	if (skip_wfe(pc) && (kvm_vcpu_get_hsr(vcpu) & ESR_ELx_WFx_ISS_WFE)) {
+		/*
+		 * Perhaps waiting for a spin_lock().
+		 */
+		vcpu->stat.wfe_exit_stat++;
+		return 1;
+	}
+
+	if (skip_wfi(pc) && !(kvm_vcpu_get_hsr(vcpu) & ESR_ELx_WFx_ISS_WFE)) {
+		/*
+		 * umm... how?
+		 *
+		 * WFI under (HARDIRQ_MASK | SOFTIRQ_MASK | NMI_MASK)?
+		 */
+		vcpu->stat.wfe_exit_stat++;
+		return 1;
+	}
+
 	if (kvm_vcpu_get_hsr(vcpu) & ESR_ELx_WFx_ISS_WFE) {
 		trace_kvm_wfx_arm64(*vcpu_pc(vcpu), true);
 		vcpu->stat.wfe_exit_stat++;

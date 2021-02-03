@@ -9,7 +9,9 @@ extern struct static_key paravirt_steal_rq_enabled;
 
 struct pvstate_vcpu_info {
 	bool	preempted;
-	u8	reserved[63];
+	// padding
+	int	preempt_count;
+	u8	reserved[56];
 };
 
 struct pv_state_ops {

@@ -62,3 +62,29 @@ void kvm_update_vcpu_preempted(struct kvm_vcpu *vcpu, bool preempted)
 	srcu_read_unlock(&kvm->srcu, idx);
 	pagefault_enable();
 }
+
+int kvm_vcpu_preempt_count(struct kvm_vcpu *vcpu)
+{
+	struct pvstate_vcpu_info info;
+	struct kvm *kvm = vcpu->kvm;
+	u64 idx;
+	int ret;
+
+	if (!kvm_arm_is_vcpu_state_enabled(&vcpu->arch))
+		return 0;
+
+	pagefault_disable();
+	/*
+	 * Need to take the SRCU lock because kvm_write_guest_offset_cached()
+	 * calls kvm_memslots();
+	 */
+	idx = srcu_read_lock(&kvm->srcu);
+	ret = kvm_read_guest_cached(kvm, &vcpu->arch.pv_state.ghc, &info, sizeof(info));
+	srcu_read_unlock(&kvm->srcu, idx);
+	pagefault_enable();
+
+	if (likely(!ret))
+		return info.preempt_count;
+
+	return 0;
+}

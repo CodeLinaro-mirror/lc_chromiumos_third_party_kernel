@@ -426,6 +426,8 @@ kvm_arm_is_vcpu_state_enabled(struct kvm_vcpu_arch *vcpu_arch)
 }
 
 void kvm_update_vcpu_preempted(struct kvm_vcpu *vcpu, bool preempted);
+
+int kvm_vcpu_preempt_count(struct kvm_vcpu *vcpu);
 #else
 static inline bool kvm_vcpu_state_supported(void)
 {
@@ -455,6 +457,12 @@ kvm_arm_is_vcpu_state_enabled(struct kvm_vcpu_arch *vcpu_arch)
 static inline void
 kvm_update_vcpu_preempted(struct kvm_vcpu *vcpu, bool preempted)
 {
+}
+
+static inline int
+kvm_vcpu_preempt_count(struct kvm_vcpu *vcpu)
+{
+	return 0;
 }
 #endif
 
