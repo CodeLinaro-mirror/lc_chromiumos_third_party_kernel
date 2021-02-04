@@ -863,8 +863,10 @@ void geni_remove_earlycon_icc_vote(void)
 			continue;
 
 		wrapper = platform_get_drvdata(pdev);
-		icc_put(wrapper->to_core.path);
-		wrapper->to_core.path = NULL;
+		if (wrapper) {
+			icc_put(wrapper->to_core.path);
+			wrapper->to_core.path = NULL;
+		}
 
 	}
 	of_node_put(parent);
