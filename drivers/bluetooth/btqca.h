@@ -79,7 +79,8 @@ enum qca_tlv_dnld_mode {
 
 enum qca_tlv_type {
 	TLV_TYPE_PATCH = 1,
-	TLV_TYPE_NVM
+	TLV_TYPE_NVM,
+	ELF_TYPE_PATCH
 };
 
 struct qca_fw_config {
@@ -142,6 +143,7 @@ enum qca_btsoc_type {
 	QCA_WCN3998,
 	QCA_WCN3991,
 	QCA_QCA6390,
+	QCA_WCN6750
 };
 
 #if IS_ENABLED(CONFIG_BT_QCA)
