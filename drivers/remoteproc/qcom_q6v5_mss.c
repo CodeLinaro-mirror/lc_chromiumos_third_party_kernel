@@ -118,6 +118,14 @@
 #define QDSP6SS_XO_CBCR		0x0038
 #define QDSP6SS_ACC_OVERRIDE_VAL		0x20
 
+/* MSS CC */
+#define MSS_CC_AXI_CRYPTO_CBCR		0x410
+#define MSS_CC_Q6VQ6_AXIM1_CBCR		0x414
+
+/* MSS PERPH */
+#define MSS_RSCC_ENABLE			0x74
+#define MSS_AXI_BRIDGE_CNTRL		0xD8
+
 /* QDSP6v65 parameters */
 #define QDSP6SS_CORE_CBCR		0x20
 #define QDSP6SS_SLEEP                   0x3C
@@ -154,6 +162,7 @@ struct rproc_hexagon_res {
 	bool has_spare_reg;
 	bool has_qaccept_regs;
 	bool has_ext_cntl_regs;
+	bool has_perph_access;
 	bool has_vq6;
 };
 
@@ -163,6 +172,8 @@ struct q6v5 {
 
 	void __iomem *reg_base;
 	void __iomem *rmb_base;
+	void __iomem *cc_base;
+	void __iomem *perph_base;
 
 	struct regmap *halt_map;
 	struct regmap *conn_map;
@@ -227,6 +238,7 @@ struct q6v5 {
 	bool has_spare_reg;
 	bool has_qaccept_regs;
 	bool has_ext_cntl_regs;
+	bool has_perph_access;
 	bool has_vq6;
 	int mpss_perm;
 	int mba_perm;
@@ -507,6 +519,11 @@ static int q6v5_reset_assert(struct q6v5 *qproc)
 		reset_control_assert(qproc->mss_restart);
 		reset_control_deassert(qproc->pdc_reset);
 		ret = reset_control_deassert(qproc->mss_restart);
+	} else if (qproc->has_perph_access) {
+		reset_control_assert(qproc->pdc_reset);
+		reset_control_assert(qproc->mss_restart);
+		reset_control_deassert(qproc->pdc_reset);
+		ret = reset_control_deassert(qproc->mss_restart);
 	} else {
 		ret = reset_control_assert(qproc->mss_restart);
 	}
@@ -524,7 +541,7 @@ static int q6v5_reset_deassert(struct q6v5 *qproc)
 		ret = reset_control_reset(qproc->mss_restart);
 		writel(0, qproc->rmb_base + RMB_MBA_ALT_RESET);
 		reset_control_deassert(qproc->pdc_reset);
-	} else if (qproc->has_spare_reg || qproc->has_ext_cntl_regs) {
+	} else if (qproc->has_spare_reg || qproc->has_ext_cntl_regs || qproc->has_perph_access) {
 		ret = reset_control_reset(qproc->mss_restart);
 	} else {
 		ret = reset_control_deassert(qproc->mss_restart);
@@ -841,6 +858,20 @@ static int q6v5proc_enable_qchannel(struct q6v5 *qproc, struct regmap *map, u32 
 		}
 	}
 
+	if (qproc->has_perph_access) {
+		val = readl(qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR);
+		val |= Q6SS_CBCR_CLKEN;
+		writel(val, qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR);
+
+		ret = readl_poll_timeout(qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR,
+					 val, !(val & Q6SS_CBCR_CLKOFF), 1,
+					 Q6SS_CBCR_TIMEOUT_US);
+		if (ret) {
+			dev_err(qproc->dev, "failed to enable axim1 clock\n");
+			return -ETIMEDOUT;
+		}
+	}
+
 	regmap_write(map, offset + QACCEPT_REQ_REG, 1);
 
 	/* Wait for accept */
@@ -850,6 +881,9 @@ static int q6v5proc_enable_qchannel(struct q6v5 *qproc, struct regmap *map, u32 
 		dev_err(qproc->dev, "qchannel enable failed\n");
 		return -ETIMEDOUT;
 	}
+
+	if (qproc->has_perph_access)
+		writel(1, qproc->perph_base + MSS_AXI_BRIDGE_CNTRL);
 
 	return 0;
 }
@@ -1202,9 +1236,53 @@ static void q6v5_mba_reclaim(struct q6v5 *qproc)
 			dev_err(qproc->dev, "failed to enable crypto clock\n");
 	}
 
+	if (qproc->has_perph_access) {
+		val = readl(qproc->perph_base + MSS_RSCC_ENABLE);
+		val &= ~(0x1f << 17);
+		writel(val, qproc->perph_base + MSS_RSCC_ENABLE);
+
+		writel(0, qproc->perph_base + MSS_AXI_BRIDGE_CNTRL);
+
+		val = readl(qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR);
+		val |= Q6SS_CBCR_CLKEN;
+		writel(val, qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR);
+
+		ret = readl_poll_timeout(qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR,
+					 val, !(val & Q6SS_CBCR_CLKOFF), 1,
+					 Q6SS_CBCR_TIMEOUT_US);
+		if (ret)
+			dev_err(qproc->dev, "failed to enable axim1 clock\n");
+
+		val = readl(qproc->cc_base + MSS_CC_AXI_CRYPTO_CBCR);
+		val |= Q6SS_CBCR_CLKEN;
+		writel(val, qproc->cc_base + MSS_CC_AXI_CRYPTO_CBCR);
+
+		ret = readl_poll_timeout(qproc->cc_base + MSS_CC_AXI_CRYPTO_CBCR,
+					 val, !(val & Q6SS_CBCR_CLKOFF), 1,
+					 Q6SS_CBCR_TIMEOUT_US);
+		if (ret)
+			dev_err(qproc->dev, "failed to enable crypto clock\n");
+	}
+
 	q6v5proc_disable_qchannel(qproc, qproc->halt_map, qproc->qaccept_mdm);
 	q6v5proc_disable_qchannel(qproc, qproc->halt_map, qproc->qaccept_cx);
 	q6v5proc_disable_qchannel(qproc, qproc->halt_map, qproc->qaccept_axi);
+
+	if (qproc->has_perph_access) {
+		val = readl(qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR);
+		val &= ~Q6SS_CBCR_CLKEN;
+		writel(val, qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR);
+
+		readl_poll_timeout(qproc->cc_base + MSS_CC_Q6VQ6_AXIM1_CBCR, val,
+				   (val & Q6SS_CBCR_CLKOFF), 1, Q6SS_CBCR_TIMEOUT_US);
+
+		val = readl(qproc->cc_base + MSS_CC_AXI_CRYPTO_CBCR);
+		val &= ~Q6SS_CBCR_CLKEN;
+		writel(val, qproc->cc_base + MSS_CC_AXI_CRYPTO_CBCR);
+
+		readl_poll_timeout(qproc->cc_base + MSS_CC_AXI_CRYPTO_CBCR, val,
+				   (val & Q6SS_CBCR_CLKOFF), 1, Q6SS_CBCR_TIMEOUT_US);
+	}
 
 	q6v5_reset_assert(qproc);
 
@@ -1614,6 +1692,18 @@ static int q6v5_init_mem(struct q6v5 *qproc, struct platform_device *pdev)
 	if (IS_ERR(qproc->rmb_base))
 		return PTR_ERR(qproc->rmb_base);
 
+	if (qproc->has_perph_access) {
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mss_cc");
+		qproc->cc_base = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(qproc->cc_base))
+			return PTR_ERR(qproc->cc_base);
+
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mss_perph");
+		qproc->perph_base = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(qproc->perph_base))
+			return PTR_ERR(qproc->perph_base);
+	}
+
 	if (qproc->has_vq6)
 		halt_cell_cnt++;
 
@@ -1770,7 +1860,8 @@ static int q6v5_init_reset(struct q6v5 *qproc)
 		return PTR_ERR(qproc->mss_restart);
 	}
 
-	if (qproc->has_alt_reset || qproc->has_spare_reg || qproc->has_ext_cntl_regs) {
+	if (qproc->has_alt_reset || qproc->has_spare_reg || qproc->has_ext_cntl_regs ||
+	    qproc->has_perph_access) {
 		qproc->pdc_reset = devm_reset_control_get_exclusive(qproc->dev,
 								    "pdc_reset");
 		if (IS_ERR(qproc->pdc_reset)) {
@@ -1876,6 +1967,7 @@ static int q6v5_probe(struct platform_device *pdev)
 	qproc->has_qaccept_regs = desc->has_qaccept_regs;
 	qproc->has_ext_cntl_regs = desc->has_ext_cntl_regs;
 	qproc->has_vq6 = desc->has_vq6;
+	qproc->has_perph_access = desc->has_perph_access;
 	qproc->has_spare_reg = desc->has_spare_reg;
 	ret = q6v5_init_mem(qproc, pdev);
 	if (ret)
@@ -2053,6 +2145,7 @@ static const struct rproc_hexagon_res sc7180_mss = {
 	.has_qaccept_regs = false,
 	.has_ext_cntl_regs = false,
 	.has_vq6 = false,
+	.has_perph_access = false,
 	.version = MSS_SC7180,
 };
 
@@ -2082,8 +2175,9 @@ static const struct rproc_hexagon_res sc7280_mss = {
 	.has_mba_logs = true,
 	.has_spare_reg = false,
 	.has_qaccept_regs = true,
-	.has_ext_cntl_regs = true,
+	.has_ext_cntl_regs = false,
 	.has_vq6 = true,
+	.has_perph_access = true,
 	.version = MSS_SC7280,
 };
 
@@ -2123,6 +2217,7 @@ static const struct rproc_hexagon_res sdm845_mss = {
 	.has_qaccept_regs = false,
 	.has_ext_cntl_regs = false,
 	.has_vq6 = false,
+	.has_perph_access = false,
 	.version = MSS_SDM845,
 };
 
@@ -2154,6 +2249,7 @@ static const struct rproc_hexagon_res msm8998_mss = {
 	.has_qaccept_regs = false,
 	.has_ext_cntl_regs = false,
 	.has_vq6 = false,
+	.has_perph_access = false,
 	.version = MSS_MSM8998,
 };
 
@@ -2188,6 +2284,7 @@ static const struct rproc_hexagon_res msm8996_mss = {
 	.has_qaccept_regs = false,
 	.has_ext_cntl_regs = false,
 	.has_vq6 = false,
+	.has_perph_access = false,
 	.version = MSS_MSM8996,
 };
 
@@ -2233,6 +2330,7 @@ static const struct rproc_hexagon_res msm8916_mss = {
 	.has_qaccept_regs = false,
 	.has_ext_cntl_regs = false,
 	.has_vq6 = false,
+	.has_perph_access = false,
 	.version = MSS_MSM8916,
 };
 
@@ -2286,6 +2384,7 @@ static const struct rproc_hexagon_res msm8974_mss = {
 	.has_qaccept_regs = false,
 	.has_ext_cntl_regs = false,
 	.has_vq6 = false,
+	.has_perph_access = false,
 	.version = MSS_MSM8974,
 };
 
