@@ -78,6 +78,14 @@
 	status = "okay";
 };
 
+&remoteproc_mpss {
+	status = "okay";
+	compatible = "qcom,sc7280-mss-pil";
+	iommus = <&apps_smmu 0x488 0x0>;
+	memory-region = <&mba_mem &mpss_mem>;
+	firmware-name = "mba.mbn", "qdsp6sw.mbn";
+};
+
 &uart5 {
 	status = "okay";
 };
