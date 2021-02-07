@@ -24,8 +24,10 @@ struct pil_reloc {
 	size_t num_entries;
 };
 
+static void __iomem *pil_timeout;
 static struct pil_reloc _reloc __read_mostly;
 static DEFINE_MUTEX(pil_reloc_lock);
+static DEFINE_MUTEX(pil_timeout_lock);
 
 static int qcom_pil_info_init(void)
 {
@@ -116,12 +118,55 @@ found_existing:
 }
 EXPORT_SYMBOL_GPL(qcom_pil_info_store);
 
+bool qcom_pil_timeout_disabled(void)
+{
+	struct device_node *np;
+	bool disabled = false;
+	struct resource imem;
+	void __iomem *base;
+	int ret;
+
+	mutex_lock(&pil_timeout_lock);
+
+	if (pil_timeout)
+		goto read_base;
+
+	np = of_find_compatible_node(NULL, NULL, "qcom,pil-disable-timeout");
+	if (!np)
+		goto exit;
+
+	ret = of_address_to_resource(np, 0, &imem);
+	of_node_put(np);
+	if (ret < 0)
+		goto exit;
+
+	base = ioremap(imem.start, resource_size(&imem));
+	if (!base) {
+		pr_err("failed to map PIL relocation info region\n");
+		goto exit;
+	}
+
+	pil_timeout = base;
+read_base:
+	if (__raw_readl(pil_timeout) == 0x53444247)
+		disabled = true;
+exit:
+	mutex_unlock(&pil_timeout_lock);
+	return disabled;
+};
+EXPORT_SYMBOL_GPL(qcom_pil_timeout_disabled);
+
 static void __exit pil_reloc_exit(void)
 {
 	mutex_lock(&pil_reloc_lock);
 	iounmap(_reloc.base);
 	_reloc.base = NULL;
 	mutex_unlock(&pil_reloc_lock);
+
+	mutex_lock(&pil_timeout_lock);
+	iounmap(pil_timeout);
+	pil_timeout = NULL;
+	mutex_unlock(&pil_timeout_lock);
 }
 module_exit(pil_reloc_exit);
 

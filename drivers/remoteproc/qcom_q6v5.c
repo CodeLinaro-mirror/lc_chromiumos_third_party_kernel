@@ -14,6 +14,7 @@
 #include <linux/soc/qcom/smem_state.h>
 #include <linux/remoteproc.h>
 #include "qcom_common.h"
+#include "qcom_pil_info.h"
 #include "qcom_q6v5.h"
 
 #define Q6V5_PANIC_DELAY_MS	200
@@ -31,6 +32,7 @@ int qcom_q6v5_prepare(struct qcom_q6v5 *q6v5)
 
 	q6v5->running = true;
 	q6v5->handover_issued = false;
+	q6v5->timeout_disabled = qcom_pil_timeout_disabled();
 
 	enable_irq(q6v5->handover_irq);
 
@@ -114,6 +116,9 @@ static irqreturn_t q6v5_ready_interrupt(int irq, void *data)
 int qcom_q6v5_wait_for_start(struct qcom_q6v5 *q6v5, int timeout)
 {
 	int ret;
+
+	if (q6v5->timeout_disabled)
+		timeout = INT_MAX;
 
 	ret = wait_for_completion_timeout(&q6v5->start_done, timeout);
 	if (!ret)
@@ -289,6 +294,12 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(qcom_q6v5_init);
+
+bool qcom_q6v5_timeout_disabled(struct qcom_q6v5 *q6v5)
+{
+	return q6v5->timeout_disabled;
+}
+EXPORT_SYMBOL_GPL(qcom_q6v5_timeout_disabled);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Qualcomm Peripheral Image Loader for Q6V5");

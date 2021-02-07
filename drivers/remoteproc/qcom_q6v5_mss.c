@@ -561,7 +561,7 @@ static int q6v5_rmb_pbl_wait(struct q6v5 *qproc, int ms)
 		if (val)
 			break;
 
-		if (time_after(jiffies, timeout))
+		if (time_after(jiffies, timeout) && !qcom_q6v5_timeout_disabled(&qproc->q6v5))
 			return -ETIMEDOUT;
 
 		msleep(1);
@@ -587,7 +587,7 @@ static int q6v5_rmb_mba_wait(struct q6v5 *qproc, u32 status, int ms)
 		else if (status && val == status)
 			break;
 
-		if (time_after(jiffies, timeout))
+		if (time_after(jiffies, timeout) && !qcom_q6v5_timeout_disabled(&qproc->q6v5))
 			return -ETIMEDOUT;
 
 		msleep(1);
@@ -704,6 +704,9 @@ static int q6v5proc_reset(struct q6v5 *qproc)
 			q6v5_reset_deassert(qproc);
 			return ret;
 		}
+
+		dev_info(qproc->dev, "QDSP6SS is out of reset.\n");
+
 		goto pbl_wait;
 	} else if (qproc->version == MSS_MSM8996 ||
 		   qproc->version == MSS_MSM8998) {

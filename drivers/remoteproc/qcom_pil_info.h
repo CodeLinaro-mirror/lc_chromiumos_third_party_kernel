@@ -5,5 +5,6 @@
 #include <linux/types.h>
 
 int qcom_pil_info_store(const char *image, phys_addr_t base, size_t size);
+bool qcom_pil_timeout_disabled(void);
 
 #endif
