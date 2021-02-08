@@ -17,6 +17,7 @@
 #include <linux/hid.h>
 #include <linux/leds.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/platform_data/cros_ec_commands.h>
 #include <linux/platform_data/cros_ec_proto.h>
 #include <linux/platform_device.h>
@@ -95,8 +96,9 @@ static int cbas_ec_notify(struct notifier_block *nb,
 	struct cros_ec_device *ec = _notify;
 	unsigned long flags;
 	bool base_present;
+	const u8 event_type = ec->event_data.event_type & EC_MKBP_EVENT_TYPE_MASK;
 
-	if (ec->event_data.event_type == EC_MKBP_EVENT_SWITCH) {
+	if (event_type == EC_MKBP_EVENT_SWITCH) {
 		base_present = cbas_parse_base_state(
 					&ec->event_data.data.switches);
 		dev_dbg(cbas_ec.dev,
@@ -272,12 +274,21 @@ static const struct acpi_device_id cbas_ec_acpi_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, cbas_ec_acpi_ids);
 
+#ifdef CONFIG_OF
+static const struct of_device_id cbas_ec_of_match[] = {
+	{ .compatible = "google,cros-cbas" },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, cbas_ec_of_match);
+#endif
+
 static struct platform_driver cbas_ec_driver = {
 	.probe = cbas_ec_probe,
 	.remove = cbas_ec_remove,
 	.driver = {
 		.name = "cbas_ec",
 		.acpi_match_table = ACPI_PTR(cbas_ec_acpi_ids),
+		.of_match_table = of_match_ptr(cbas_ec_of_match),
 		.pm = &cbas_ec_pm_ops,
 	},
 };
@@ -392,30 +403,34 @@ static int hammer_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	return 0;
 }
 
-static int hammer_event(struct hid_device *hid, struct hid_field *field,
-			struct hid_usage *usage, __s32 value)
+static void hammer_folded_event(struct hid_device *hdev, bool folded)
 {
 	unsigned long flags;
 
+	spin_lock_irqsave(&cbas_ec_lock, flags);
+
+	/*
+	 * If we are getting events from Whiskers that means that it
+	 * is attached to the lid.
+	 */
+	cbas_ec.base_present = true;
+	cbas_ec.base_folded = folded;
+	hid_dbg(hdev, "%s: base: %d, folded: %d\n", __func__,
+		cbas_ec.base_present, cbas_ec.base_folded);
+
+	if (cbas_ec.input) {
+		input_report_switch(cbas_ec.input, SW_TABLET_MODE, folded);
+		input_sync(cbas_ec.input);
+	}
+
+	spin_unlock_irqrestore(&cbas_ec_lock, flags);
+}
+
+static int hammer_event(struct hid_device *hid, struct hid_field *field,
+			struct hid_usage *usage, __s32 value)
+{
 	if (usage->hid == HID_USAGE_KBD_FOLDED) {
-		spin_lock_irqsave(&cbas_ec_lock, flags);
-
-		/*
-		 * If we are getting events from Whiskers that means that it
-		 * is attached to the lid.
-		 */
-		cbas_ec.base_present = true;
-		cbas_ec.base_folded = value;
-		hid_dbg(hid, "%s: base: %d, folded: %d\n", __func__,
-			cbas_ec.base_present, cbas_ec.base_folded);
-
-		if (cbas_ec.input) {
-			input_report_switch(cbas_ec.input,
-					    SW_TABLET_MODE, value);
-			input_sync(cbas_ec.input);
-		}
-
-		spin_unlock_irqrestore(&cbas_ec_lock, flags);
+		hammer_folded_event(hid, value);
 		return 1; /* We handled this event */
 	}
 
@@ -457,6 +472,47 @@ static bool hammer_has_backlight_control(struct hid_device *hdev)
 				HID_GD_KEYBOARD, HID_AD_BRIGHTNESS);
 }
 
+static void hammer_get_folded_state(struct hid_device *hdev)
+{
+	struct hid_report *report;
+	char *buf;
+	int len, rlen;
+	int a;
+
+	report = hdev->report_enum[HID_INPUT_REPORT].report_id_hash[0x0];
+
+	if (!report || report->maxfield < 1)
+		return;
+
+	len = hid_report_len(report) + 1;
+
+	buf = kmalloc(len, GFP_KERNEL);
+	if (!buf)
+		return;
+
+	rlen = hid_hw_raw_request(hdev, report->id, buf, len, report->type, HID_REQ_GET_REPORT);
+
+	if (rlen != len) {
+		hid_warn(hdev, "Unable to read base folded state: %d (expected %d)\n", rlen, len);
+		goto out;
+	}
+
+	for (a = 0; a < report->maxfield; a++) {
+		struct hid_field *field = report->field[a];
+
+		if (field->usage->hid == HID_USAGE_KBD_FOLDED) {
+			u32 value = hid_field_extract(hdev, buf+1,
+					field->report_offset, field->report_size);
+
+			hammer_folded_event(hdev, value);
+			break;
+		}
+	}
+
+out:
+	kfree(buf);
+}
+
 static int hammer_probe(struct hid_device *hdev,
 			const struct hid_device_id *id)
 {
@@ -481,6 +537,8 @@ static int hammer_probe(struct hid_device *hdev,
 		error = hid_hw_open(hdev);
 		if (error)
 			return error;
+
+		hammer_get_folded_state(hdev);
 	}
 
 	if (hammer_has_backlight_control(hdev)) {
