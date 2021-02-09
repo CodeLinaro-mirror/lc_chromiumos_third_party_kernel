@@ -6640,6 +6640,20 @@ static void vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	if ((u16)vmx->exit_reason == EXIT_REASON_MCE_DURING_VMENTRY)
 		kvm_machine_check();
 
+	vcpu->arch.may_boost = 0;
+	if (vmx->exit_reason == EXIT_REASON_EXTERNAL_INTERRUPT ||
+	    vmx->exit_reason == EXIT_REASON_PREEMPTION_TIMER ||
+	    vmx->exit_reason == EXIT_REASON_MSR_WRITE) {
+		/*
+		 * Boost when MSR write when sending IPI for function call,
+		 * otherwise the sending cpu might not be able to release lock.
+		 * This still has potential issues for functions that actually
+		 * need to rendezvous.
+		 */
+		if (kvm_vcpu_dont_preempt(vcpu))
+			vcpu->arch.may_boost = 1;
+	}
+
 	if (vmx->fail || (vmx->exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY))
 		return;
 

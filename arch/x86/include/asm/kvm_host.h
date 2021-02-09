@@ -758,6 +758,11 @@ struct kvm_vcpu_arch {
 
 	u64 msr_kvm_poll_control;
 
+	bool preempt_count_enabled;
+	bool may_boost;
+	int boost;
+	struct gfn_to_hva_cache preempt_count_g2h;
+
 	/*
 	 * Indicate whether the access faults on its page table in guest
 	 * which is set when fix page fault and used to detect unhandeable

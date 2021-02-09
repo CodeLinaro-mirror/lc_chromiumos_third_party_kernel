@@ -1266,6 +1266,7 @@ static const u32 emulated_msrs_all[] = {
 
 	MSR_KVM_ASYNC_PF_EN, MSR_KVM_STEAL_TIME,
 	MSR_KVM_PV_EOI_EN,
+	MSR_KVM_PREEMPT_COUNT,
 
 	MSR_IA32_TSC_ADJUST,
 	MSR_IA32_TSCDEADLINE,
@@ -2872,6 +2873,15 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_KVM_PV_EOI_EN:
 		if (kvm_lapic_enable_pv_eoi(vcpu, data, sizeof(u8)))
 			return 1;
+		break;
+	case MSR_KVM_PREEMPT_COUNT:
+		vcpu->arch.preempt_count_enabled = 0;
+		if (!(data & KVM_MSR_ENABLED))
+			break;
+		if (!kvm_gfn_to_hva_cache_init(vcpu->kvm,
+		    &vcpu->arch.preempt_count_g2h, data & ~KVM_MSR_ENABLED,
+		    sizeof(int)))
+			vcpu->arch.preempt_count_enabled = 1;
 		break;
 
 	case MSR_KVM_POLL_CONTROL:
@@ -8386,6 +8396,15 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 	local_irq_enable();
 	preempt_enable();
 
+	/*
+	 * Boosted VCPU is no longer in critical section, so we can yield
+	 * back the cpu.
+	 */
+	if (vcpu->arch.boost && !vcpu->arch.may_boost) {
+		vcpu->arch.boost = 0;
+		schedule();
+	}
+
 	vcpu->srcu_idx = srcu_read_lock(&vcpu->kvm->srcu);
 
 	/*
@@ -8455,6 +8474,24 @@ static inline bool kvm_vcpu_running(struct kvm_vcpu *vcpu)
 
 	return (vcpu->arch.mp_state == KVM_MP_STATE_RUNNABLE &&
 		!vcpu->arch.apf.halted);
+}
+
+int
+kvm_vcpu_dont_preempt(struct kvm_vcpu *vcpu)
+{
+	int count, ret;
+
+	if (!vcpu->arch.preempt_count_enabled)
+		return 0;
+
+	pagefault_disable();
+	ret = kvm_read_guest_cached(vcpu->kvm, &vcpu->arch.preempt_count_g2h,
+	    &count, sizeof(int));
+	pagefault_enable();
+	if (likely(!ret))
+		return count & ~0x80000000 || !(kvm_x86_ops->get_rflags(vcpu) &
+		    X86_EFLAGS_IF);
+	return 0;
 }
 
 static int vcpu_run(struct kvm_vcpu *vcpu)
@@ -9581,6 +9618,9 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 
 	kvm_hv_vcpu_init(vcpu);
 
+	vcpu->arch.boost = 0;
+	vcpu->arch.may_boost = 0;
+
 	return 0;
 
 fail_free_mce_banks:
@@ -9614,7 +9654,23 @@ void kvm_arch_vcpu_uninit(struct kvm_vcpu *vcpu)
 void kvm_arch_sched_in(struct kvm_vcpu *vcpu, int cpu)
 {
 	vcpu->arch.l1tf_flush_l1d = true;
+	vcpu->arch.boost = 0;
+	vcpu->arch.may_boost = 0;
 	kvm_x86_ops->sched_in(vcpu, cpu);
+}
+
+#define	MAX_BOOSTS 5
+
+bool
+kvm_arch_may_preempt(struct kvm_vcpu *vcpu, struct task_struct *prev)
+{
+	/*
+	 * Limit the maximum number of times we can get boosted to prevent
+	 * livelock.
+	 */
+	if (vcpu->arch.may_boost && vcpu->arch.boost++ < MAX_BOOSTS)
+		return false;
+	return true;
 }
 
 int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
