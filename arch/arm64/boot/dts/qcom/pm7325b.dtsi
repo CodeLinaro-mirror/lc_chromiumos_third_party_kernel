@@ -43,10 +43,8 @@
 			reg = <0xfb00>, <0xfc00>;
 			reg-names = "wled-ctrl-base", "wled-sink-base";
 			label = "backlight";
-			interrupts = <0x3 0xfb 0x1 IRQ_TYPE_EDGE_RISING>,
-				     <0x3 0xfb 0x4 IRQ_TYPE_EDGE_BOTH>,
-				     <0x3 0xfb 0x5 IRQ_TYPE_EDGE_BOTH>;
-			interrupt-names = "ovp-irq";
+			interrupts = <0x3 0xfb 0x1 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "ovp";
 			qcom,auto-string-detection;
 			qcom,num-strings = <2>;
 			qcom,enabled-strings = <0 1>;
