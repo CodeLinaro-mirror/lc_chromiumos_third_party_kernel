@@ -1500,6 +1500,12 @@ static struct iommu_group *arm_smmu_device_group(struct device *dev)
 		for_each_cfg_sme(cfg, fwspec, i, idx)
 			smmu->s2crs[idx].group = group;
 
+	if (smmu->impl && smmu->impl->device_group &&
+	    smmu->impl->device_group(dev, group)) {
+		iommu_group_put(group);
+		return ERR_PTR(-EINVAL);
+	}
+
 	return group;
 }
 

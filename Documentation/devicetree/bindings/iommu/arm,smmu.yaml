@@ -112,6 +112,12 @@ properties:
       NOTE: this only applies to the SMMU itself, not masters connected
       upstream of the SMMU.
 
+  qcom,actlr:
+    description: |
+      An array of <sid mask actlr-setting>.
+      Any sid X for which X&~mask==sid will be programmed with the
+      given actlr-setting.
+
   calxeda,smmu-secure-config-access:
     type: boolean
     description:

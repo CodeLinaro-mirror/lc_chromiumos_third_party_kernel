@@ -243,6 +243,8 @@ enum arm_smmu_cbar_type {
 #define TLB_LOOP_TIMEOUT		1000000	/* 1s! */
 #define TLB_SPIN_COUNT			10
 
+#define ARM_MMU500_ACR_CACHE_LOCK       (1 << 26)
+
 /* Shared driver definitions */
 enum arm_smmu_arch_version {
 	ARM_SMMU_V1,
@@ -441,6 +443,7 @@ struct arm_smmu_impl {
 				  struct arm_smmu_device *smmu,
 				  struct device *dev, int start);
 	void (*write_s2cr)(struct arm_smmu_device *smmu, int idx);
+	int (*device_group)(struct device *dev, struct iommu_group *group);
 };
 
 #define INVALID_SMENDX			-1
