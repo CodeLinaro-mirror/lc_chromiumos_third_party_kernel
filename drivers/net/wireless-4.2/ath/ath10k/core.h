@@ -928,6 +928,9 @@ struct ath10k {
 		 * frames encrypted and expect software do decryption.
 		 */
 		bool sw_decrypt_mcast_mgmt;
+
+		/* Number of bytes used for alignment in rx_hdr_status of rx desc. */
+		int decap_align_bytes;
 	} hw_params;
 
 	const struct firmware *board;
