@@ -9,6 +9,7 @@
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/reboot.h>
@@ -16,8 +17,10 @@
 
 static void __iomem *msm_ps_hold;
 
+#ifdef CONFIG_POWER_RESET_MSM
 void __iomem *msm_sdi_disable;
 EXPORT_SYMBOL_GPL(msm_sdi_disable);
+#endif
 
 #ifdef CONFIG_RANDOMIZE_BASE
 #define KASLR_OFFSET_PROP "qcom,msm-imem-kaslr_offset"
@@ -28,6 +31,21 @@ static void __iomem *kaslr_imem_addr;
 void __iomem *dload_imem_addr;
 EXPORT_SYMBOL_GPL(dload_imem_addr);
 #endif
+
+struct msm_dload_config {
+	unsigned long sdi_disable;
+	unsigned long imem_cookie;
+};
+
+static const struct msm_dload_config sc7180_data = {
+	.sdi_disable	= 0x01FFA000,
+	.imem_cookie	= 0xE47B337D,
+};
+
+static const struct msm_dload_config sc7280_data = {
+	.sdi_disable	= 0x01FEE000,
+	.imem_cookie	= 0xE47B337D,
+};
 
 static int deassert_pshold(struct notifier_block *nb, unsigned long action,
 			   void *data)
@@ -57,10 +75,12 @@ static int msm_restart_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct resource *mem;
+	const struct msm_dload_config *cfg;
 #if defined(CONFIG_RANDOMIZE_BASE) || defined(CONFIG_POWER_RESET_MSM_DOWNLOAD_MODE)
 	struct device_node *np;
 #endif
 
+	cfg = of_device_get_match_data(dev);
 #ifdef CONFIG_RANDOMIZE_BASE
 #define KASLR_OFFSET_BIT_MASK	0x00000000FFFFFFFF
 	np = of_find_compatible_node(NULL, NULL, KASLR_OFFSET_PROP);
@@ -93,14 +113,14 @@ static int msm_restart_probe(struct platform_device *pdev)
 	}
 
 	if (dload_imem_addr)
-		writel(0xE47B337D, dload_imem_addr);
+		writel(cfg->imem_cookie, dload_imem_addr);
 #endif
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	msm_ps_hold = devm_ioremap_resource(dev, mem);
 	if (IS_ERR(msm_ps_hold))
 		return PTR_ERR(msm_ps_hold);
 
-	msm_sdi_disable = ioremap(0x01ffa000, 0x4);
+	msm_sdi_disable = ioremap(cfg->sdi_disable, 0x4);
 	if (!msm_sdi_disable)
 		return -ENXIO;
 
@@ -112,7 +132,8 @@ static int msm_restart_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id of_msm_restart_match[] = {
-	{ .compatible = "qcom,pshold", },
+	{ .compatible = "qcom,sc7180-pshold", .data = &sc7180_data},
+	{ .compatible = "qcom,sc7280-pshold", .data = &sc7280_data},
 	{},
 };
 MODULE_DEVICE_TABLE(of, of_msm_restart_match);
