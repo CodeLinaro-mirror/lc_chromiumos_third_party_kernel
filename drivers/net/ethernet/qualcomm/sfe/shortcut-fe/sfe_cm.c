@@ -161,7 +161,8 @@ static int sfe_cm_recv(struct sk_buff *skb)
 	if (unlikely(sfe_bypass_mode == 1))
 		return 0;
 
-	if (unlikely(sfe_bypass_mode == 2 && skb->mark == sfe_bypass_mark))
+	if (unlikely(sfe_bypass_mode == 2 && sfe_bypass_mark &&
+		     skb->mark == sfe_bypass_mark))
 		return 0;
 
 	/*
