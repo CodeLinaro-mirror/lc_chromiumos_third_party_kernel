@@ -1282,7 +1282,7 @@ static int llcc_perfmon_probe(struct platform_device *pdev)
 	else if (val == LLCC_VERSION_2)
 		llcc_priv->version = REV_2;
 
-	llcc_priv->clock = devm_clk_get(pdev->dev.parent, "qdss_clk");
+	llcc_priv->clock = devm_clk_get(pdev->dev.parent, "apb_pclk");
 	if (IS_ERR_OR_NULL(llcc_priv->clock)) {
 		pr_err("failed to get clock node\n");
 		return PTR_ERR(llcc_priv->clock);

@@ -2159,6 +2159,8 @@
 			reg = <0 0x09200000 0 0xd0000>, <0 0x09600000 0 0x50000>;
 			reg-names = "llcc_base", "llcc_broadcast_base";
 			interrupts = <GIC_SPI 582 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&aoss_qmp>;
+			clock-names = "apb_pclk";
 		};
 
 		usb_1: usb@a6f8800 {
