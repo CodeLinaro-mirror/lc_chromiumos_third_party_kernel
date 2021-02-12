@@ -235,6 +235,9 @@ static int msm_iommu_map(struct msm_mmu *mmu, uint64_t iova,
 	if (iova & BIT_ULL(48))
 		iova |= GENMASK_ULL(63, 49);
 
+	if (mmu->features & MMU_FEATURE_USE_LLC)
+		prot |= IOMMU_LLC;
+
 	ret = iommu_map_sgtable(iommu->domain, iova, sgt, prot);
 	WARN_ON(!ret);
 

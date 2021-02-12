@@ -217,6 +217,9 @@ adreno_iommu_create_address_space(struct msm_gpu *gpu,
 		return ERR_CAST(mmu);
 	}
 
+	if (!IS_ERR_OR_NULL(a6xx_gpu->llc_slice))
+		mmu->features |= MMU_FEATURE_USE_LLC;
+
 	/*
 	 * Use the aperture start or SZ_16M, whichever is greater. This will
 	 * ensure that we align with the allocated pagetable range while still
