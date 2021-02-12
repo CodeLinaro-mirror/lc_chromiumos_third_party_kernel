@@ -1251,7 +1251,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00988000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP0_S1_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP0_S2_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi2_default>;
 				interrupts = <GIC_SPI 603 IRQ_TYPE_LEVEL_HIGH>;
@@ -1355,7 +1355,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00990000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP0_S3_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP0_S4_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi4_default>;
 				interrupts = <GIC_SPI 605 IRQ_TYPE_LEVEL_HIGH>;
@@ -1441,7 +1441,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x00998000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP0_S5_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP0_S6_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c6_default>;
 				interrupts = <GIC_SPI 607 IRQ_TYPE_LEVEL_HIGH>;
@@ -1459,7 +1459,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00998000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP0_S5_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP0_S6_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi6_default>;
 				interrupts = <GIC_SPI 607 IRQ_TYPE_LEVEL_HIGH>;
@@ -1477,7 +1477,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x00998000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP0_S5_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP0_S6_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart6_default>;
 				interrupts = <GIC_SPI 607 IRQ_TYPE_LEVEL_HIGH>;
@@ -1493,7 +1493,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x0099c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP0_S5_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP0_S7_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c7_default>;
 				interrupts = <GIC_SPI 608 IRQ_TYPE_LEVEL_HIGH>;
@@ -1511,7 +1511,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x0099c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP0_S5_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP0_S7_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi7_default>;
 				interrupts = <GIC_SPI 608 IRQ_TYPE_LEVEL_HIGH>;
@@ -1529,7 +1529,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x0099c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP0_S5_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP0_S7_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart7_default>;
 				interrupts = <GIC_SPI 608 IRQ_TYPE_LEVEL_HIGH>;
@@ -1612,7 +1612,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x00a84000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S1_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c9_default>;
 				interrupts = <GIC_SPI 354 IRQ_TYPE_LEVEL_HIGH>;
@@ -1630,7 +1630,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00a84000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S1_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi9_default>;
 				interrupts = <GIC_SPI 354 IRQ_TYPE_LEVEL_HIGH>;
@@ -1648,7 +1648,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x00a84000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S1_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart9_default>;
 				interrupts = <GIC_SPI 354 IRQ_TYPE_LEVEL_HIGH>;
@@ -1664,7 +1664,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x00a88000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S2_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c10_default>;
 				interrupts = <GIC_SPI 355 IRQ_TYPE_LEVEL_HIGH>;
@@ -1682,7 +1682,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00a88000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S2_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi10_default>;
 				interrupts = <GIC_SPI 355 IRQ_TYPE_LEVEL_HIGH>;
@@ -1700,7 +1700,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x00a88000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S2_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart10_default>;
 				interrupts = <GIC_SPI 355 IRQ_TYPE_LEVEL_HIGH>;
@@ -1716,7 +1716,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x00a8c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S3_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c11_default>;
 				interrupts = <GIC_SPI 356 IRQ_TYPE_LEVEL_HIGH>;
@@ -1734,7 +1734,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00a8c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S3_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi11_default>;
 				interrupts = <GIC_SPI 356 IRQ_TYPE_LEVEL_HIGH>;
@@ -1752,7 +1752,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x00a8c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S3_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart11_default>;
 				interrupts = <GIC_SPI 356 IRQ_TYPE_LEVEL_HIGH>;
@@ -1768,7 +1768,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x00a90000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S4_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c12_default>;
 				interrupts = <GIC_SPI 357 IRQ_TYPE_LEVEL_HIGH>;
@@ -1786,7 +1786,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00a90000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S4_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi12_default>;
 				interrupts = <GIC_SPI 357 IRQ_TYPE_LEVEL_HIGH>;
@@ -1804,7 +1804,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x00a90000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S4_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart12_default>;
 				interrupts = <GIC_SPI 357 IRQ_TYPE_LEVEL_HIGH>;
@@ -1820,7 +1820,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x00a94000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S5_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c13_default>;
 				interrupts = <GIC_SPI 358 IRQ_TYPE_LEVEL_HIGH>;
@@ -1838,7 +1838,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00a94000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S5_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi13_default>;
 				interrupts = <GIC_SPI 358 IRQ_TYPE_LEVEL_HIGH>;
@@ -1856,7 +1856,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x00a94000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S5_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart13_default>;
 				interrupts = <GIC_SPI 358 IRQ_TYPE_LEVEL_HIGH>;
@@ -1872,7 +1872,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x00a98000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S6_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c14_default>;
 				interrupts = <GIC_SPI 368 IRQ_TYPE_LEVEL_HIGH>;
@@ -1890,7 +1890,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00a98000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S6_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi14_default>;
 				interrupts = <GIC_SPI 368 IRQ_TYPE_LEVEL_HIGH>;
@@ -1908,7 +1908,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x00a98000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S6_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart14_default>;
 				interrupts = <GIC_SPI 368 IRQ_TYPE_LEVEL_HIGH>;
@@ -1924,7 +1924,7 @@
 				compatible = "qcom,geni-i2c";
 				reg = <0 0x00a9c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S7_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_i2c15_default>;
 				interrupts = <GIC_SPI 369 IRQ_TYPE_LEVEL_HIGH>;
@@ -1942,7 +1942,7 @@
 				compatible = "qcom,geni-spi";
 				reg = <0 0x00a9c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S7_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_spi15_default>;
 				interrupts = <GIC_SPI 369 IRQ_TYPE_LEVEL_HIGH>;
@@ -1960,7 +1960,7 @@
 				compatible = "qcom,geni-uart";
 				reg = <0 0x00a9c000 0 0x4000>;
 				clock-names = "se";
-				clocks = <&gcc GCC_QUPV3_WRAP1_S0_CLK>;
+				clocks = <&gcc GCC_QUPV3_WRAP1_S7_CLK>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&qup_uart15_default>;
 				interrupts = <GIC_SPI 369 IRQ_TYPE_LEVEL_HIGH>;
