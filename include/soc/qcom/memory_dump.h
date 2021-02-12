@@ -1,19 +1,12 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright (c) 2012, 2014-2019, 2021, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (c) 2012, 2014-2019, 2021, The Linux Foundation. All rights reserved.
  */
 
 #ifndef __MSM_MEMORY_DUMP_H
 #define __MSM_MEMORY_DUMP_H
 
+#include <linux/errno.h>
 #include <linux/types.h>
 
 enum dump_client_type {
@@ -49,7 +42,7 @@ static inline int msm_dump_tbl_register(struct msm_client_dump *entry)
 #endif
 
 
-#if defined(CONFIG_QCOM_MEMORY_DUMP) || defined(CONFIG_QCOM_MEMORY_DUMP_V2)
+#if IS_ENABLED(CONFIG_QCOM_MEMORY_DUMP_V2)
 extern uint32_t msm_dump_table_version(void);
 #else
 static inline uint32_t msm_dump_table_version(void)
@@ -85,7 +78,9 @@ enum msm_dump_data_ids {
 	MSM_DUMP_DATA_SCANDUMP = 0xEB,
 	MSM_DUMP_DATA_RPMH = 0xEC,
 	MSM_DUMP_DATA_TMC_ETF = 0xF0,
+	MSM_DUMP_DATA_TMC_ETF_SWAO = 0xF1,
 	MSM_DUMP_DATA_TMC_REG = 0x100,
+	MSM_DUMP_DATA_TMC_ETF_SWAO_REG = 0x102,
 	MSM_DUMP_DATA_LOG_BUF = 0x110,
 	MSM_DUMP_DATA_LOG_BUF_FIRST_IDX = 0x111,
 	MSM_DUMP_DATA_SCANDUMP_PER_CPU = 0x130,
@@ -119,7 +114,7 @@ struct msm_dump_entry {
 	uint64_t addr;
 };
 
-#ifdef CONFIG_QCOM_MEMORY_DUMP_V2
+#if IS_ENABLED(CONFIG_QCOM_MEMORY_DUMP_V2)
 extern int msm_dump_data_register(enum msm_dump_table_ids id,
 				  struct msm_dump_entry *entry);
 #else
