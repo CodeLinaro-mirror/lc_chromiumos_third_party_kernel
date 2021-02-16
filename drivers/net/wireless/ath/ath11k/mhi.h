@@ -6,6 +6,7 @@
 #define _ATH11K_MHI_H
 
 #include "pci.h"
+#include "pci_cmn.h"
 
 #define PCIE_TXVECDB				0x360
 #define PCIE_TXVECSTATUS			0x368
@@ -35,5 +36,8 @@ int ath11k_mhi_register(struct ath11k_pci *ar_pci);
 void ath11k_mhi_unregister(struct ath11k_pci *ar_pci);
 void ath11k_mhi_set_mhictrl_reset(struct ath11k_base *ab);
 void ath11k_mhi_clear_vector(struct ath11k_base *ab);
+
+void ath11k_mhi_suspend(struct ath11k_pci *ar_pci);
+void ath11k_mhi_resume(struct ath11k_pci *ar_pci);
 
 #endif

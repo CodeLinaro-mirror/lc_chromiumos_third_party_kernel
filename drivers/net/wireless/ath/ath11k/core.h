@@ -105,6 +105,8 @@ enum ath11k_hw_rev {
 	ATH11K_HW_IPQ8074,
 	ATH11K_HW_QCA6390_HW20,
 	ATH11K_HW_IPQ6018_HW10,
+	ATH11K_HW_QCN9074_HW10,
+	ATH11K_HW_WCN6750_HW10,
 };
 
 enum ath11k_firmware_mode {
@@ -185,6 +187,9 @@ enum ath11k_dev_flags {
 	ATH11K_FLAG_RECOVERY,
 	ATH11K_FLAG_UNREGISTERING,
 	ATH11K_FLAG_REGISTERED,
+	ATH11K_FLAG_QMI_FAIL,
+	ATH11K_FLAG_HTC_SUSPEND_COMPLETE,
+	ATH11K_FLAG_DEV_INIT_DONE,
 };
 
 enum ath11k_monitor_flags {
@@ -432,10 +437,19 @@ struct ath11k_per_peer_tx_stats {
 };
 
 #define ATH11K_FLUSH_TIMEOUT (5 * HZ)
+#define ATH11K_VDEV_DELETE_TIMEOUT_HZ (5 * HZ)
 
-struct ath11k_vdev_stop_status {
-	bool stop_in_progress;
-	u32  vdev_id;
+struct ath11k_msi_user {
+	char *name;
+	int num_vectors;
+	u32 base_vector;
+};
+
+struct ath11k_msi_config {
+	int total_vectors;
+	int total_users;
+	struct ath11k_msi_user *users;
+	u16 hw_rev;
 };
 
 struct ath11k {
@@ -468,6 +482,7 @@ struct ath11k {
 		struct ieee80211_sband_iftype_data
 			iftype[NUM_NL80211_BANDS][NUM_NL80211_IFTYPES];
 	} mac;
+
 	unsigned long dev_flags;
 	unsigned int filter_flags;
 	unsigned long monitor_flags;
@@ -507,13 +522,14 @@ struct ath11k {
 	u8 lmac_id;
 
 	struct completion peer_assoc_done;
+	struct completion peer_delete_done;
 
 	int install_key_status;
 	struct completion install_key_done;
 
 	int last_wmi_vdev_start_status;
-	struct ath11k_vdev_stop_status vdev_stop_status;
 	struct completion vdev_setup_done;
+	struct completion vdev_delete_done;
 
 	int num_peers;
 	int max_num_peers;
@@ -606,6 +622,12 @@ struct ath11k_bus_params {
 	bool m3_fw_support;
 	bool fixed_bdf_addr;
 	bool fixed_mem_region;
+	bool static_window_map;
+	bool hybrid_bus_type;
+	u8 dp_window_idx;
+	u8 ce_window_idx;
+	void (*bus_wakeup)(struct ath11k_base *ab);
+	void (*bus_release)(struct ath11k_base *ab);
 };
 
 /* IPQ8074 HW channel counters frequency value in hertz */
@@ -673,6 +695,10 @@ struct ath11k_base {
 		const struct ath11k_hif_ops *ops;
 	} hif;
 
+	struct {
+		struct completion wakeup_completed;
+	} wow;
+
 	struct ath11k_ce ce;
 	struct timer_list rx_replenish_retry;
 	struct ath11k_hal hal;
@@ -730,13 +756,21 @@ struct ath11k_base {
 	} stats;
 	u32 pktlog_defs_checksum;
 
-	/* Round robbin based TCL ring selector */
-	atomic_t tcl_ring_selector;
-
 	struct ath11k_dbring_cap *db_caps;
 	u32 num_db_cap;
 
 	struct timer_list mon_reap_timer;
+
+	struct completion htc_suspend;
+
+	struct {
+		const struct ath11k_msi_config *msi_config;
+		u32 msi_ep_base_data;
+		u32 irqs[32];
+		u32 msi_addr_lo;
+		u32 msi_addr_hi;
+	} msi;
+
 	/* must be last */
 	u8 drv_priv[0] __aligned(sizeof(void *));
 };
@@ -871,6 +905,9 @@ extern const struct service_to_pipe ath11k_target_service_to_ce_map_wlan_ipq6018
 extern const struct ce_pipe_config ath11k_target_ce_config_wlan_qca6390[];
 extern const struct service_to_pipe ath11k_target_service_to_ce_map_wlan_qca6390[];
 
+extern const struct ce_pipe_config ath11k_target_ce_config_wlan_qcn9074[];
+extern const struct service_to_pipe ath11k_target_service_to_ce_map_wlan_qcn9074[];
+
 void ath11k_peer_unmap_event(struct ath11k_base *ab, u16 peer_id);
 void ath11k_peer_map_event(struct ath11k_base *ab, u8 vdev_id, u16 peer_id,
 			   u8 *mac_addr, u16 ast_hash);
@@ -893,6 +930,8 @@ void ath11k_core_free_bdf(struct ath11k_base *ab, struct ath11k_board_data *bd);
 int ath11k_core_check_dt(struct ath11k_base *ath11k);
 
 void ath11k_core_halt(struct ath11k *ar);
+int ath11k_core_resume(struct ath11k_base *ab);
+int ath11k_core_suspend(struct ath11k_base *ab);
 
 const struct firmware *ath11k_core_firmware_request(struct ath11k_base *ab,
 						    const char *filename);
@@ -915,6 +954,8 @@ static inline const char *ath11k_scan_state_str(enum ath11k_scan_state state)
 
 static inline struct ath11k_skb_cb *ATH11K_SKB_CB(struct sk_buff *skb)
 {
+	BUILD_BUG_ON(sizeof(struct ath11k_skb_cb) >
+		     IEEE80211_TX_INFO_DRIVER_DATA_SIZE);
 	return (struct ath11k_skb_cb *)&IEEE80211_SKB_CB(skb)->driver_data;
 }
 

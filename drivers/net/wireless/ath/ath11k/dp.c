@@ -304,7 +304,7 @@ int ath11k_dp_srng_setup(struct ath11k_base *ab, struct dp_srng *ring,
 	return 0;
 }
 
-static void ath11k_dp_stop_shadow_timers(struct ath11k_base *ab)
+void ath11k_dp_stop_shadow_timers(struct ath11k_base *ab)
 {
 	int i;
 
@@ -438,20 +438,8 @@ static int ath11k_dp_srng_common_setup(struct ath11k_base *ab)
 		goto err;
 	}
 
-	/* When hash based routing of rx packet is enabled, 32 entries to map
-	 * the hash values to the ring will be configured. Each hash entry uses
-	 * three bits to map to a particular ring. The ring mapping will be
-	 * 0:TCL, 1:SW1, 2:SW2, 3:SW3, 4:SW4, 5:Release, 6:FW and 7:Not used.
-	 */
-	ring_hash_map = HAL_HASH_ROUTING_RING_SW1 << 0 |
-			HAL_HASH_ROUTING_RING_SW2 << 3 |
-			HAL_HASH_ROUTING_RING_SW3 << 6 |
-			HAL_HASH_ROUTING_RING_SW4 << 9 |
-			HAL_HASH_ROUTING_RING_SW1 << 12 |
-			HAL_HASH_ROUTING_RING_SW2 << 15 |
-			HAL_HASH_ROUTING_RING_SW3 << 18 |
-			HAL_HASH_ROUTING_RING_SW4 << 21;
 
+	ring_hash_map = ab->hw_params.hw_ops->get_reo_ring_hash_map();
 	ath11k_hal_reo_hw_setup(ab, ring_hash_map);
 
 	return 0;
@@ -1162,4 +1150,19 @@ void ath11k_dp_shadow_init_timer(struct ath11k_base *ab,
 	update_timer->init = true;
 	timer_setup(&update_timer->timer,
 		    ath11k_dp_shadow_timer_handler, 0);
+}
+
+void ath11k_dp_update_wbm_idle_ring_hp(struct ath11k_base *ab)
+{
+	struct ath11k_dp *dp = &ab->dp;
+	struct hal_srng *srng;
+
+	if (!ab->hw_params.supports_shadow_regs)
+		return;
+
+	srng = &ab->hal.srng_list[dp->wbm_idle_ring.ring_id];
+
+	spin_lock_bh(&srng->lock);
+	ath11k_hal_srng_access_end(ab, srng);
+	spin_unlock_bh(&srng->lock);
 }
