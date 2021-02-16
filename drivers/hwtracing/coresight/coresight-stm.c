@@ -912,12 +912,6 @@ static int stm_probe(struct amba_device *adev, const struct amba_id *id)
 		drvdata->numsp = stm_num_stimulus_port(drvdata);
 
 	bitmap_size = BITS_TO_LONGS(drvdata->numsp) * sizeof(long);
-#ifdef CONFIG_CORESIGHT_OST
-	/* Store the driver data pointer for use in exported functions */
-	ret = stm_set_ost_params(dev, drvdata, bitmap_size);
-	if (ret)
-		return ret;
-#endif
 
 	guaranteed = devm_kzalloc(dev, bitmap_size, GFP_KERNEL);
 	if (!guaranteed)
@@ -955,6 +949,12 @@ static int stm_probe(struct amba_device *adev, const struct amba_id *id)
 		goto stm_unregister;
 	}
 
+#ifdef CONFIG_CORESIGHT_OST
+	/* Store the driver data pointer for use in exported functions */
+	ret = stm_set_ost_params(dev, drvdata, bitmap_size);
+	if (ret)
+		return ret;
+#endif
 	pm_runtime_put(&adev->dev);
 
 	dev_info(&drvdata->csdev->dev, "%s initialized\n",
