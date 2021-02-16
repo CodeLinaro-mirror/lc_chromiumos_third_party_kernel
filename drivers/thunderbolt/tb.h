@@ -923,6 +923,7 @@ int tb_lc_configure_port(struct tb_port *port);
 void tb_lc_unconfigure_port(struct tb_port *port);
 int tb_lc_configure_xdomain(struct tb_port *port);
 void tb_lc_unconfigure_xdomain(struct tb_port *port);
+int tb_lc_start_lane_initialization(struct tb_port *port);
 int tb_lc_set_wake(struct tb_switch *sw, unsigned int flags);
 int tb_lc_set_sleep(struct tb_switch *sw);
 bool tb_lc_lane_bonding_possible(struct tb_switch *sw);
@@ -948,6 +949,8 @@ static inline u64 tb_downstream_route(struct tb_port *port)
 	return tb_route(port->sw)
 	       | ((u64) port->port << (port->sw->config.depth * 8));
 }
+
+extern bool tb_xdomain_enabled;
 
 bool tb_xdomain_handle_request(struct tb *tb, enum tb_cfg_pkg_type type,
 			       const void *buf, size_t size);
