@@ -2055,6 +2055,7 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 			 * next fragment has a sequential PN value.
 			 */
 			entry->check_sequential_pn = true;
+			entry->is_protected = true;
 			entry->key_color = rx->key->color;
 			memcpy(entry->last_pn,
 			       rx->key->u.ccmp.rx_pn[queue],
@@ -2067,6 +2068,7 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 				     sizeof(rx->key->u.gcmp.rx_pn[queue]));
 			BUILD_BUG_ON(IEEE80211_CCMP_PN_LEN !=
 				     IEEE80211_GCMP_PN_LEN);
+<<<<<<< HEAD   (88a999 CHROMIUM: mac80211: check defrag PN against current frame)
 <<<<<<< HEAD   (c0baa9 CHROMIUM: ath10k: Set aggr/non-aggr SW retry threshold to 50)
 =======
 		} else if (rx->key &&
@@ -2075,6 +2077,11 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 			entry->is_protected = true;
 			entry->key_color = rx->key->color;
 >>>>>>> CHANGE (4e82e3 CHROMIUM: mac80211: extend protection against mixed key and )
+=======
+		} else if (rx->key && ieee80211_has_protected(fc)) {
+			entry->is_protected = true;
+			entry->key_color = rx->key->color;
+>>>>>>> CHANGE (8b19ba CHROMIUM: mac80211: prevent attacks on TKIP/WEP as well)
 		}
 		return RX_QUEUED;
 	}
@@ -2116,6 +2123,7 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 		if (memcmp(pn, rpn, IEEE80211_CCMP_PN_LEN))
 			return RX_DROP_UNUSABLE;
 		memcpy(entry->last_pn, pn, IEEE80211_CCMP_PN_LEN);
+<<<<<<< HEAD   (88a999 CHROMIUM: mac80211: check defrag PN against current frame)
 <<<<<<< HEAD   (c0baa9 CHROMIUM: ath10k: Set aggr/non-aggr SW retry threshold to 50)
 =======
 	} else if (entry->is_protected &&
@@ -2133,6 +2141,16 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 		   (status->flag & RX_FLAG_DECRYPTED)) {
 		return RX_DROP_UNUSABLE;
 >>>>>>> CHANGE (4e82e3 CHROMIUM: mac80211: extend protection against mixed key and )
+=======
+	} else if (entry->is_protected &&
+		   (!rx->key || !ieee80211_has_protected(fc) ||
+		    rx->key->color != entry->key_color)) {
+		/* Drop this as a mixed key or fragment cache attack, even
+		 * if for TKIP Michael MIC should protect us, and WEP is a
+		 * lost cause anyway.
+		 */
+		return RX_DROP_UNUSABLE;
+>>>>>>> CHANGE (8b19ba CHROMIUM: mac80211: prevent attacks on TKIP/WEP as well)
 	}
 
 	skb_pull(rx->skb, ieee80211_hdrlen(fc));
