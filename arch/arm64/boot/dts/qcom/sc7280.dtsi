@@ -648,6 +648,11 @@
 					<&gcc GCC_SDCC1_AHB_CLK>,
 					<&rpmhcc RPMH_CXO_CLK>;
 			clock-names = "core", "iface", "xo";
+			interconnects = <&aggre1_noc MASTER_SDCC_1 0 &mc_virt SLAVE_EBI1 0>,
+					<&gem_noc MASTER_APPSS_PROC 0 &cnoc2 SLAVE_SDCC_1 0>;
+			interconnect-names = "sdhc-ddr","cpu-sdhc";
+			power-domains = <&rpmhpd SC7280_CX>;
+			operating-points-v2 = <&sdhc1_opp_table>;
 
 			bus-width = <8>;
 			non-removable;
@@ -667,6 +672,23 @@
 
 			status = "disabled";
 
+			sdhc1_opp_table: sdhc1-opp-table {
+				compatible = "operating-points-v2";
+
+				opp-100000000 {
+					opp-hz = /bits/ 64 <100000000>;
+					required-opps = <&rpmhpd_opp_low_svs>;
+					opp-peak-kBps = <1200000 76000>;
+					opp-avg-kBps = <1200000 50000>;
+				};
+
+				opp-384000000 {
+					opp-hz = /bits/ 64 <384000000>;
+					required-opps = <&rpmhpd_opp_nom>;
+					opp-peak-kBps = <5400000 1600000>;
+					opp-avg-kBps = <6000000 300000>;
+				};
+			};
 		};
 
 		stm@6002000 {
@@ -1171,6 +1193,11 @@
 					<&gcc GCC_SDCC2_AHB_CLK>,
 					<&rpmhcc RPMH_CXO_CLK>;
 			clock-names = "core", "iface", "xo";
+			interconnects = <&aggre1_noc MASTER_SDCC_2 0 &mc_virt SLAVE_EBI1 0>,
+					<&gem_noc MASTER_APPSS_PROC 0 &cnoc2 SLAVE_SDCC_2 0>;
+			interconnect-names = "sdhc-ddr","cpu-sdhc";
+			power-domains = <&rpmhpd SC7280_CX>;
+			operating-points-v2 = <&sdhc2_opp_table>;
 
 			bus-width = <4>;
 
@@ -1182,6 +1209,24 @@
 			qcom,dll-config = <0x0007642c>;
 
 			status = "disabled";
+
+			sdhc2_opp_table: sdhc2-opp-table {
+				compatible = "operating-points-v2";
+
+				opp-100000000 {
+					opp-hz = /bits/ 64 <100000000>;
+					required-opps = <&rpmhpd_opp_low_svs>;
+					opp-peak-kBps = <1200000 76000>;
+					opp-avg-kBps = <1200000 50000>;
+				};
+
+				opp-202000000 {
+					opp-hz = /bits/ 64 <202000000>;
+					required-opps = <&rpmhpd_opp_nom>;
+					opp-peak-kBps = <3500000 1200000>;
+					opp-avg-kBps = <5000000 100000>;
+				};
+			};
 
 		};
 
