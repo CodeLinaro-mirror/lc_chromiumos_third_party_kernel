@@ -34,6 +34,7 @@ config CORESIGHT_LINK_AND_SINK_TMC
 	tristate "Coresight generic TMC driver"
 
 	depends on CORESIGHT_LINKS_AND_SINKS
+	select CORESIGHT_CSR
 	help
 	  This enables support for the Trace Memory Controller driver.
 	  Depending on its configuration the device can act as a link (embedded
@@ -175,4 +176,13 @@ config CORESIGHT_OST
 	  This is primarily intended to be used as a layer on top of underlying
 	  physical byte transport mechanisms.The additional header can be used
 	  to provide more information.
+
+config CORESIGHT_CSR
+	bool "CoreSight Slave Register driver"
+	help
+	  This driver provides support for CoreSight Slave Register block
+	  that hosts miscellaneous configuration registers.
+	  Those configuration registers can be used to control, various
+	  coresight configurations.
+
 endif

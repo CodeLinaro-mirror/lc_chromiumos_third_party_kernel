@@ -470,6 +470,17 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 	else
 		drvdata->size = readl_relaxed(drvdata->base + TMC_RSZ) * 4;
 
+	ret = of_get_coresight_csr_name(adev->dev.of_node, &drvdata->csr_name);
+	if (ret)
+		dev_dbg(dev, "No csr data\n");
+	else {
+		drvdata->csr = coresight_csr_get(drvdata->csr_name);
+		if (IS_ERR(drvdata->csr)) {
+			dev_dbg(dev, "failed to get csr, defer probe\n");
+			return -EPROBE_DEFER;
+		}
+	}
+
 	desc.dev = dev;
 	desc.groups = coresight_tmc_groups;
 

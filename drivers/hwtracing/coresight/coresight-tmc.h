@@ -207,6 +207,8 @@ struct tmc_drvdata {
 	struct mutex		idr_mutex;
 	struct etr_buf		*sysfs_buf;
 	struct etr_buf		*perf_buf;
+	struct coresight_csr    *csr;
+	const char              *csr_name;
 };
 
 struct etr_buf_operations {
