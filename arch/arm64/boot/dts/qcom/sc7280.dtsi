@@ -2853,6 +2853,21 @@
 					drive-strength = <2>;
 				};
 			};
+
+			bt_en_default: bt_en_default {
+				pinmux {
+					pins = "gpio85";
+					function = "gpio";
+				};
+
+				pinconf {
+					pins = "gpio85";
+					drive-strength = <2>;
+					output-low;
+					bias-pull-down;
+				};
+			};
+
 		};
 
 		dload_mode@146a5c00 {

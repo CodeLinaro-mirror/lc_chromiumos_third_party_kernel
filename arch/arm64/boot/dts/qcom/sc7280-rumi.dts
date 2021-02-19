@@ -15,6 +15,7 @@
 	compatible = "qcom,sc7280-rumi";
 
 	aliases {
+		bluetooth0 = &bluetooth;
 		serial0 = &uart5;
 		hsuart0 = &uart7;
 	};
@@ -120,6 +121,23 @@
 
 //	pinctrl-names = "default", "sleep";
 //	pinctrl-1 = <&qup_uart7_sleep>;
+	bluetooth: wcn6750-bt {
+		compatible = "qcom,wcn6750-bt";
+		pinctrl-names = "default";
+		pinctrl-0 = <&bt_en_default>;
+		enable-gpios = <&tlmm 85 GPIO_ACTIVE_HIGH>; /* BT_EN */
+		swctrl-gpios = <&tlmm 86 GPIO_ACTIVE_HIGH>; /* SW_CTRL */
+		vddio-supply = <&vreg_l19b_1p8>;  /* IO */
+		vddaon-supply = <&vreg_s7b_0p9>;
+		vdddig-supply = <&vreg_s7b_0p9>;
+		vddrfacmn-supply = <&vreg_s7b_0p9>;
+		vddrfa0p8-supply = <&vreg_s7b_0p9>;
+		vddrfa1-supply = <&vreg_s1b_1p8>; /*RFA 1p7*/
+		vddrfa2-supply = <&vreg_s8b_1p2>; /*RFA 1p2*/
+		vddipa2p2-supply = <&vreg_s1c_2p2>; /*IPA 2p2*/
+		vddasd-supply = <&vreg_l11c_2p8>;
+		max-speed = <3000000>;
+	};
 
 };
 
