@@ -1089,7 +1089,7 @@ static int coresight_validate_source(struct coresight_device *csdev,
 	return 0;
 }
 
-static void coresight_enable_source_link(struct list_head *path)
+static int coresight_enable_source_link(struct list_head *path)
 {
 	u32 type;
 	int ret;
@@ -1129,10 +1129,10 @@ static void coresight_enable_source_link(struct list_head *path)
 		}
 	}
 
-	return;
+	return 0;
 err:
 	coresight_disable_path_from(path, nd);
-	coresight_release_path(path);
+	return ret;
 }
 
 static void coresight_disable_source_link(struct list_head *path)
@@ -1190,13 +1190,21 @@ void coresight_disable_all_source_link(void)
 
 void coresight_enable_all_source_link(void)
 {
+	struct list_head *path = NULL;
 	struct coresight_path *cspath = NULL;
 	struct coresight_path *cspath_next = NULL;
+	int ret;
 
 	mutex_lock(&coresight_mutex);
 
 	list_for_each_entry_safe(cspath, cspath_next, &cs_active_paths, link) {
-		coresight_enable_source_link(cspath->path);
+		ret = coresight_enable_source_link(cspath->path);
+		if (ret) {
+			path = cspath->path;
+			list_del(&cspath->link);
+			kfree(cspath);
+			coresight_release_path(path);
+		}
 	}
 
 	if (activated_sink && activated_sink->enable)
