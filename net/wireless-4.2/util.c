@@ -410,7 +410,12 @@ unsigned int ieee80211_get_mesh_hdrlen(struct ieee80211s_hdr *meshhdr)
 EXPORT_SYMBOL(ieee80211_get_mesh_hdrlen);
 
 int ieee80211_data_to_8023_exthdr(struct sk_buff *skb, struct ethhdr *ehdr,
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 				  const u8 *addr, enum nl80211_iftype iftype)
+=======
+				  const u8 *addr, enum nl80211_iftype iftype,
+				  u8 data_offset, bool is_amsdu)
+>>>>>>> CHANGE (96ae66 CHROMIUM: mac80211: properly handle A-MSDUs that start with )
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 	u16 hdrlen, ethertype;
@@ -506,7 +511,7 @@ int ieee80211_data_to_8023_exthdr(struct sk_buff *skb, struct ethhdr *ehdr,
 	payload = skb->data + hdrlen;
 	ethertype = (payload[6] << 8) | payload[7];
 
-	if (likely((ether_addr_equal(payload, rfc1042_header) &&
+	if (likely((!is_amsdu && ether_addr_equal(payload, rfc1042_header) &&
 		    ethertype != ETH_P_AARP && ethertype != ETH_P_IPX) ||
 		   ether_addr_equal(payload, bridge_tunnel_header))) {
 		/* remove RFC1042 or Bridge-Tunnel encapsulation and
