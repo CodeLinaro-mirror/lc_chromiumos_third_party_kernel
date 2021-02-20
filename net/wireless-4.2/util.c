@@ -409,8 +409,8 @@ unsigned int ieee80211_get_mesh_hdrlen(struct ieee80211s_hdr *meshhdr)
 }
 EXPORT_SYMBOL(ieee80211_get_mesh_hdrlen);
 
-int ieee80211_data_to_8023(struct sk_buff *skb, const u8 *addr,
-			   enum nl80211_iftype iftype)
+int ieee80211_data_to_8023_exthdr(struct sk_buff *skb, struct ethhdr *ehdr,
+				  const u8 *addr, enum nl80211_iftype iftype)
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 	u16 hdrlen, ethertype;
@@ -527,7 +527,7 @@ int ieee80211_data_to_8023(struct sk_buff *skb, const u8 *addr,
 	}
 	return 0;
 }
-EXPORT_SYMBOL(ieee80211_data_to_8023);
+EXPORT_SYMBOL(ieee80211_data_to_8023_exthdr);
 
 int ieee80211_data_from_8023(struct sk_buff *skb, const u8 *addr,
 			     enum nl80211_iftype iftype,
@@ -649,28 +649,16 @@ EXPORT_SYMBOL(ieee80211_data_from_8023);
 
 void ieee80211_amsdu_to_8023s(struct sk_buff *skb, struct sk_buff_head *list,
 			      const u8 *addr, enum nl80211_iftype iftype,
-			      const unsigned int extra_headroom,
-			      bool has_80211_header)
+			      const unsigned int extra_headroom)
 {
 	struct sk_buff *frame = NULL;
 	u16 ethertype;
 	u8 *payload;
 	const struct ethhdr *eth;
-	int remaining, err;
+	int remaining;
 	u8 dst[ETH_ALEN], src[ETH_ALEN];
 
-	if (has_80211_header) {
-		err = ieee80211_data_to_8023(skb, addr, iftype);
-		if (err)
-			goto out;
-
-		/* skip the wrapping header */
-		eth = (struct ethhdr *) skb_pull(skb, sizeof(struct ethhdr));
-		if (!eth)
-			goto out;
-	} else {
-		eth = (struct ethhdr *) skb->data;
-	}
+	eth = (struct ethhdr *) skb->data;
 
 	while (skb != frame) {
 		u8 padding;
@@ -740,7 +728,6 @@ void ieee80211_amsdu_to_8023s(struct sk_buff *skb, struct sk_buff_head *list,
 
  purge:
 	__skb_queue_purge(list);
- out:
 	dev_kfree_skb(skb);
 }
 EXPORT_SYMBOL(ieee80211_amsdu_to_8023s);
