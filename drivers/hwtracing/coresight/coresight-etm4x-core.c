@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014, 2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -21,6 +21,7 @@
 #include <linux/cpu_pm.h>
 #include <linux/coresight.h>
 #include <linux/coresight-pmu.h>
+#include <linux/of.h>
 #include <linux/pm_wakeup.h>
 #include <linux/amba/bus.h>
 #include <linux/seq_file.h>
@@ -1511,7 +1512,9 @@ static int etm4_probe(struct amba_device *adev, const struct amba_id *id)
 	if (drvdata->cpu < 0)
 		return drvdata->cpu;
 
-	desc.name = devm_kasprintf(dev, GFP_KERNEL, "etm%d", drvdata->cpu);
+	if (of_property_read_string(dev->of_node, "coresight-name", &desc.name))
+		desc.name = devm_kasprintf(dev, GFP_KERNEL, "etm%d", drvdata->cpu);
+
 	if (!desc.name)
 		return -ENOMEM;
 
