@@ -496,10 +496,12 @@ static int adsp_probe(struct platform_device *pdev)
 	adsp->info_name = desc->sysmon_name;
 	platform_set_drvdata(pdev, adsp);
 
-	if (desc->is_wpss)
+	if (desc->is_wpss) {
 		adsp->shutdown = qcom_wpss_shutdown;
-	else
+		adsp->rproc->auto_boot = false;
+	} else {
 		adsp->shutdown = qcom_adsp_shutdown;
+	}
 
 	ret = adsp_alloc_memory_region(adsp);
 	if (ret)
