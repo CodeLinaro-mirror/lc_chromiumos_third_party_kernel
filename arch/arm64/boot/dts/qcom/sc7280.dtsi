@@ -700,7 +700,7 @@
 			};
 		};
 
-		stm@6002000 {
+		stm: stm@6002000 {
 			compatible = "arm,coresight-stm", "arm,primecell";
 			reg = <0 0x06002000 0 0x1000>,
 			      <0 0x16280000 0 0x180000>;
@@ -771,6 +771,13 @@
 						remote-endpoint = <&apss_merge_funnel_out>;
 					};
 				};
+
+				port@5 {
+					reg = <5>;
+					funnel_in1_in_funnel_modem: endpoint {
+						remote-endpoint = <&funnel_modem_out_funnel_in1>;
+					};
+				};
 			};
 		};
 
@@ -833,10 +840,14 @@
 			};
 		};
 
-		etr@6048000 {
+		etr: etr@6048000 {
 			compatible = "arm,coresight-tmc", "arm,primecell";
-			reg = <0 0x06048000 0 0x1000>;
-			iommus = <&apps_smmu 0x04c0 0>;
+			reg = <0 0x06048000 0 0x1000>,
+			      <0 0x06064000 0 0x15000>;
+			reg-names = "tmc-base", "bam-base";
+
+			iommus = <&apps_smmu 0x04c0 0>,
+				 <&apps_smmu 0x04a0 0>;
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -879,7 +890,7 @@
 			};
 		};
 
-		etf@6b05000 {
+		etf: etf@6b05000 {
 			compatible = "arm,coresight-tmc", "arm,primecell";
 			reg = <0 0x06b05000 0 0x1000>;
 
@@ -5040,3 +5051,4 @@
 #include "pm8350c.dtsi"
 #include "pmk8350.dtsi"
 #include "pmr735a.dtsi"
+#include "sc7280-coresight.dtsi"

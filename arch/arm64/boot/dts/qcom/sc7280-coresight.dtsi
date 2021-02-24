@@ -1,0 +1,230 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ */
+&soc {
+	csr: csr@6001000 {
+		compatible = "qcom,coresight-csr";
+		reg = <0 0x06001000 0 0x1000>;
+		reg-names = "csr-base";
+
+		coresight-name = "coresight-csr";
+		qcom,usb-bam-support;
+		qcom,hwctrl-set-support;
+		qcom,set-byte-cntr-support;
+
+		qcom,blk-size = <1>;
+	};
+
+	swao_csr: csr@6b0f000 {
+		compatible = "qcom,coresight-csr";
+		reg = <0 0x06b0f000 0 0x1000>,
+		      <0 0x06b0f0f8 0 0x50>;
+		reg-names = "csr-base", "msr-base";
+
+		coresight-name = "coresight-swao-csr";
+		qcom,timestamp-support;
+		qcom,msr-support;
+
+		clocks = <&aoss_qmp>;
+		clock-names = "apb_pclk";
+
+		qcom,blk-size = <1>;
+	};
+
+	funnel_modem: funnel@6804000 {
+		compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
+
+		reg = <0 0x6804000 0 0x1000>;
+		reg-names = "funnel-base";
+
+		coresight-name = "coresight-funnel-modem";
+
+		clocks = <&aoss_qmp>;
+		clock-names = "apb_pclk";
+
+		out-ports {
+			port {
+				funnel_modem_out_funnel_in1: endpoint {
+					remote-endpoint =
+						<&funnel_in1_in_funnel_modem>;
+				};
+			};
+		};
+
+		in-ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@1 {
+				reg = <1>;
+				funnel_modem_in_modem2_etm0: endpoint {
+					remote-endpoint =
+						<&modem2_etm0_out_funnel_modem>;
+				};
+			};
+
+			port@3 {
+				reg = <3>;
+				funnel_modem_in_funnel_mq6_dup: endpoint {
+					remote-endpoint =
+					  <&funnel_mq6_dup_out_funnel_modem>;
+				};
+			};
+		};
+	};
+
+	funnel_modem_q6: funnel@680c000 {
+		compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
+
+		reg = <0 0x680c000 0 0x1000>;
+		reg-names = "funnel-base";
+
+		coresight-name = "coresight-funnel-modem-q6";
+
+		clocks = <&aoss_qmp>;
+		clock-names = "apb_pclk";
+
+		out-ports {
+			port {
+				funnel_modem_q6_out_funnel_mq6_dup: endpoint {
+					remote-endpoint =
+					<&funnel_mq6_dup_in_funnel_modem_q6>;
+				};
+			};
+		};
+
+		in-ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				funnel_modem_q6_in_modem_etm0: endpoint {
+					remote-endpoint =
+					<&modem_etm0_out_funnel_modem_q6>;
+				};
+			};
+		};
+	};
+
+	funnel_mq6_dup: funnel@680d000 {
+		compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
+		arm,primecell-periphid = <0x000bb908>;
+
+		reg = <0 0x680d000 0 0x1000>,
+		      <0 0x680c000 0 0x1000>;
+		reg-names = "funnel-base-dummy", "funnel-base-real";
+
+		coresight-name = "coresight-funnel-modem-q6_dup";
+
+		clocks = <&aoss_qmp>;
+		clock-names = "apb_pclk";
+		qcom,duplicate-funnel;
+
+		out-ports {
+			port {
+				funnel_mq6_dup_out_funnel_modem: endpoint {
+					remote-endpoint =
+					<&funnel_modem_in_funnel_mq6_dup>;
+				};
+			};
+		};
+
+		in-ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@1 {
+				reg = <1>;
+				funnel_mq6_dup_in_funnel_modem_q6: endpoint {
+					remote-endpoint =
+					<&funnel_modem_q6_out_funnel_mq6_dup>;
+				};
+			};
+
+			port@2 {
+				reg = <2>;
+				funnel_mq6_dup_in_modem_diag: endpoint {
+					remote-endpoint =
+					<&modem_diag_out_funnel_mq6_dup>;
+				};
+			};
+		};
+	};
+
+	modem_diag: dummy_source {
+		compatible = "qcom,coresight-dummy";
+
+		coresight-name = "coresight-modem-diag";
+		qcom,dummy-source;
+
+		out-ports {
+			port {
+				modem_diag_out_funnel_mq6_dup: endpoint {
+					remote-endpoint =
+						<&funnel_mq6_dup_in_modem_diag>;
+				};
+			};
+		};
+	};
+
+	modem_etm0 {
+		compatible = "qcom,coresight-remote-etm";
+
+		coresight-name = "coresight-modem-etm0";
+		qcom,inst-id = <2>;
+
+		out-ports {
+			port {
+				modem_etm0_out_funnel_modem_q6: endpoint {
+					remote-endpoint =
+						<&funnel_modem_q6_in_modem_etm0>;
+				};
+			};
+		};
+	};
+
+	modem2_etm0 {
+		compatible = "qcom,coresight-remote-etm";
+
+		coresight-name = "coresight-modem2-etm0";
+		qcom,inst-id = <11>;
+
+		out-ports {
+			port {
+				modem2_etm0_out_funnel_modem: endpoint {
+					remote-endpoint =
+						<&funnel_modem_in_modem2_etm0>;
+				};
+			};
+		};
+	};
+
+	hwevent {
+		compatible = "qcom,coresight-hwevent";
+
+		coresight-name = "coresight-hwevent";
+		coresight-csr = <&csr>;
+
+		clocks = <&aoss_qmp>;
+		clock-names = "apb_pclk";
+	};
+};
+
+&etf {
+	coresight-csr = <&swao_csr>;
+	coresight-name = "coresight-tmc-etf";
+};
+
+&etr {
+	dma-coherent;
+	coresight-csr = <&csr>;
+	qcom,sw-usb;
+	coresight-name = "coresight-tmc-etr";
+
+	interrupts = <GIC_SPI 270 IRQ_TYPE_EDGE_RISING>;
+	interrupt-names = "byte-cntr-irq";
+};
+
+&stm {
+	coresight-name = "coresight-stm";
+};
