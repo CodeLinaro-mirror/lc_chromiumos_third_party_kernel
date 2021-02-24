@@ -718,6 +718,7 @@ static struct i2c_driver ak4458_i2c_driver = {
 	.probe_new = ak4458_i2c_probe,
 	.remove = ak4458_i2c_remove,
 };
+MODULE_DEVICE_TABLE(of, ak4458_of_match);
 
 module_i2c_driver(ak4458_i2c_driver);
 
