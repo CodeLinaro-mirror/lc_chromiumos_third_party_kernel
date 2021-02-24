@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2019, 2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/adreno-smmu-priv.h>
@@ -267,6 +267,7 @@ static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
 }
 
 static const struct of_device_id qcom_smmu_client_of_match[] __maybe_unused = {
+	{ .compatible = "arm,coresight-tmc" },
 	{ .compatible = "qcom,adreno" },
 	{ .compatible = "qcom,mdp4" },
 	{ .compatible = "qcom,mdss" },
