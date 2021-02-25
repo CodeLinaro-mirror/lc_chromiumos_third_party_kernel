@@ -25,3 +25,4 @@ coresight-cti-y := coresight-cti-core.o	coresight-cti-platform.o \
 		   coresight-cti-sysfs.o
 obj-$(CONFIG_CORESIGHT_OST) += coresight-ost.o
 obj-$(CONFIG_CORESIGHT_CSR) += coresight-csr.o
+obj-$(CONFIG_CORESIGHT_HWEVENT) += coresight-hwevent.o
