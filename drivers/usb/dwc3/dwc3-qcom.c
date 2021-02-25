@@ -370,16 +370,17 @@ static int dwc3_qcom_suspend(struct dwc3_qcom *qcom)
 	u32 val;
 	int i, ret;
 	struct dwc3 *dwc = platform_get_drvdata(qcom->dwc3);
-	struct usb_hcd  *hcd = platform_get_drvdata(dwc->xhci);
-	struct generic_pm_domain *genpd;
-
-	genpd = pd_to_genpd(qcom->dev->pm_domain);
-
-	if (genpd && usb_wakeup_enabled_descendants(hcd->self.root_hub))
-		genpd->flags |= GENPD_FLAG_ACTIVE_WAKEUP;
+	struct usb_hcd  *hcd;
+	struct generic_pm_domain *genpd = pd_to_genpd(qcom->dev->pm_domain);
 
 	if (qcom->is_suspended)
 		return 0;
+
+	if (dwc->xhci) {
+		hcd = platform_get_drvdata(dwc->xhci);
+		if (usb_wakeup_enabled_descendants(hcd->self.root_hub))
+			genpd->flags |= GENPD_FLAG_ACTIVE_WAKEUP;
+	}
 
 	val = readl(qcom->qscratch_base + PWR_EVNT_IRQ_STAT_REG);
 	if (!(val & PWR_EVNT_LPM_IN_L2_MASK))
@@ -402,14 +403,14 @@ static int dwc3_qcom_resume(struct dwc3_qcom *qcom)
 {
 	int ret;
 	int i;
-	struct generic_pm_domain *genpd;
-
-	genpd = pd_to_genpd(qcom->dev->pm_domain);
-	if (genpd)
-		genpd->flags &= ~GENPD_FLAG_ACTIVE_WAKEUP;
+	struct dwc3 *dwc = platform_get_drvdata(qcom->dwc3);
+	struct generic_pm_domain *genpd = pd_to_genpd(qcom->dev->pm_domain);
 
 	if (!qcom->is_suspended)
 		return 0;
+
+	if (dwc->xhci)
+		genpd->flags &= ~GENPD_FLAG_ACTIVE_WAKEUP;
 
 	dwc3_qcom_disable_interrupts(qcom);
 
