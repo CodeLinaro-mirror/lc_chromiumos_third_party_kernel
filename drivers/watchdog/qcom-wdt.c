@@ -218,49 +218,6 @@ static int qcom_wdt_restart(struct watchdog_device *wdd, unsigned long action,
 }
 
 #ifdef CONFIG_QCOM_MEMORY_DUMP_V2
-static void qcom_wdt_configure_bark_dump(struct qcom_wdt *wdt)
-{
-	int ret;
-	struct msm_dump_entry dump_entry;
-	struct msm_dump_data *cpu_data;
-	int cpu;
-	void *cpu_buf;
-
-	cpu_data = kzalloc(sizeof(struct msm_dump_data) *
-			   num_present_cpus(), GFP_KERNEL);
-	if (!cpu_data)
-		goto out0;
-
-	cpu_buf = kzalloc(MAX_CPU_CTX_SIZE * num_present_cpus(),
-			  GFP_KERNEL);
-	if (!cpu_buf)
-		goto out1;
-
-	for_each_cpu(cpu, cpu_present_mask) {
-		cpu_data[cpu].addr = virt_to_phys(cpu_buf +
-						cpu * MAX_CPU_CTX_SIZE);
-		cpu_data[cpu].len = MAX_CPU_CTX_SIZE;
-		snprintf(cpu_data[cpu].name, sizeof(cpu_data[cpu].name),
-			"KCPU_CTX%d", cpu);
-		dump_entry.id = MSM_DUMP_DATA_CPU_CTX + cpu;
-		dump_entry.addr = virt_to_phys(&cpu_data[cpu]);
-		ret = msm_dump_data_register(MSM_DUMP_TABLE_APPS,
-					     &dump_entry);
-		/*
-		 * Don't free the buffers in case of error since
-		 * registration may have succeeded for some cpus.
-		 */
-		if (ret)
-			pr_err("cpu %d reg dump setup failed\n", cpu);
-	}
-
-	return;
-out1:
-	kfree(cpu_data);
-out0:
-	return;
-}
-
 static void qcom_wdt_configure_scandump(struct qcom_wdt *wdt)
 {
 	int ret;
@@ -308,7 +265,6 @@ static void qcom_wdt_configure_scandump(struct qcom_wdt *wdt)
 	}
 }
 #else
-static inline void qcom_wdt_configure_bark_dump(struct qcom_wdt *wdt) { }
 static inline void qcom_wdt_configure_scandump(struct qcom_wdt *wdt) { }
 #endif
 
@@ -437,7 +393,6 @@ static int qcom_wdt_probe(struct platform_device *pdev)
 
 	cpumask_clear(&wdt->alive_mask);
 	qcom_wdt_configure_scandump(wdt);
-	qcom_wdt_configure_bark_dump(wdt);
 
 	/* check if there is pretimeout support */
 	irq = platform_get_irq_optional(pdev, 0);
