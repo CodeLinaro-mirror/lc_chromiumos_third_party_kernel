@@ -45,11 +45,13 @@ MODULE_PARM_DESC(read_raw_data, "Read raw instead of corrected data");
  * @qfprom_blow_timer_value: The timer value of qfprom when doing efuse blow.
  * @qfprom_blow_set_freq:    The frequency required to set when we start the
  *                           fuse blowing.
+ * @qfprom_blow_uV:          LDO voltage to be set when we start fuse blowing
  */
 struct qfprom_soc_data {
 	u32 accel_value;
 	u32 qfprom_blow_timer_value;
 	u32 qfprom_blow_set_freq;
+	int qfprom_blow_uV;
 };
 
 /**
@@ -168,6 +170,7 @@ static int qfprom_enable_fuse_blowing(const struct qfprom_priv *priv,
 				      struct qfprom_touched_values *old)
 {
 	int ret;
+	int qfprom_blow_uV = priv->soc_data->qfprom_blow_uV;
 
 	ret = clk_prepare_enable(priv->secclk);
 	if (ret) {
@@ -187,9 +190,9 @@ static int qfprom_enable_fuse_blowing(const struct qfprom_priv *priv,
 	 * a rail shared do don't specify a max--regulator constraints
 	 * will handle.
 	 */
-	ret = regulator_set_voltage(priv->vcc, 1800000, INT_MAX);
+	ret = regulator_set_voltage(priv->vcc, qfprom_blow_uV, INT_MAX);
 	if (ret) {
-		dev_err(priv->dev, "Failed to set 1.8 voltage\n");
+		dev_err(priv->dev, "Failed to set %duV\n", qfprom_blow_uV);
 		goto err_clk_rate_set;
 	}
 
@@ -311,6 +314,14 @@ static const struct qfprom_soc_data qfprom_7_8_data = {
 	.accel_value = 0xD10,
 	.qfprom_blow_timer_value = 25,
 	.qfprom_blow_set_freq = 4800000,
+	.qfprom_blow_uV = 1800000,
+};
+
+static const struct qfprom_soc_data qfprom_7_15_data = {
+	.accel_value = 0xD08,
+	.qfprom_blow_timer_value = 24,
+	.qfprom_blow_set_freq = 4800000,
+	.qfprom_blow_uV = 1900000,
 };
 
 static int qfprom_probe(struct platform_device *pdev)
@@ -379,6 +390,8 @@ static int qfprom_probe(struct platform_device *pdev)
 
 		if (major_version == 7 && minor_version == 8)
 			priv->soc_data = &qfprom_7_8_data;
+		if (major_version == 7 && minor_version == 15)
+			priv->soc_data = &qfprom_7_15_data;
 
 		priv->vcc = devm_regulator_get(&pdev->dev, "vcc");
 		if (IS_ERR(priv->vcc))
@@ -405,6 +418,7 @@ static int qfprom_probe(struct platform_device *pdev)
 static const struct of_device_id qfprom_of_match[] = {
 	{ .compatible = "qcom,qfprom",},
 	{ .compatible = "qcom,sc7180-qfprom", .data = &sc7180_qfprom},
+	{ .compatible = "qcom,sc7280-qfprom"},
 	{/* sentinel */},
 };
 MODULE_DEVICE_TABLE(of, qfprom_of_match);
