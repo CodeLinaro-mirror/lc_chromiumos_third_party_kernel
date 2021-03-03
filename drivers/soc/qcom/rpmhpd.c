@@ -203,13 +203,48 @@ static const struct rpmhpd_desc sc7180_desc = {
 };
 
 /* SC7280 RPMH powerdomains */
+static int sc7280_set_performance_state(struct generic_pm_domain *, unsigned int);
+
+static struct rpmhpd sc7280_mx_ao;
+static struct rpmhpd sc7280_mx = {
+	.pd = {
+		.name = "mx",
+		.set_performance_state = sc7280_set_performance_state,
+	},
+	.peer = &sc7280_mx_ao,
+	.res_name = "mx.lvl",
+};
+
+static struct rpmhpd sc7280_mx_ao = {
+	.pd = { .name = "mx_ao", },
+	.active_only = true,
+	.peer = &sc7280_mx,
+	.res_name = "mx.lvl",
+};
+
+static struct rpmhpd sc7280_cx_ao;
+static struct rpmhpd sc7280_cx = {
+	.pd = { .name = "cx", },
+	.peer = &sc7280_cx_ao,
+	.parent = &sc7280_mx.pd,
+	.res_name = "cx.lvl",
+};
+
+static struct rpmhpd sc7280_cx_ao = {
+	.pd = { .name = "cx_ao", },
+	.active_only = true,
+	.peer = &sc7280_cx,
+	.parent = &sc7280_mx_ao.pd,
+	.res_name = "cx.lvl",
+};
+
 static struct rpmhpd *sc7280_rpmhpds[] = {
-	[SC7280_CX] = &sdm845_cx,
-	[SC7280_CX_AO] = &sdm845_cx_ao,
+	[SC7280_CX] = &sc7280_cx,
+	[SC7280_CX_AO] = &sc7280_cx_ao,
 	[SC7280_EBI] = &sdm845_ebi,
 	[SC7280_GFX] = &sdm845_gfx,
-	[SC7280_MX] = &sdm845_mx,
-	[SC7280_MX_AO] = &sdm845_mx_ao,
+	[SC7280_MX] = &sc7280_mx,
+	[SC7280_MX_AO] = &sc7280_mx_ao,
 	[SC7280_LMX] = &sdm845_lmx,
 	[SC7280_LCX] = &sdm845_lcx,
 	[SC7280_MSS] = &sdm845_mss,
@@ -375,6 +410,46 @@ out:
 	return ret;
 }
 
+static int sc7280_set_performance_state(struct generic_pm_domain *domain,
+					unsigned int level)
+{
+	struct rpmhpd *pd = domain_to_rpmhpd(domain);
+	int ret = 0, i;
+
+	mutex_lock(&rpmhpd_lock);
+
+	for (i = 0; i < pd->level_count; i++)
+		if (level <= pd->level[i])
+			break;
+
+	/*
+	 * If the level requested is more than that supported by the
+	 * max corner, just set it to max anyway.
+	 */
+	if (i == pd->level_count)
+		i--;
+
+	if (pd->enabled) {
+		/*
+		 * Check if this is the magic hlvl needed for fuse blowing,
+		 * in which case send the max possible corner
+		 */
+		if (level == RPMH_REGULATOR_SC7280_FUSE_LEVEL )
+			ret = rpmhpd_aggregate_corner(pd, (RPMH_ARC_MAX_LEVELS -1));
+		else
+			ret = rpmhpd_aggregate_corner(pd, i);
+		if (ret)
+			goto out;
+	}
+
+	pd->corner = i;
+out:
+	mutex_unlock(&rpmhpd_lock);
+
+	return ret;
+}
+
+
 static unsigned int rpmhpd_get_performance_state(struct generic_pm_domain *genpd,
 						 struct dev_pm_opp *opp)
 {
@@ -467,7 +542,8 @@ static int rpmhpd_probe(struct platform_device *pdev)
 
 		rpmhpds[i]->pd.power_off = rpmhpd_power_off;
 		rpmhpds[i]->pd.power_on = rpmhpd_power_on;
-		rpmhpds[i]->pd.set_performance_state = rpmhpd_set_performance_state;
+		if (!rpmhpds[i]->pd.set_performance_state)
+			rpmhpds[i]->pd.set_performance_state = rpmhpd_set_performance_state;
 		rpmhpds[i]->pd.opp_to_performance_state = rpmhpd_get_performance_state;
 		pm_genpd_init(&rpmhpds[i]->pd, NULL, true);
 
