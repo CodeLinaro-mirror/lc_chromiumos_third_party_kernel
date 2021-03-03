@@ -5680,6 +5680,8 @@ bool intel_phy_is_combo(struct drm_i915_private *dev_priv, enum phy phy)
 {
 	if (phy == PHY_NONE)
 		return false;
+	else if (IS_ALDERLAKE_S(dev_priv))
+		return phy <= PHY_E;
 	else if (IS_DG1(dev_priv) || IS_ROCKETLAKE(dev_priv))
 		return phy <= PHY_D;
 	else if (IS_JSL_EHL(dev_priv))
@@ -5692,11 +5694,9 @@ bool intel_phy_is_combo(struct drm_i915_private *dev_priv, enum phy phy)
 
 bool intel_phy_is_tc(struct drm_i915_private *dev_priv, enum phy phy)
 {
-	if (IS_DG1(dev_priv) || IS_ROCKETLAKE(dev_priv))
-		return false;
-	else if (INTEL_GEN(dev_priv) >= 12)
+	if (IS_TIGERLAKE(dev_priv))
 		return phy >= PHY_D && phy <= PHY_I;
-	else if (INTEL_GEN(dev_priv) >= 11 && !IS_JSL_EHL(dev_priv))
+	else if (IS_ICELAKE(dev_priv))
 		return phy >= PHY_C && phy <= PHY_F;
 	else
 		return false;
@@ -5704,7 +5704,9 @@ bool intel_phy_is_tc(struct drm_i915_private *dev_priv, enum phy phy)
 
 enum phy intel_port_to_phy(struct drm_i915_private *i915, enum port port)
 {
-	if ((IS_DG1(i915) || IS_ROCKETLAKE(i915)) && port >= PORT_TC1)
+	if (IS_ALDERLAKE_S(i915) && port >= PORT_TC1)
+		return PHY_B + port - PORT_TC1;
+	else if ((IS_DG1(i915) || IS_ROCKETLAKE(i915)) && port >= PORT_TC1)
 		return PHY_C + port - PORT_TC1;
 	else if (IS_JSL_EHL(i915) && port == PORT_D)
 		return PHY_A;
@@ -8601,20 +8603,27 @@ static void icl_get_ddi_pll(struct drm_i915_private *dev_priv, enum port port,
 	struct intel_shared_dpll *pll;
 	enum intel_dpll_id id;
 	bool pll_active;
+	i915_reg_t reg;
 	u32 temp;
 
 	if (intel_phy_is_combo(dev_priv, phy)) {
 		u32 mask, shift;
 
-		if (IS_ROCKETLAKE(dev_priv)) {
+		if (IS_ALDERLAKE_S(dev_priv)) {
+			reg = ADLS_DPCLKA_CFGCR(phy);
+			mask = ADLS_DPCLKA_CFGCR_DDI_CLK_SEL_MASK(phy);
+			shift = ADLS_DPCLKA_CFGCR_DDI_SHIFT(phy);
+		} else if (IS_ROCKETLAKE(dev_priv)) {
+			reg = ICL_DPCLKA_CFGCR0;
 			mask = RKL_DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(phy);
 			shift = RKL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy);
 		} else {
+			reg = ICL_DPCLKA_CFGCR0;
 			mask = ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(phy);
 			shift = ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy);
 		}
 
-		temp = intel_de_read(dev_priv, ICL_DPCLKA_CFGCR0) & mask;
+		temp = intel_de_read(dev_priv, reg) & mask;
 		id = temp >> shift;
 		port_dpll_id = ICL_PORT_DPLL_DEFAULT;
 	} else if (intel_phy_is_tc(dev_priv, phy)) {
@@ -9735,6 +9744,7 @@ static int icl_check_nv12_planes(struct intel_crtc_state *crtc_state)
 	struct intel_atomic_state *state = to_intel_atomic_state(crtc_state->uapi.state);
 	struct intel_plane *plane, *linked;
 	struct intel_plane_state *plane_state;
+	int ret;
 	int i;
 
 	if (INTEL_GEN(dev_priv) < 11)
@@ -9810,6 +9820,11 @@ static int icl_check_nv12_planes(struct intel_crtc_state *crtc_state)
 		intel_plane_copy_hw_state(linked_state, plane_state);
 		linked_state->uapi.src = plane_state->uapi.src;
 		linked_state->uapi.dst = plane_state->uapi.dst;
+
+		/* Update Linked plane crtc same as of main plane */
+		ret = drm_atomic_set_crtc_for_plane(&linked_state->uapi, plane_state->uapi.crtc);
+		if (ret)
+			return ret;
 
 		if (icl_is_hdr_plane(dev_priv, plane->id)) {
 			if (linked->id == PLANE_SPRITE5)
@@ -13470,25 +13485,14 @@ static int intel_atomic_commit(struct drm_device *dev,
 	 * updates happen during the correct frames. Gen9+ have
 	 * double buffered watermarks and so shouldn't need this.
 	 *
-	 * Unset state->legacy_cursor_update before the call to
-	 * drm_atomic_helper_setup_commit() because otherwise
-	 * drm_atomic_helper_wait_for_flip_done() is a noop and
-	 * we get FIFO underruns because we didn't wait
-	 * for vblank.
-	 *
-	 * FIXME doing watermarks and fb cleanup from a vblank worker
-	 * (assuming we had any) would solve these problems.
+	 * Unfortunately, the GEN9+ double buffering seems to be buggy when it
+	 * races with a modeset. The result is that the register (CURCNTL)
+	 * appears to have been written (reads back as 0), but the cursor is
+	 * still on. This manifests itself as garbage in the upper-left corner
+	 * of the display (as we set position and base to 0).  We work around
+	 * that by always falling back to the vblank wait.
 	 */
-	if (INTEL_GEN(dev_priv) < 9 && state->base.legacy_cursor_update) {
-		struct intel_crtc_state *new_crtc_state;
-		struct intel_crtc *crtc;
-		int i;
-
-		for_each_new_intel_crtc_in_state(state, crtc, new_crtc_state, i)
-			if (new_crtc_state->wm.need_postvbl_update ||
-			    new_crtc_state->update_wm_post)
-				state->base.legacy_cursor_update = false;
-	}
+	state->base.legacy_cursor_update = false;
 
 	ret = intel_atomic_prepare_commit(state);
 	if (ret) {
@@ -13910,7 +13914,13 @@ static void intel_setup_outputs(struct drm_i915_private *dev_priv)
 	if (!HAS_DISPLAY(dev_priv))
 		return;
 
-	if (IS_DG1(dev_priv) || IS_ROCKETLAKE(dev_priv)) {
+	if (IS_ALDERLAKE_S(dev_priv)) {
+		intel_ddi_init(dev_priv, PORT_A);
+		intel_ddi_init(dev_priv, PORT_TC1);
+		intel_ddi_init(dev_priv, PORT_TC2);
+		intel_ddi_init(dev_priv, PORT_TC3);
+		intel_ddi_init(dev_priv, PORT_TC4);
+	} else if (IS_DG1(dev_priv) || IS_ROCKETLAKE(dev_priv)) {
 		intel_ddi_init(dev_priv, PORT_A);
 		intel_ddi_init(dev_priv, PORT_B);
 		intel_ddi_init(dev_priv, PORT_TC1);
