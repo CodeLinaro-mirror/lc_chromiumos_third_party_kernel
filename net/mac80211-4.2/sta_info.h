@@ -330,7 +330,7 @@ struct mesh_sta {
 	u8 tx_fail_log;
 
 	/* moving percentage of failed MSDUs */
-	struct ewma fail_avg;
+	unsigned int fail_avg;
 
 	/* moving avg of bitrate in 1kbps */
 	u32 bitrate_avg;

@@ -18,8 +18,6 @@
 #define MAX_METRIC	0xffffffff
 #define ARITH_SHIFT	8
 
-#define LINK_FAIL_THRESH 95
-
 #define MAX_PREQ_QUEUE_LEN	64
 
 /* minimum link metric averaging time constant in milliseconds */
@@ -337,9 +335,13 @@ void ieee80211s_update_metric(struct ieee80211_local *local,
 		struct sta_info *sta, struct sk_buff *skb, int retry_count)
 {
 	struct ieee80211_tx_info *txinfo = IEEE80211_SKB_CB(skb);
+	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 	int failed;
 	struct rate_info rinfo;
 	unsigned long delta;
+
+	if (!ieee80211_is_data(hdr->frame_control))
+		return;
 
 	failed = !(txinfo->flags & IEEE80211_TX_STAT_ACK);
 
@@ -355,8 +357,10 @@ void ieee80211s_update_metric(struct ieee80211_local *local,
 	}
 
 	/* moving average, scaled to 100 */
-	ewma_add(&sta->mesh->fail_avg, failed * 100);
-	if (ewma_read(&sta->mesh->fail_avg) > LINK_FAIL_THRESH)
+	sta->mesh->fail_avg =
+		((80 * sta->mesh->fail_avg + 5) / 100 +
+		 20 * (retry_count + failed) / (retry_count + 1));
+	if (sta->mesh->fail_avg > 95)
 		mesh_plink_broken(sta);
 
 	/* bitrate, in units of 100 Kbps */
@@ -397,14 +401,9 @@ u32 airtime_link_metric_get(struct ieee80211_local *local,
 	u64 result;
 	u32 bitrate_avg;
 	struct rate_info rinfo;
-	unsigned long fail_avg =
-		ewma_read(&sta->mesh->fail_avg);
 
-	if (fail_avg > LINK_FAIL_THRESH) {
-		pr_warn("Fail average(%lu) exceeds the fail threshold(95)\n",
-			fail_avg);
+	if (sta->mesh->fail_avg >= 100)
 		return MAX_METRIC;
-	}
 
 	if (!sta->mesh->bitrate_avg) {
 		sta_set_rate_info_tx(sta, &sta->last_tx_rate, &rinfo);
@@ -417,7 +416,7 @@ u32 airtime_link_metric_get(struct ieee80211_local *local,
 	}
 
 	bitrate_avg = sta->mesh->bitrate_avg;
-	err = (fail_avg << ARITH_SHIFT) / 100;
+	err = (sta->mesh->fail_avg << ARITH_SHIFT) / 100;
 
 #ifdef CONFIG_MAC80211_DEBUGFS
 /* signal strength in db below witch the rate remains at 6Mbps */
@@ -646,9 +645,6 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 			mpath->hop_count = hopcount;
 			mesh_path_activate(mpath);
 			spin_unlock_bh(&mpath->state_lock);
-			ewma_init(&sta->mesh->fail_avg, 16, 8);
-			/* init it at a low value - 0 start is tricky */
-			ewma_add(&sta->mesh->fail_avg, 1);
 			mesh_path_tx_pending(mpath);
 			/* draft says preq_id should be saved to, but there does
 			 * not seem to be any use for it, skipping by now
@@ -708,9 +704,6 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 			mpath->hop_count = 1;
 			mesh_path_activate(mpath);
 			spin_unlock_bh(&mpath->state_lock);
-			ewma_init(&sta->mesh->fail_avg, 16, 8);
-			/* init it at a low value - 0 start is tricky */
-			ewma_add(&sta->mesh->fail_avg, 1);
 			mesh_path_tx_pending(mpath);
 		} else
 			spin_unlock_bh(&mpath->state_lock);
