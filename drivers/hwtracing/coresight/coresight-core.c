@@ -1683,6 +1683,8 @@ struct coresight_device *coresight_register(struct coresight_desc *desc)
 	int nr_refcnts = 1;
 	atomic_t *refcnts = NULL;
 	struct coresight_device *csdev;
+	const char *cs_name = NULL;
+	struct device_node *node = desc->dev->of_node;
 
 	csdev = kzalloc(sizeof(*csdev), GFP_KERNEL);
 	if (!csdev) {
@@ -1737,6 +1739,25 @@ struct coresight_device *coresight_register(struct coresight_desc *desc)
 		goto err_out;
 	}
 
+	if (!of_property_read_string(node, "coresight-name", &cs_name)) {
+		struct device *dev = &csdev->dev;
+		struct bus_type *bus = dev->bus;
+
+		ret = sysfs_create_link(&bus->p->devices_kset->kobj, &dev->kobj, cs_name);
+		if (ret) {
+			dev_err(dev, "Failed to create link %s (%d)\n", cs_name, ret);
+			device_unregister(dev);
+			goto err_out;
+		}
+
+		ret = sysfs_create_link(dev->kobj.parent, &dev->kobj, cs_name);
+		if (ret) {
+			dev_err(dev, "Failed to create link %s (%d)\n", cs_name, ret);
+			device_unregister(dev);
+			goto err_out;
+		}
+	}
+
 	if (csdev->type == CORESIGHT_DEV_TYPE_SINK ||
 	    csdev->type == CORESIGHT_DEV_TYPE_LINKSINK) {
 		ret = etm_perf_add_symlink_sink(csdev);
@@ -1782,6 +1803,10 @@ EXPORT_SYMBOL_GPL(coresight_register);
 
 void coresight_unregister(struct coresight_device *csdev)
 {
+	const char *cs_name = NULL;
+	struct device *dev = csdev->dev.parent;
+	struct bus_type *bus = dev->bus;
+
 	etm_perf_del_symlink_sink(csdev);
 	/* Remove references of that device in the topology */
 	if (cti_assoc_ops && cti_assoc_ops->remove)
@@ -1789,6 +1814,10 @@ void coresight_unregister(struct coresight_device *csdev)
 	coresight_remove_conns(csdev);
 	coresight_clear_default_sink(csdev);
 	coresight_release_platform_data(csdev, csdev->pdata);
+	if (!of_property_read_string(dev->of_node, "coresight-name", &cs_name)) {
+		sysfs_remove_link(&bus->p->devices_kset->kobj, cs_name);
+		sysfs_remove_link(dev->kobj.parent, cs_name);
+	}
 	device_unregister(&csdev->dev);
 }
 EXPORT_SYMBOL_GPL(coresight_unregister);
@@ -1831,10 +1860,6 @@ const char *coresight_alloc_device_name(struct coresight_dev_list *dict,
 	int idx;
 	const char *name = NULL;
 	struct fwnode_handle **list;
-	struct device_node *node = dev->of_node;
-
-	if (!of_property_read_string(node, "coresight-name", &name))
-		return name;
 
 	mutex_lock(&coresight_mutex);
 

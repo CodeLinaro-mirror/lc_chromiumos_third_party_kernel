@@ -325,6 +325,49 @@ struct coresight_ops {
 	const struct coresight_ops_ect *ect_ops;
 };
 
+/**
+ * struct subsys_private - structure to hold the private to the driver core portions of the bus_type/class structure.
+ *
+ * @subsys - the struct kset that defines this subsystem
+ * @devices_kset - the subsystem's 'devices' directory
+ * @interfaces - list of subsystem interfaces associated
+ * @mutex - protect the devices, and interfaces lists.
+ *
+ * @drivers_kset - the list of drivers associated
+ * @klist_devices - the klist to iterate over the @devices_kset
+ * @klist_drivers - the klist to iterate over the @drivers_kset
+ * @bus_notifier - the bus notifier list for anything that cares about things
+ *                 on this bus.
+ * @bus - pointer back to the struct bus_type that this structure is associated
+ *        with.
+ *
+ * @glue_dirs - "glue" directory to put in-between the parent device to
+ *              avoid namespace conflicts
+ * @class - pointer back to the struct class that this structure is associated
+ *          with.
+ *
+ * This structure is the one that is the actual kobject allowing struct
+ * bus_type/class to be statically allocated safely.  Nothing outside of the
+ * driver core should ever touch these fields.
+ */
+struct subsys_private {
+	struct kset subsys;
+	struct kset *devices_kset;
+	struct list_head interfaces;
+	struct mutex mutex;
+
+	struct kset *drivers_kset;
+	struct klist klist_devices;
+	struct klist klist_drivers;
+	struct blocking_notifier_head bus_notifier;
+	unsigned int drivers_autoprobe:1;
+	struct bus_type *bus;
+
+	struct kset glue_dirs;
+	struct class *class;
+};
+#define to_subsys_private(obj) container_of(obj, struct subsys_private, subsys.kobj)
+
 #if IS_ENABLED(CONFIG_CORESIGHT)
 extern struct coresight_device *
 coresight_register(struct coresight_desc *desc);
