@@ -34,7 +34,7 @@
  */
 #define CORESIGHT_CLAIM_SELF_HOSTED	BIT(1)
 
-#define TIMEOUT_US		100
+#define TIMEOUT_US		500
 #define BMVAL(val, lsb, msb)	((val & GENMASK(msb, lsb)) >> lsb)
 
 #define ETM_MODE_EXCL_KERN	BIT(30)
