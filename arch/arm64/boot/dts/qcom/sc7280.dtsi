@@ -2353,6 +2353,13 @@
 			clock-names = "apb_pclk";
 		};
 
+		dcc@010a2000{
+			compatible = "qcom,sc7280-dcc", "qcom,dcc";
+			reg = <0x0 0x117f000 0x0 0x1000>,
+			      <0x0 0x1112000 0x0 0x6000>;
+			reg-names = "dcc-base", "dcc-ram-base";
+		};
+
 		usb_1: usb@a6f8800 {
 			compatible = "qcom,sc7280-dwc3", "qcom,dwc3";
 			reg = <0 0x0a6f8800 0 0x400>;

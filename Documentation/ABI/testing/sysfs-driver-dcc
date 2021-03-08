@@ -1,0 +1,74 @@
+What:           /sys/bus/platform/devices/.../trigger
+Date:           February 2021
+Contact:        Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file allows the software trigger to be enabled
+		by the user through the sysfs interface.Through this
+		interface the user can manually start a software trigger
+		in dcc where by the dcc driver stores the current status
+		of the specified registers in dcc sram.
+
+What:           /sys/bus/platform/devices/.../enable
+Date:           February 2021
+Contact:        Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file allows the user to manually enable or
+		disable dcc driver.The dcc hardware needs to be
+		enabled before use.
+
+What:           /sys/bus/platform/devices/.../config
+Date:           February 2021
+Contact:        Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file allows user to configure the register values
+		along with addresses to the dcc driver.This register
+		addresses are used to read from,write or loop through.
+		To enable all these options separate sysfs files have
+		are created.
+
+What:           /sys/bus/platform/devices/.../config_write
+Date:           February 2021
+Contact:        Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file allows user to write a value to the register
+		address given as argument.The values are entered in the
+		form of <register_address> <value>.
+
+What:           /sys/bus/platform/devices/.../config_reset
+Date:           February 2021
+Contact:        Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file is used to reset the configuration of
+		a dcc driver to the default configuration.
+
+What:           /sys/bus/platform/devices/.../loop
+Date:           February 2021
+Contact:        Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file is used to enter the loop count as dcc
+		driver gives the option to loop multiple times on
+		the same register and store the values for each
+		loop.
+
+What:           /sys/bus/platform/devices/.../rd_mod_wr
+Date:           February 2021
+Contact:        Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file is used to read the value of the register
+		and then write the value given as an argument to the
+		register address in config.The address argument should
+		be given of the form <mask> <value>.
+
+What:           /sys/bus/platform/devices/.../ready
+Date:           February 2021
+Contact:        Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file is used to check the status of the dcc
+		hardware if it's ready to take the inputs.
+
+What:		/sys/bus/platform/devices/.../curr_list
+Date:		February 2021
+Contact:	Souradeep Chowdhury <schowdhu@codeaurora.org>
+Description:
+		This file is used to configure the linkedlist data
+		to be used while configuring addresses.
