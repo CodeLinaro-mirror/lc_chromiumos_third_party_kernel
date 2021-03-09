@@ -16,7 +16,7 @@
 #include <asm/cacheflush.h>
 #include <linux/of_address.h>
 #include <linux/amba/bus.h>
-#include <linux/usb/usb_qdss.h>
+//#include <linux/usb/usb_qdss.h>
 
 #include "coresight-byte-cntr.h"
 

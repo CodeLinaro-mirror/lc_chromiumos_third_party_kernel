@@ -10,7 +10,7 @@
 #include <linux/moduleparam.h>
 #include <linux/delay.h>
 #include <linux/uaccess.h>
-#include <linux/usb/usb_qdss.h>
+//#include <linux/usb/usb_qdss.h>
 #include <linux/time.h>
 #include <linux/slab.h>
 
@@ -190,6 +190,7 @@ static int tmc_etr_byte_cntr_release(struct inode *in, struct file *fp)
 	return 0;
 }
 
+#if 0
 static int usb_bypass_start(struct byte_cntr *byte_cntr_data)
 {
 	long offset;
@@ -250,6 +251,7 @@ void usb_bypass_stop(struct byte_cntr *byte_cntr_data)
 
 }
 EXPORT_SYMBOL(usb_bypass_stop);
+#endif
 
 static int tmc_etr_byte_cntr_open(struct inode *in, struct file *fp)
 {
@@ -334,6 +336,7 @@ exit_unreg_chrdev_region:
 	return ret;
 }
 
+#if 0
 static int usb_transfer_small_packet(struct qdss_request *usb_req,
 			struct byte_cntr *drvdata, size_t *small_size)
 {
@@ -605,6 +608,7 @@ static int usb_bypass_init(struct byte_cntr *byte_cntr_data)
 
 	return 0;
 }
+#endif
 
 struct byte_cntr *byte_cntr_init(struct amba_device *adev,
 				 struct tmc_drvdata *drvdata)
@@ -623,12 +627,12 @@ struct byte_cntr *byte_cntr_init(struct amba_device *adev,
 	if (!byte_cntr_data)
 		return NULL;
 
-	byte_cntr_data->sw_usb = of_property_read_bool(np, "qcom,sw-usb");
-	if (byte_cntr_data->sw_usb) {
-		ret = usb_bypass_init(byte_cntr_data);
-		if (ret)
-			return NULL;
-	}
+	//byte_cntr_data->sw_usb = of_property_read_bool(np, "qcom,sw-usb");
+	//if (byte_cntr_data->sw_usb) {
+	//	ret = usb_bypass_init(byte_cntr_data);
+	//	if (ret)
+	//		return NULL;
+	//}
 
 	ret = devm_request_irq(dev, byte_cntr_irq, etr_handler,
 			       IRQF_TRIGGER_RISING | IRQF_SHARED,

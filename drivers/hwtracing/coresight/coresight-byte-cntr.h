@@ -31,8 +31,8 @@ struct byte_cntr {
 	unsigned long		offset;
 };
 
-extern void usb_bypass_notifier(void *priv, unsigned int event,
-		struct qdss_request *d_req, struct usb_qdss_ch *ch);
+//extern void usb_bypass_notifier(void *priv, unsigned int event,
+//		struct qdss_request *d_req, struct usb_qdss_ch *ch);
 extern void tmc_etr_byte_cntr_start(struct byte_cntr *byte_cntr_data);
 extern void tmc_etr_byte_cntr_stop(struct byte_cntr *byte_cntr_data);
 extern void usb_bypass_stop(struct byte_cntr *byte_cntr_data);

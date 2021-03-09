@@ -1233,22 +1233,22 @@ static int tmc_enable_etr_sink_sysfs(struct coresight_device *csdev)
 
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
-	if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB) {
-		if (drvdata->byte_cntr->sw_usb)
-			drvdata->usbch = usb_qdss_open("qdss_mdm",
-					drvdata->byte_cntr,
-					usb_bypass_notifier);
+	//if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB) {
+	//	if (drvdata->byte_cntr->sw_usb)
+	//		drvdata->usbch = usb_qdss_open("qdss_mdm",
+	//				drvdata->byte_cntr,
+	//				usb_bypass_notifier);
 
-		if (IS_ERR_OR_NULL(drvdata->usbch)) {
-			dev_err(&csdev->dev, "usb_qdss_open failed\n");
-			drvdata->enable = false;
-			drvdata->mode = CS_MODE_DISABLED;
-			if (drvdata->byte_cntr->sw_usb)
-				tmc_etr_disable_hw(drvdata);
-			ret = -ENODEV;
-			goto out;
-		}
-	}
+	//	if (IS_ERR_OR_NULL(drvdata->usbch)) {
+	//		dev_err(&csdev->dev, "usb_qdss_open failed\n");
+	//		drvdata->enable = false;
+	//		drvdata->mode = CS_MODE_DISABLED;
+	//		if (drvdata->byte_cntr->sw_usb)
+	//			tmc_etr_disable_hw(drvdata);
+	//		ret = -ENODEV;
+	//		goto out;
+	//	}
+	//}
 
 	atomic_inc(csdev->refcnt);
 
@@ -1735,7 +1735,7 @@ static int _tmc_disable_etr_sink(struct coresight_device *csdev,
 			if (drvdata->byte_cntr->sw_usb) {
 				spin_unlock_irqrestore(&drvdata->spinlock,
 					flags);
-				usb_qdss_close(drvdata->usbch);
+				//usb_qdss_close(drvdata->usbch);
 				spin_lock_irqsave(&drvdata->spinlock, flags);
 				tmc_etr_disable_hw(drvdata);
 			}
@@ -1755,11 +1755,11 @@ static int _tmc_disable_etr_sink(struct coresight_device *csdev,
 		|| drvdata->out_mode == TMC_ETR_OUT_MODE_MEM) {
 		if (drvdata->out_mode == TMC_ETR_OUT_MODE_MEM)
 			tmc_etr_byte_cntr_stop(drvdata->byte_cntr);
-		else {
-			usb_bypass_stop(drvdata->byte_cntr);
-			flush_workqueue(drvdata->byte_cntr->usb_wq);
-			drvdata->usbch = NULL;
-		}
+		//else {
+		//	usb_bypass_stop(drvdata->byte_cntr);
+		//	flush_workqueue(drvdata->byte_cntr->usb_wq);
+		//	drvdata->usbch = NULL;
+		//}
 	}
 
 	dev_dbg(&csdev->dev, "TMC-ETR disabled\n");
