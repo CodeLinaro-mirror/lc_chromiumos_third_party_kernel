@@ -4971,6 +4971,23 @@ static int ath10k_start(struct ieee80211_hw *hw)
 		clear_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
 	}
 
+	param = ar->wmi.pdev_param->agg_sw_retry_th;
+	ret = ath10k_wmi_pdev_set_param(ar, param,
+					ATH10K_AGGR_SW_RETRY_THRESHOLD);
+	if (ret) {
+		ath10k_warn(ar, "failed to set aggr retry thold: %d\n", ret);
+		goto err_core_stop;
+	}
+
+	param = ar->wmi.pdev_param->non_agg_sw_retry_th;
+	ret = ath10k_wmi_pdev_set_param(ar, param,
+					ATH10K_AGGR_SW_RETRY_THRESHOLD);
+	if (ret) {
+		ath10k_warn(ar, "failed to set non-aggr retry thold: %d\n",
+			    ret);
+		goto err_core_stop;
+	}
+
 	ar->num_started_vdevs = 0;
 	ath10k_regd_update(ar);
 
