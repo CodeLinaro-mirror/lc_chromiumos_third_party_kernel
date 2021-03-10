@@ -17,6 +17,7 @@
 #include "ipa_gsi.h"
 #include "ipa_data.h"
 #include "ipa_cmd.h"
+#include "ipa_assert.h"
 
 /**
  * DOC: GSI Transactions
@@ -90,14 +91,14 @@ int gsi_trans_pool_init(struct gsi_trans_pool *pool, size_t size, u32 count,
 {
 	void *virt;
 
-#ifdef IPA_VALIDATE
+#ifdef IPA_VALIDATION
 	if (!size || size % 8)
 		return -EINVAL;
 	if (count < max_alloc)
 		return -EINVAL;
 	if (!max_alloc)
 		return -EINVAL;
-#endif /* IPA_VALIDATE */
+#endif /* IPA_VALIDATION */
 
 	/* By allocating a few extra entries in our pool (one less
 	 * than the maximum number that will be requested in a
@@ -140,14 +141,14 @@ int gsi_trans_pool_init_dma(struct device *dev, struct gsi_trans_pool *pool,
 	dma_addr_t addr;
 	void *virt;
 
-#ifdef IPA_VALIDATE
+#ifdef IPA_VALIDATION
 	if (!size || size % 8)
 		return -EINVAL;
 	if (count < max_alloc)
 		return -EINVAL;
 	if (!max_alloc)
 		return -EINVAL;
-#endif /* IPA_VALIDATE */
+#endif /* IPA_VALIDATION */
 
 	/* Don't let allocations cross a power-of-two boundary */
 	size = __roundup_pow_of_two(size);
@@ -189,8 +190,7 @@ static u32 gsi_trans_pool_alloc_common(struct gsi_trans_pool *pool, u32 count)
 {
 	u32 offset;
 
-	/* assert(count > 0); */
-	/* assert(count <= pool->max_alloc); */
+	/* count must be at least one and can't exceed the pool's max_alloc */
 
 	/* Allocate from beginning if wrap would occur */
 	if (count > pool->count - pool->free)
@@ -226,9 +226,6 @@ void *gsi_trans_pool_next(struct gsi_trans_pool *pool, void *element)
 {
 	void *end = pool->base + pool->count * pool->size;
 
-	/* assert(element >= pool->base); */
-	/* assert(element < end); */
-	/* assert(pool->max_alloc == 1); */
 	element += pool->size;
 
 	return element < end ? element : pool->base;
@@ -331,11 +328,15 @@ struct gsi_trans *gsi_channel_trans_alloc(struct gsi *gsi, u32 channel_id,
 {
 	struct gsi_channel *channel = &gsi->channel[channel_id];
 	struct gsi_trans_info *trans_info;
+	struct gsi_trans_pool *sg_pool;
+	struct device *dev = gsi->dev;
 	struct gsi_trans *trans;
 
-	/* assert(tre_count <= gsi_channel_trans_tre_max(gsi, channel_id)); */
-
 	trans_info = &channel->trans_info;
+	sg_pool = &trans_info->sg_pool;
+
+	ipa_assert(dev, tre_count > 0);
+	ipa_assert(dev, tre_count <= sg_pool->max_alloc);
 
 	/* We reserve the TREs now, but consume them at commit time.
 	 * If there aren't enough available, we're done.
@@ -351,7 +352,7 @@ struct gsi_trans *gsi_channel_trans_alloc(struct gsi *gsi, u32 channel_id,
 	init_completion(&trans->completion);
 
 	/* Allocate the scatterlist and (if requested) info entries. */
-	trans->sgl = gsi_trans_pool_alloc(&trans_info->sg_pool, tre_count);
+	trans->sgl = gsi_trans_pool_alloc(sg_pool, tre_count);
 	sg_init_marker(trans->sgl, tre_count);
 
 	trans->direction = direction;
