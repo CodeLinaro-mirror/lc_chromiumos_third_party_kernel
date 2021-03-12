@@ -555,7 +555,7 @@ struct uvc_device {
 
 	/* Video Streaming interfaces */
 	struct list_head streams;
-	atomic_t nstreams;
+	struct kref ref;
 
 	/* Status Interrupt Endpoint */
 	struct usb_host_endpoint *int_ep;
@@ -692,6 +692,7 @@ void uvc_video_clock_update(struct uvc_streaming *stream,
 
 /* Status */
 extern int uvc_status_init(struct uvc_device *dev);
+extern void uvc_status_unregister(struct uvc_device *dev);
 extern void uvc_status_cleanup(struct uvc_device *dev);
 extern int uvc_status_start(struct uvc_device *dev, gfp_t flags);
 extern void uvc_status_stop(struct uvc_device *dev);

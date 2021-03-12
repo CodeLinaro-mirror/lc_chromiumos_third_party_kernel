@@ -291,8 +291,8 @@ static struct rockchip_vpu_control controls[] = {
 		.default_value = 1,
 	},
 	{
-		.id = V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR,
-		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.id = V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR,
+		.type = V4L2_CTRL_TYPE_INTEGER,
 		.minimum = 0,
 		.maximum = 1,
 		.step = 1,
@@ -895,7 +895,7 @@ static int rockchip_vpu_enc_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_MFC51_VIDEO_RC_FIXED_TARGET_BIT:
 	case V4L2_CID_MPEG_VIDEO_B_FRAMES:
 	case V4L2_CID_MPEG_VIDEO_H264_B_FRAME_QP:
-	case V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR:
+	case V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR:
 	case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
 		/* Ignore these controls for now. (FIXME?) */
 		break;
