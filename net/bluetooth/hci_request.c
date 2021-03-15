@@ -2488,6 +2488,7 @@ bool hci_req_stop_discovery(struct hci_request *req)
 		if (hci_dev_test_flag(hdev, HCI_LE_SCAN) || hci_dev_test_flag(hdev, HCI_LE_SCAN_CHANGE_IN_PROGRESS)) {
 			cancel_delayed_work(&hdev->le_scan_disable);
 			BT_DBG("BT_DBG_DG: call hci_req_add_le_scan_disable: request:hci_req_stop_discovery(1)\n");
+			cancel_delayed_work(&hdev->le_scan_restart);
 			hci_req_add_le_scan_disable(req);
 		}
 
