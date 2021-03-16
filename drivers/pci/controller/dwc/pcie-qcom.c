@@ -200,6 +200,7 @@ struct qcom_pcie {
 	union qcom_pcie_resources res;
 	struct phy *phy;
 	struct gpio_desc *reset;
+	struct gpio_desc *nvme;
 	const struct qcom_pcie_ops *ops;
 };
 
@@ -1520,6 +1521,14 @@ static int qcom_pcie_probe(struct platform_device *pdev)
 		ret = PTR_ERR(pcie->reset);
 		goto err_pm_runtime_put;
 	}
+	pcie->nvme = devm_gpiod_get_optional(dev, "nvme", GPIOD_OUT_HIGH);
+	if (IS_ERR(pcie->nvme)) {
+
+		ret = PTR_ERR(pcie->nvme);
+		pr_err("%s get nvme gpio err %d\n",__func__,ret);
+		//goto err_pm_runtime_put;
+	}
+	gpiod_set_value_cansleep(pcie->nvme, 1);
 
 	pcie->parf = devm_platform_ioremap_resource_byname(pdev, "parf");
 	if (IS_ERR(pcie->parf)) {
