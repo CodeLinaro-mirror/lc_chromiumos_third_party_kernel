@@ -34,6 +34,181 @@ intel_dp_dump_link_status(const u8 link_status[DP_LINK_STATUS_SIZE])
 		      link_status[3], link_status[4], link_status[5]);
 }
 
+<<<<<<< HEAD   (816aac FROMGIT: ASoC: rt1015p: add acpi device id for rt1015p)
+=======
+static void intel_dp_reset_lttpr_common_caps(struct intel_dp *intel_dp)
+{
+	memset(&intel_dp->lttpr_common_caps, 0, sizeof(intel_dp->lttpr_common_caps));
+}
+
+static void intel_dp_reset_lttpr_count(struct intel_dp *intel_dp)
+{
+	intel_dp->lttpr_common_caps[DP_PHY_REPEATER_CNT -
+				    DP_LT_TUNABLE_PHY_REPEATER_FIELD_DATA_STRUCTURE_REV] = 0;
+}
+
+static const char *intel_dp_phy_name(enum drm_dp_phy dp_phy,
+				     char *buf, size_t buf_size)
+{
+	if (dp_phy == DP_PHY_DPRX)
+		snprintf(buf, buf_size, "DPRX");
+	else
+		snprintf(buf, buf_size, "LTTPR %d", dp_phy - DP_PHY_LTTPR1 + 1);
+
+	return buf;
+}
+
+static u8 *intel_dp_lttpr_phy_caps(struct intel_dp *intel_dp,
+				   enum drm_dp_phy dp_phy)
+{
+	return intel_dp->lttpr_phy_caps[dp_phy - DP_PHY_LTTPR1];
+}
+
+static void intel_dp_read_lttpr_phy_caps(struct intel_dp *intel_dp,
+					 enum drm_dp_phy dp_phy)
+{
+	u8 *phy_caps = intel_dp_lttpr_phy_caps(intel_dp, dp_phy);
+	char phy_name[10];
+
+	intel_dp_phy_name(dp_phy, phy_name, sizeof(phy_name));
+
+	if (drm_dp_read_lttpr_phy_caps(&intel_dp->aux, dp_phy, phy_caps) < 0) {
+		drm_dbg_kms(&dp_to_i915(intel_dp)->drm,
+			    "failed to read the PHY caps for %s\n",
+			    phy_name);
+		return;
+	}
+
+	drm_dbg_kms(&dp_to_i915(intel_dp)->drm,
+		    "%s PHY capabilities: %*ph\n",
+		    phy_name,
+		    (int)sizeof(intel_dp->lttpr_phy_caps[0]),
+		    phy_caps);
+}
+
+static bool intel_dp_read_lttpr_common_caps(struct intel_dp *intel_dp)
+{
+	struct drm_i915_private *i915 = dp_to_i915(intel_dp);
+
+	if (intel_dp_is_edp(intel_dp))
+		return false;
+
+	/*
+	 * Detecting LTTPRs must be avoided on platforms with an AUX timeout
+	 * period < 3.2ms. (see DP Standard v2.0, 2.11.2, 3.6.6.1).
+	 */
+	if (INTEL_GEN(i915) < 10)
+		return false;
+
+	if (drm_dp_read_lttpr_common_caps(&intel_dp->aux,
+					  intel_dp->lttpr_common_caps) < 0) {
+		intel_dp_reset_lttpr_common_caps(intel_dp);
+		return false;
+	}
+
+	drm_dbg_kms(&dp_to_i915(intel_dp)->drm,
+		    "LTTPR common capabilities: %*ph\n",
+		    (int)sizeof(intel_dp->lttpr_common_caps),
+		    intel_dp->lttpr_common_caps);
+
+	return true;
+}
+
+static bool
+intel_dp_set_lttpr_transparent_mode(struct intel_dp *intel_dp, bool enable)
+{
+	u8 val = enable ? DP_PHY_REPEATER_MODE_TRANSPARENT :
+			  DP_PHY_REPEATER_MODE_NON_TRANSPARENT;
+
+	return drm_dp_dpcd_write(&intel_dp->aux, DP_PHY_REPEATER_MODE, &val, 1) == 1;
+}
+
+/**
+ * intel_dp_init_lttpr_and_dprx_caps - detect LTTPR and DPRX caps, init the LTTPR link training mode
+ * @intel_dp: Intel DP struct
+ *
+ * Read the LTTPR common and DPRX capabilities and switch to non-transparent
+ * link training mode if any is detected and read the PHY capabilities for all
+ * detected LTTPRs. In case of an LTTPR detection error or if the number of
+ * LTTPRs is more than is supported (8), fall back to the no-LTTPR,
+ * transparent mode link training mode.
+ *
+ * Returns:
+ *   >0  if LTTPRs were detected and the non-transparent LT mode was set. The
+ *       DPRX capabilities are read out.
+ *    0  if no LTTPRs or more than 8 LTTPRs were detected or in case of a
+ *       detection failure and the transparent LT mode was set. The DPRX
+ *       capabilities are read out.
+ *   <0  Reading out the DPRX capabilities failed.
+ */
+int intel_dp_init_lttpr_and_dprx_caps(struct intel_dp *intel_dp)
+{
+	int lttpr_count;
+	bool ret;
+	int i;
+
+	ret = intel_dp_read_lttpr_common_caps(intel_dp);
+
+	/* The DPTX shall read the DPRX caps after LTTPR detection. */
+	if (drm_dp_read_dpcd_caps(&intel_dp->aux, intel_dp->dpcd)) {
+		intel_dp_reset_lttpr_common_caps(intel_dp);
+		return -EIO;
+	}
+
+	if (!ret)
+		return 0;
+
+	/*
+	 * The 0xF0000-0xF02FF range is only valid if the DPCD revision is
+	 * at least 1.4.
+	 */
+	if (intel_dp->dpcd[DP_DPCD_REV] < 0x14) {
+		intel_dp_reset_lttpr_common_caps(intel_dp);
+		return 0;
+	}
+
+	lttpr_count = drm_dp_lttpr_count(intel_dp->lttpr_common_caps);
+	/*
+	 * Prevent setting LTTPR transparent mode explicitly if no LTTPRs are
+	 * detected as this breaks link training at least on the Dell WD19TB
+	 * dock.
+	 */
+	if (lttpr_count == 0)
+		return 0;
+
+	/*
+	 * See DP Standard v2.0 3.6.6.1. about the explicit disabling of
+	 * non-transparent mode and the disable->enable non-transparent mode
+	 * sequence.
+	 */
+	intel_dp_set_lttpr_transparent_mode(intel_dp, true);
+
+	/*
+	 * In case of unsupported number of LTTPRs or failing to switch to
+	 * non-transparent mode fall-back to transparent link training mode,
+	 * still taking into account any LTTPR common lane- rate/count limits.
+	 */
+	if (lttpr_count < 0)
+		return 0;
+
+	if (!intel_dp_set_lttpr_transparent_mode(intel_dp, false)) {
+		drm_dbg_kms(&dp_to_i915(intel_dp)->drm,
+			    "Switching to LTTPR non-transparent LT mode failed, fall-back to transparent mode\n");
+
+		intel_dp_set_lttpr_transparent_mode(intel_dp, true);
+		intel_dp_reset_lttpr_count(intel_dp);
+
+		return 0;
+	}
+
+	for (i = 0; i < lttpr_count; i++)
+		intel_dp_read_lttpr_phy_caps(intel_dp, DP_PHY_LTTPR(i));
+
+	return lttpr_count;
+}
+EXPORT_SYMBOL(intel_dp_init_lttpr_and_dprx_caps);
+
+>>>>>>> CHANGE (405979 BACKPORT: FROMGIT: drm/i915/ilk-glk: Fix link training on li)
 static u8 dp_voltage_max(u8 preemph)
 {
 	switch (preemph & DP_TRAIN_PRE_EMPHASIS_MASK) {
