@@ -3592,11 +3592,8 @@ static void rtw8822c_adaptivity(struct rtw_dev *rtwdev)
 		l2h = max_t(s8, igi + EDCCA_IGI_L2H_DIFF, EDCCA_TH_L2H_LB);
 		h2l = l2h - EDCCA_L2H_H2L_DIFF_NORMAL;
 	} else {
-		if (igi < dm_info->l2h_th_ini - EDCCA_ADC_BACKOFF)
-			l2h = igi + EDCCA_ADC_BACKOFF;
-		else
-			l2h = dm_info->l2h_th_ini;
-		h2l = l2h - EDCCA_L2H_H2L_DIFF;
+		l2h = dm_info->l2h_th_ini;
+		h2l = l2h;
 	}
 
 	rtw_phy_set_edcca_th(rtwdev, l2h, h2l);
@@ -4396,7 +4393,7 @@ struct rtw_chip_info rtw8822c_hw_spec = {
 	.bfer_mu_max_num = 1,
 	.edcca_th = rtw8822c_edcca_th,
 	.l2h_th_ini_cs = 60,
-	.l2h_th_ini_ad = 45,
+	.l2h_th_ini_ad = 0x7f,
 	.rx_ldpc = true,
 
 #ifdef CONFIG_PM
