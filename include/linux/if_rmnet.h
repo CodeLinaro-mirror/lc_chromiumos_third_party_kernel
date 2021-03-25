@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only
- * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2019, 2021 The Linux Foundation. All rights reserved.
  */
 
 #ifndef _LINUX_IF_RMNET_H_
@@ -8,11 +8,11 @@
 struct rmnet_map_header {
 #if defined(__LITTLE_ENDIAN_BITFIELD)
 	u8  pad_len:6;
-	u8  reserved_bit:1;
+	u8  next_hdr:1;
 	u8  cd_bit:1;
 #elif defined (__BIG_ENDIAN_BITFIELD)
 	u8  cd_bit:1;
-	u8  reserved_bit:1;
+	u8  next_hdr:1;
 	u8  pad_len:6;
 #else
 #error	"Please fix <asm/byteorder.h>"
@@ -50,6 +50,24 @@ struct rmnet_map_ul_csum_header {
 #else
 #error	"Please fix <asm/byteorder.h>"
 #endif
+} __aligned(1);
+
+/* MAP CSUM headers */
+struct rmnet_map_v5_csum_header {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	u8  next_hdr:1;
+	u8  header_type:7;
+	u8  hw_reserved:7;
+	u8  csum_valid_required:1;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	u8  header_type:7;
+	u8  next_hdr:1;
+	u8  csum_valid_required:1
+	u8  hw_reserved:7;
+#else
+#error	"Please fix <asm/byteorder.h>"
+#endif
+	__be16 reserved;
 } __aligned(1);
 
 #endif /* !(_LINUX_IF_RMNET_H_) */

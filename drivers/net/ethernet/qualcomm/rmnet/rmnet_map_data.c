@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2018, 2021, The Linux Foundation. All rights reserved.
  *
  * RMNET Data MAP protocol
  */
@@ -311,6 +311,7 @@ done:
 struct sk_buff *rmnet_map_deaggregate(struct sk_buff *skb,
 				      struct rmnet_port *port)
 {
+	unsigned char *data = skb->data, *next_hdr = NULL;
 	struct rmnet_map_header *maph;
 	struct sk_buff *skbn;
 	u32 packet_len;
@@ -323,12 +324,23 @@ struct sk_buff *rmnet_map_deaggregate(struct sk_buff *skb,
 
 	if (port->data_format & RMNET_FLAGS_INGRESS_MAP_CKSUMV4)
 		packet_len += sizeof(struct rmnet_map_dl_csum_trailer);
+	else if (port->data_format & RMNET_FLAGS_INGRESS_MAP_CKSUMV5) {
+		if (!maph->cd_bit) {
+			packet_len += sizeof(struct rmnet_map_v5_csum_header);
+			next_hdr = data + sizeof(*maph);
+		}
+	}
 
 	if (((int)skb->len - (int)packet_len) < 0)
 		return NULL;
 
 	/* Some hardware can send us empty frames. Catch them */
 	if (ntohs(maph->pkt_len) == 0)
+		return NULL;
+
+	if (next_hdr &&
+	    ((struct rmnet_map_v5_csum_header *)next_hdr)->header_type !=
+	     RMNET_MAP_HEADER_TYPE_CSUM_OFFLOAD)
 		return NULL;
 
 	skbn = alloc_skb(packet_len + RMNET_MAP_DEAGGR_SPACING, GFP_ATOMIC);
@@ -428,3 +440,49 @@ sw_csum:
 
 	priv->stats.csum_sw++;
 }
+
+u8 rmnet_map_get_next_hdr_type(struct sk_buff *skb)
+{
+	unsigned char *data = skb->data;
+
+	data += sizeof(struct rmnet_map_header);
+	return ((struct rmnet_map_v5_csum_header *)data)->header_type;
+}
+
+bool rmnet_map_get_csum_valid(struct sk_buff *skb)
+{
+	unsigned char *data = skb->data;
+
+	data += sizeof(struct rmnet_map_header);
+	return ((struct rmnet_map_v5_csum_header *)data)->csum_valid_required;
+}
+
+/* Process a MAPv5 packet header */
+int rmnet_map_process_next_hdr_packet(struct sk_buff *skb,
+				      u16 len)
+{
+	struct rmnet_priv *priv = netdev_priv(skb->dev);
+	int rc = 0;
+
+	switch (rmnet_map_get_next_hdr_type(skb)) {
+	case RMNET_MAP_HEADER_TYPE_CSUM_OFFLOAD:
+		if (unlikely(!(skb->dev->features & NETIF_F_RXCSUM))) {
+			priv->stats.csum_sw++;
+		} else if (rmnet_map_get_csum_valid(skb)) {
+			priv->stats.csum_ok++;
+			skb->ip_summed = CHECKSUM_UNNECESSARY;
+		} else {
+			priv->stats.csum_valid_unset++;
+		}
+
+		/* Pull csum v5 header */
+		skb_pull(skb, sizeof(struct rmnet_map_v5_csum_header));
+		break;
+	default:
+		rc = -EINVAL;
+		break;
+	}
+
+	return rc;
+}
+
