@@ -596,7 +596,7 @@ int dce_aux_transfer_raw(struct ddc_service *ddc,
 }
 
 #define AUX_MAX_RETRIES 7
-#define AUX_MAX_DEFER_RETRIES 7
+#define AUX_MIN_DEFER_RETRIES 7
 #define AUX_MAX_I2C_DEFER_RETRIES 7
 #define AUX_MAX_INVALID_REPLY_RETRIES 2
 #define AUX_MAX_TIMEOUT_RETRIES 3
@@ -645,7 +645,7 @@ bool dce_aux_transfer_with_retries(struct ddc_service *ddc,
 				retry_on_defer = true;
 				fallthrough;
 			case AUX_TRANSACTION_REPLY_I2C_OVER_AUX_NACK:
-				if (++aux_defer_retries >= AUX_MAX_DEFER_RETRIES) {
+				if (++aux_defer_retries >= AUX_MIN_DEFER_RETRIES) {
 					goto fail;
 				} else {
 					if ((*payload->reply == AUX_TRANSACTION_REPLY_AUX_DEFER) ||
@@ -682,7 +682,7 @@ bool dce_aux_transfer_with_retries(struct ddc_service *ddc,
 			// Check whether a DEFER had occurred before the timeout.
 			// If so, treat timeout as a DEFER.
 			if (retry_on_defer) {
-				if (++aux_defer_retries >= AUX_MAX_DEFER_RETRIES)
+				if (++aux_defer_retries >= AUX_MIN_DEFER_RETRIES)
 					goto fail;
 				else if (payload->defer_delay > 0)
 					msleep(payload->defer_delay);
