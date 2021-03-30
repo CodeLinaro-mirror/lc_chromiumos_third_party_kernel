@@ -267,4 +267,4 @@ i2c_wlc: &i2c5 {
 			  "EC_IN_RW_ODL";
 };
 
-#include "sc7180-trogdor-coachz-camera.dtsi"
+#include "sc7180-trogdor-mipi-camera.dtsi"
