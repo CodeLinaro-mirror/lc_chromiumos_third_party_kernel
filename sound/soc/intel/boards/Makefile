@@ -16,6 +16,7 @@ snd-soc-sst-byt-cht-da7213-objs := bytcht_da7213.o
 snd-soc-sst-byt-cht-es8316-objs := bytcht_es8316.o
 snd-soc-sst-byt-cht-nocodec-objs := bytcht_nocodec.o
 snd-soc-sst-glk-rt5682_max98357a-objs := glk_rt5682_max98357a.o
+snd-soc-sof_cs42l42-objs := sof_cs42l42.o
 snd-soc-kbl_rt5663_max98927-objs := kbl_rt5663_max98927.o
 snd-soc-kbl_rt5663_rt5514_max98927-objs := kbl_rt5663_rt5514_max98927.o
 snd-soc-skl_rt286-objs := skl_rt286.o
@@ -25,6 +26,7 @@ snd-soc-skl_nau88l25_ssm4567-objs := skl_nau88l25_ssm4567.o
 snd-soc-cnl-rt274-objs := cnl_rt274.o
 snd-soc-cnl-max98373-objs := cnl_max98373.o
 
+obj-$(CONFIG_SND_SOC_INTEL_SOF_CS42L42_MACH) += snd-soc-sof_cs42l42.o
 obj-$(CONFIG_SND_SOC_INTEL_HASWELL_MACH) += snd-soc-sst-haswell.o
 obj-$(CONFIG_SND_SOC_INTEL_BYT_RT5640_MACH) += snd-soc-sst-byt-rt5640-mach.o
 obj-$(CONFIG_SND_SOC_INTEL_BYT_MAX98090_MACH) += snd-soc-sst-byt-max98090-mach.o
