@@ -264,17 +264,19 @@ static int get_set_conduit_method(struct device_node *np)
 static int psci_sys_reset(struct notifier_block *nb, unsigned long action,
 			  void *data)
 {
+	if (!in_panic) {
 #if IS_ENABLED(CONFIG_POWER_RESET_MSM_DOWNLOAD_MODE)
-	if (dload_imem_addr) {
-		writel(0, dload_imem_addr);
-		iounmap(dload_imem_addr);
-	}
+		if (dload_imem_addr) {
+			writel(0, dload_imem_addr);
+			iounmap(dload_imem_addr);
+		}
 #endif
 
 #if IS_ENABLED(CONFIG_POWER_RESET_MSM)
-	if (msm_sdi_disable)
-		writel(1, msm_sdi_disable);
+		if (msm_sdi_disable)
+			writel(1, msm_sdi_disable);
 #endif
+	}
 
 	flush_cache_all();
 

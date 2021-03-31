@@ -58,6 +58,9 @@ bool panic_on_taint_nousertaint = false;
 int panic_timeout = CONFIG_PANIC_TIMEOUT;
 EXPORT_SYMBOL_GPL(panic_timeout);
 
+int in_panic;
+EXPORT_SYMBOL_GPL(in_panic);
+
 #define PANIC_PRINT_TASK_INFO		0x00000001
 #define PANIC_PRINT_MEM_INFO		0x00000002
 #define PANIC_PRINT_TIMER_INFO		0x00000004
@@ -221,6 +224,8 @@ void panic(const char *fmt, ...)
 
 	if (len && buf[len - 1] == '\n')
 		buf[len - 1] = '\0';
+
+	in_panic = 1;
 
 	pr_emerg("Kernel panic - not syncing: %s\n", buf);
 #ifdef CONFIG_DEBUG_BUGVERBOSE

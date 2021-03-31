@@ -24,6 +24,7 @@ extern void (*pm_power_off_prepare)(void);
 
 #ifdef CONFIG_POWER_RESET_MSM
 extern void __iomem *msm_sdi_disable;
+extern int in_panic;
 #endif
 
 #ifdef CONFIG_POWER_RESET_MSM_DOWNLOAD_MODE
