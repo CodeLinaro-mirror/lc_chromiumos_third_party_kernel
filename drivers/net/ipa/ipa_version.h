@@ -14,10 +14,17 @@
  * it where it's needed.
  */
 enum ipa_version {
-	IPA_VERSION_3_5_1,	/* GSI version 1.3.0 */
+	IPA_VERSION_3_0,	/* GSI version 1.0 */
+	IPA_VERSION_3_1,	/* GSI version 1.1 */
+	IPA_VERSION_3_5,	/* GSI version 1.2 */
+	IPA_VERSION_3_5_1,	/* GSI version 1.3 */
 	IPA_VERSION_4_0,	/* GSI version 2.0 */
-	IPA_VERSION_4_1,	/* GSI version 2.1 */
+	IPA_VERSION_4_1,	/* GSI version 2.0 */
 	IPA_VERSION_4_2,	/* GSI version 2.2 */
+	IPA_VERSION_4_5,	/* GSI version 2.5 */
+	IPA_VERSION_4_7,	/* GSI version 2.7 */
+	IPA_VERSION_4_9,	/* GSI version 2.9 */
+	IPA_VERSION_4_11,	/* GSI version 2.11 (2.1.1) */
 };
 
 #endif /* _IPA_VERSION_H_ */

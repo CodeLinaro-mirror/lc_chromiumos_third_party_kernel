@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
 /* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019-2020 Linaro Ltd.
+ * Copyright (C) 2019-2021 Linaro Ltd.
  */
 #ifndef _IPA_TABLE_H_
 #define _IPA_TABLE_H_
@@ -19,7 +19,7 @@ struct ipa;
 /* The maximum number of route table entries (IPv4, IPv6; hashed or not) */
 #define IPA_ROUTE_COUNT_MAX	15
 
-#ifdef IPA_VALIDATE
+#ifdef IPA_VALIDATION
 
 /**
  * ipa_table_valid() - Validate route and filter table memory regions
@@ -37,7 +37,7 @@ bool ipa_table_valid(struct ipa *ipa);
  */
 bool ipa_filter_map_valid(struct ipa *ipa, u32 filter_mask);
 
-#else /* !IPA_VALIDATE */
+#else /* !IPA_VALIDATION */
 
 static inline bool ipa_table_valid(struct ipa *ipa)
 {
@@ -49,7 +49,16 @@ static inline bool ipa_filter_map_valid(struct ipa *ipa, u32 filter_mask)
 	return true;
 }
 
-#endif /* !IPA_VALIDATE */
+#endif /* !IPA_VALIDATION */
+
+/**
+ * ipa_table_hash_support() - Return true if hashed tables are supported
+ * @ipa:	IPA pointer
+ */
+static inline bool ipa_table_hash_support(struct ipa *ipa)
+{
+	return ipa->version != IPA_VERSION_4_2;
+}
 
 /**
  * ipa_table_reset() - Reset filter and route tables entries to "none"
