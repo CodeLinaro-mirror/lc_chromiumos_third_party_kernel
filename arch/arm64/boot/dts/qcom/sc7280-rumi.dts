@@ -140,7 +140,7 @@
 		vddrfa2-supply = <&vreg_s8b_1p2>; /*RFA 1p2*/
 		vddipa2p2-supply = <&vreg_s1c_2p2>; /*IPA 2p2*/
 		vddasd-supply = <&vreg_l11c_2p8>;
-		max-speed = <3000000>;
+		max-speed = <3200000>;
 	};
 
 };
