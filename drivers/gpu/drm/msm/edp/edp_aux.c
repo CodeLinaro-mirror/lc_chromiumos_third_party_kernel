@@ -11,11 +11,12 @@
 #define AUX_CMD_I2C_MAX		128
 
 #define EDP_INTR_AUX_I2C_ERR	\
-	(EDP_INTERRUPT_REG_1_WRONG_ADDR | EDP_INTERRUPT_REG_1_TIMEOUT | \
-	EDP_INTERRUPT_REG_1_NACK_DEFER | EDP_INTERRUPT_REG_1_WRONG_DATA_CNT | \
-	EDP_INTERRUPT_REG_1_I2C_NACK | EDP_INTERRUPT_REG_1_I2C_DEFER)
+	(EDP_INTR_WRONG_ADDR | EDP_INTR_TIMEOUT | \
+	EDP_INTR_NACK_DEFER | EDP_INTR_WRONG_DATA_CNT | \
+	EDP_INTR_I2C_NACK | EDP_INTR_I2C_DEFER)
+
 #define EDP_INTR_TRANS_STATUS	\
-	(EDP_INTERRUPT_REG_1_AUX_I2C_DONE | EDP_INTR_AUX_I2C_ERR)
+	(EDP_INTR_AUX_I2C_DONE | EDP_INTR_AUX_I2C_ERR)
 
 struct edp_aux {
 	void __iomem *base;
@@ -64,7 +65,7 @@ static int edp_msg_fifo_tx(struct edp_aux *aux, struct drm_dp_aux_msg *msg)
 		reg = EDP_AUX_DATA_DATA(reg); /* index = 0, write */
 		if (i == 0)
 			reg |= EDP_AUX_DATA_INDEX_WRITE;
-		edp_write(aux->base + REG_EDP_AUX_DATA, reg);
+		edp_write_aux(aux->base, REG_EDP_AUX_DATA, reg);
 	}
 
 	reg = 0; /* Transaction number is always 1 */
@@ -72,7 +73,7 @@ static int edp_msg_fifo_tx(struct edp_aux *aux, struct drm_dp_aux_msg *msg)
 		reg |= EDP_AUX_TRANS_CTRL_I2C;
 
 	reg |= EDP_AUX_TRANS_CTRL_GO;
-	edp_write(aux->base + REG_EDP_AUX_TRANS_CTRL, reg);
+	edp_write_aux(aux->base, REG_EDP_AUX_TRANS_CTRL, reg);
 
 	return 0;
 }
@@ -84,15 +85,15 @@ static int edp_msg_fifo_rx(struct edp_aux *aux, struct drm_dp_aux_msg *msg)
 	int i;
 	u32 len = msg->size;
 
-	edp_write(aux->base + REG_EDP_AUX_DATA,
+	edp_write_aux(aux->base, REG_EDP_AUX_DATA,
 		EDP_AUX_DATA_INDEX_WRITE | EDP_AUX_DATA_READ); /* index = 0 */
 
 	dp = msg->buffer;
 
 	/* discard first byte */
-	data = edp_read(aux->base + REG_EDP_AUX_DATA);
+	data = edp_read_aux(aux->base, REG_EDP_AUX_DATA);
 	for (i = 0; i < len; i++) {
-		data = edp_read(aux->base + REG_EDP_AUX_DATA);
+		data = edp_read_aux(aux->base, REG_EDP_AUX_DATA);
 		dp[i] = (u8)((data >> 8) & 0xff);
 	}
 
@@ -140,7 +141,7 @@ static ssize_t edp_aux_transfer(struct drm_dp_aux *drm_aux,
 	if (ret < 0)
 		goto unlock_exit;
 
-	DBG("wait_for_completion");
+	DRM_DEBUG_DP("wait_for_completion");
 	time_left = wait_for_completion_timeout(&aux->msg_comp,
 						msecs_to_jiffies(300));
 	if (!time_left) {
@@ -148,13 +149,13 @@ static ssize_t edp_aux_transfer(struct drm_dp_aux *drm_aux,
 		 * Clear GO and reset AUX channel
 		 * to cancel the current transaction.
 		 */
-		edp_write(aux->base + REG_EDP_AUX_TRANS_CTRL, 0);
+		edp_write_aux(aux->base, REG_EDP_AUX_TRANS_CTRL, 0);
 		msm_edp_aux_ctrl(aux, 1);
 		pr_err("%s: aux timeout,\n", __func__);
 		ret = -ETIMEDOUT;
 		goto unlock_exit;
 	}
-	DBG("completion");
+	DRM_DEBUG_DP("completion");
 
 	if (!aux->msg_err) {
 		if (read) {
@@ -190,7 +191,6 @@ void *msm_edp_aux_init(struct device *dev, void __iomem *regbase,
 	struct edp_aux *aux = NULL;
 	int ret;
 
-	DBG("");
 	aux = devm_kzalloc(dev, sizeof(*aux), GFP_KERNEL);
 	if (!aux)
 		return NULL;
@@ -225,8 +225,8 @@ void msm_edp_aux_destroy(struct device *dev, struct edp_aux *aux)
 irqreturn_t msm_edp_aux_irq(struct edp_aux *aux, u32 isr)
 {
 	if (isr & EDP_INTR_TRANS_STATUS) {
-		DBG("isr=%x", isr);
-		edp_write(aux->base + REG_EDP_AUX_TRANS_CTRL, 0);
+		DRM_DEBUG_DP("isr=%x", isr);
+		edp_write_aux(aux->base, REG_EDP_AUX_TRANS_CTRL, 0);
 
 		if (isr & EDP_INTR_AUX_I2C_ERR)
 			aux->msg_err = true;
@@ -243,22 +243,26 @@ void msm_edp_aux_ctrl(struct edp_aux *aux, int enable)
 {
 	u32 data;
 
-	DBG("enable=%d", enable);
-	data = edp_read(aux->base + REG_EDP_AUX_CTRL);
+	DRM_INFO("enable=%d", enable);
+	data = edp_read_aux(aux->base, REG_EDP_AUX_CTRL);
 
 	if (enable) {
 		data |= EDP_AUX_CTRL_RESET;
-		edp_write(aux->base + REG_EDP_AUX_CTRL, data);
+		edp_write_aux(aux->base, REG_EDP_AUX_CTRL, data);
 		/* Make sure full reset */
 		wmb();
 		usleep_range(500, 1000);
 
 		data &= ~EDP_AUX_CTRL_RESET;
+		edp_write_aux(aux->base, REG_EDP_AUX_CTRL, data);
+
+		edp_write_aux(aux->base, REG_EDP_TIMEOUT_COUNT, 0xffff);
+		edp_write_aux(aux->base, REG_EDP_AUX_LIMITS, 0xffff);
+
 		data |= EDP_AUX_CTRL_ENABLE;
-		edp_write(aux->base + REG_EDP_AUX_CTRL, data);
+		edp_write_aux(aux->base, REG_EDP_AUX_CTRL, data);
 	} else {
 		data &= ~EDP_AUX_CTRL_ENABLE;
-		edp_write(aux->base + REG_EDP_AUX_CTRL, data);
+		edp_write_aux(aux->base, REG_EDP_AUX_CTRL, data);
 	}
 }
-

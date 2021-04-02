@@ -36,7 +36,7 @@ static struct msm_edp *edp_init(struct platform_device *pdev)
 	int ret;
 
 	if (!pdev) {
-		pr_err("no eDP device\n");
+		DRM_ERROR("no eDP device\n");
 		ret = -ENXIO;
 		goto fail;
 	}
@@ -46,7 +46,7 @@ static struct msm_edp *edp_init(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto fail;
 	}
-	DBG("eDP probed=%p", edp);
+	DRM_INFO("eDP probed\n");
 
 	edp->pdev = pdev;
 	platform_set_drvdata(pdev, edp);
@@ -70,7 +70,6 @@ static int edp_bind(struct device *dev, struct device *master, void *data)
 	struct msm_drm_private *priv = drm->dev_private;
 	struct msm_edp *edp;
 
-	DBG("");
 	edp = edp_init(to_platform_device(dev));
 	if (IS_ERR(edp))
 		return PTR_ERR(edp);
@@ -84,7 +83,6 @@ static void edp_unbind(struct device *dev, struct device *master, void *data)
 	struct drm_device *drm = dev_get_drvdata(master);
 	struct msm_drm_private *priv = drm->dev_private;
 
-	DBG("");
 	if (priv->edp) {
 		edp_destroy(to_platform_device(dev));
 		priv->edp = NULL;
@@ -98,13 +96,11 @@ static const struct component_ops edp_ops = {
 
 static int edp_dev_probe(struct platform_device *pdev)
 {
-	DBG("");
 	return component_add(&pdev->dev, &edp_ops);
 }
 
 static int edp_dev_remove(struct platform_device *pdev)
 {
-	DBG("");
 	component_del(&pdev->dev, &edp_ops);
 	return 0;
 }
@@ -125,14 +121,26 @@ static struct platform_driver edp_driver = {
 
 void __init msm_edp_register(void)
 {
-	DBG("");
 	platform_driver_register(&edp_driver);
 }
 
 void __exit msm_edp_unregister(void)
 {
-	DBG("");
 	platform_driver_unregister(&edp_driver);
+}
+
+static void edp_display_set_encoder_mode(struct msm_edp *edp)
+{
+	struct msm_drm_private *priv = edp->dev->dev_private;
+	struct msm_kms *kms = priv->kms;
+
+	if (!edp->encoder_mode_set && edp->encoder &&
+				kms->funcs->set_encoder_mode) {
+		kms->funcs->set_encoder_mode(kms,
+				edp->encoder, true);
+
+		edp->encoder_mode_set = true;
+	}
 }
 
 /* Second part of initialization, the drm/kms level modeset_init */
@@ -177,6 +185,8 @@ int msm_edp_modeset_init(struct msm_edp *edp, struct drm_device *dev,
 				edp->irq, ret);
 		goto fail;
 	}
+
+	edp_display_set_encoder_mode(edp);
 
 	priv->bridges[priv->num_bridges++]       = edp->bridge;
 	priv->connectors[priv->num_connectors++] = edp->connector;

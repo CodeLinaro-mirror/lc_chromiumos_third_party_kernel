@@ -4,22 +4,26 @@
  */
 
 #include <linux/clk.h>
+#include <linux/rational.h>
 #include <linux/gpio/consumer.h>
 #include <linux/regulator/consumer.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_edid.h>
+#include <linux/delay.h>
 
 #include "edp.h"
 #include "edp.xml.h"
 
-#define VDDA_UA_ON_LOAD		100000	/* uA units */
-#define VDDA_UA_OFF_LOAD	100	/* uA units */
+#define VDDA_UA_ON_LOAD		21800	/* uA units */
+#define VDDA_UA_OFF_LOAD	4	/* uA units */
+#define LVL_UA_ON_LOAD		36000	/* uA units */
+#define LVL_UA_OFF_LOAD		32	/* uA units */
 
 #define DPCD_LINK_VOLTAGE_MAX		4
 #define DPCD_LINK_PRE_EMPHASIS_MAX	4
 
-#define EDP_LINK_BW_MAX		DP_LINK_BW_2_7
+#define EDP_LINK_BW_MAX		DP_LINK_BW_5_4
 
 /* Link training return value */
 #define EDP_TRAIN_FAIL		-1
@@ -38,38 +42,61 @@
 
 #define EDP_BACKLIGHT_MAX	255
 
-#define EDP_INTR_STATUS1	\
-	(EDP_INTERRUPT_REG_1_HPD | EDP_INTERRUPT_REG_1_AUX_I2C_DONE | \
-	EDP_INTERRUPT_REG_1_WRONG_ADDR | EDP_INTERRUPT_REG_1_TIMEOUT | \
-	EDP_INTERRUPT_REG_1_NACK_DEFER | EDP_INTERRUPT_REG_1_WRONG_DATA_CNT | \
-	EDP_INTERRUPT_REG_1_I2C_NACK | EDP_INTERRUPT_REG_1_I2C_DEFER | \
-	EDP_INTERRUPT_REG_1_PLL_UNLOCK | EDP_INTERRUPT_REG_1_AUX_ERROR)
-#define EDP_INTR_MASK1	(EDP_INTR_STATUS1 << 2)
-#define EDP_INTR_STATUS2	\
-	(EDP_INTERRUPT_REG_2_READY_FOR_VIDEO | \
-	EDP_INTERRUPT_REG_2_IDLE_PATTERNs_SENT | \
-	EDP_INTERRUPT_REG_2_FRAME_END | EDP_INTERRUPT_REG_2_CRC_UPDATED)
-#define EDP_INTR_MASK2	(EDP_INTR_STATUS2 << 2)
+#define EDP_INTERRUPT_STATUS_ACK_SHIFT	1
+#define EDP_INTERRUPT_STATUS_MASK_SHIFT	2
+
+#define EDP_INTERRUPT_STATUS1 \
+	(EDP_INTR_AUX_I2C_DONE| \
+	EDP_INTR_WRONG_ADDR | EDP_INTR_TIMEOUT | \
+	EDP_INTR_NACK_DEFER | EDP_INTR_WRONG_DATA_CNT | \
+	EDP_INTR_I2C_NACK | EDP_INTR_I2C_DEFER | \
+	EDP_INTR_PLL_UNLOCKED | EDP_INTR_AUX_ERROR)
+
+#define EDP_INTERRUPT_STATUS1_ACK \
+	(EDP_INTERRUPT_STATUS1 << EDP_INTERRUPT_STATUS_ACK_SHIFT)
+#define EDP_INTERRUPT_STATUS1_MASK \
+	(EDP_INTERRUPT_STATUS1 << EDP_INTERRUPT_STATUS_MASK_SHIFT)
+
+#define EDP_INTERRUPT_STATUS2 \
+	(EDP_INTR_READY_FOR_VIDEO | EDP_INTR_IDLE_PATTERN_SENT | \
+	EDP_INTR_FRAME_END | EDP_INTR_CRC_UPDATED | EDP_INTR_SST_FIFO_UNDERFLOW)
+
+#define EDP_INTERRUPT_STATUS2_ACK \
+	(EDP_INTERRUPT_STATUS2 << EDP_INTERRUPT_STATUS_ACK_SHIFT)
+#define EDP_INTERRUPT_STATUS2_MASK \
+	(EDP_INTERRUPT_STATUS2 << EDP_INTERRUPT_STATUS_MASK_SHIFT)
+
+enum edp_pm_type {
+	EDP_CORE_PM,
+	EDP_CTRL_PM,
+	EDP_STREAM_PM,
+	EDP_PHY_PM,
+	EDP_MAX_PM
+};
 
 struct edp_ctrl {
 	struct platform_device *pdev;
 
 	void __iomem *base;
+	void __iomem *phy_base;
 
 	/* regulators */
+	//struct regulator_bulk_data supplies[4];
 	struct regulator *vdda_vreg;	/* 1.8 V */
 	struct regulator *lvl_vreg;
 
 	/* clocks */
-	struct clk *aux_clk;
-	struct clk *pixel_clk;
-	struct clk *ahb_clk;
-	struct clk *link_clk;
-	struct clk *mdp_core_clk;
+	struct dss_module_power mp[EDP_MAX_PM];
+	bool core_clks_on;
+	bool link_clks_on;
+	bool stream_clks_on;
 
 	/* gpios */
 	struct gpio_desc *panel_en_gpio;
 	struct gpio_desc *panel_hpd_gpio;
+	struct gpio_desc *panel_bklt1_gpio;
+	struct gpio_desc *panel_bklt2_gpio;
+	struct gpio_desc *panel_pwm_gpio;
 
 	/* completion and mutex */
 	struct completion idle_comp;
@@ -85,6 +112,7 @@ struct edp_ctrl {
 
 	bool edp_connected;
 	bool power_on;
+	bool core_initialized;
 
 	/* edid raw data */
 	struct edid *edid;
@@ -99,193 +127,318 @@ struct edp_ctrl {
 	u8 lane_cnt;
 	u8 v_level;
 	u8 p_level;
+	struct edp_phy_opts edp_opts;
 
 	/* Timing status */
 	u8 interlaced;
 	u32 pixel_rate; /* in kHz */
 	u32 color_depth;
+	struct drm_display_mode drm_mode;
 
 	struct edp_aux *aux;
 	struct edp_phy *phy;
 };
 
-struct edp_pixel_clk_div {
-	u32 rate; /* in kHz */
-	u32 m;
-	u32 n;
+struct edp_ctrl_tu {
+	u32 rate;
+	u32 edp_tu;
+	u32 valid_boundary;
+	u32 valid_boundary2;
 };
 
-#define EDP_PIXEL_CLK_NUM 8
-static const struct edp_pixel_clk_div clk_divs[2][EDP_PIXEL_CLK_NUM] = {
-	{ /* Link clock = 162MHz, source clock = 810MHz */
-		{119000, 31,  211}, /* WSXGA+ 1680x1050@60Hz CVT */
-		{130250, 32,  199}, /* UXGA 1600x1200@60Hz CVT */
-		{148500, 11,  60},  /* FHD 1920x1080@60Hz */
-		{154000, 50,  263}, /* WUXGA 1920x1200@60Hz CVT */
-		{209250, 31,  120}, /* QXGA 2048x1536@60Hz CVT */
-		{268500, 119, 359}, /* WQXGA 2560x1600@60Hz CVT */
-		{138530, 33,  193}, /* AUO B116HAN03.0 Panel */
-		{141400, 48,  275}, /* AUO B133HTN01.2 Panel */
-	},
-	{ /* Link clock = 270MHz, source clock = 675MHz */
-		{119000, 52,  295}, /* WSXGA+ 1680x1050@60Hz CVT */
-		{130250, 11,  57},  /* UXGA 1600x1200@60Hz CVT */
-		{148500, 11,  50},  /* FHD 1920x1080@60Hz */
-		{154000, 47,  206}, /* WUXGA 1920x1200@60Hz CVT */
-		{209250, 31,  100}, /* QXGA 2048x1536@60Hz CVT */
-		{268500, 107, 269}, /* WQXGA 2560x1600@60Hz CVT */
-		{138530, 63,  307}, /* AUO B116HAN03.0 Panel */
-		{141400, 53,  253}, /* AUO B133HTN01.2 Panel */
-	},
+#define MAX_TU_TABLE 1
+static const struct edp_ctrl_tu tu[MAX_TU_TABLE] = {
+	{285550, 0x20, 0x13001B, 0x920035}, /* 1920x1080@120Hz CVT RB1 */
 };
+
+static inline bool edp_check_prefix(const char *clk_prefix,
+						const char *clk_name)
+{
+	return !strncmp(clk_prefix, clk_name, strlen(clk_prefix));
+}
+
+static int edp_init_clk_data(struct edp_ctrl *ctrl)
+{
+	int num_clk, i, rc;
+	int core_clk_count = 0, ctrl_clk_count = 0, stream_clk_count = 0;
+	const char *clk_name;
+	struct device *dev = &ctrl->pdev->dev;
+	struct dss_module_power *core_power = &ctrl->mp[EDP_CORE_PM];
+	struct dss_module_power *ctrl_power = &ctrl->mp[EDP_CTRL_PM];
+	struct dss_module_power *stream_power = &ctrl->mp[EDP_STREAM_PM];
+
+	num_clk = of_property_count_strings(dev->of_node, "clock-names");
+	if (num_clk <= 0) {
+		DRM_ERROR("no clocks are defined\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < num_clk; i++) {
+		rc = of_property_read_string_index(dev->of_node,
+				"clock-names", i, &clk_name);
+		if (rc < 0)
+			return rc;
+
+		if (edp_check_prefix("core", clk_name))
+			core_clk_count++;
+
+		if (edp_check_prefix("ctrl", clk_name))
+			ctrl_clk_count++;
+
+		if (edp_check_prefix("stream", clk_name))
+			stream_clk_count++;
+	}
+
+	/* Initialize the CORE power module */
+	if (core_clk_count == 0) {
+		DRM_ERROR("no core clocks are defined\n");
+		return -EINVAL;
+	}
+
+	core_power->num_clk = core_clk_count;
+	core_power->clk_config = devm_kzalloc(dev,
+			sizeof(struct dss_clk) * core_power->num_clk,
+			GFP_KERNEL);
+	if (!core_power->clk_config)
+		return -EINVAL;
+
+	/* Initialize the CTRL power module */
+	if (ctrl_clk_count == 0) {
+		DRM_ERROR("no ctrl clocks are defined\n");
+		return -EINVAL;
+	}
+
+	ctrl_power->num_clk = ctrl_clk_count;
+	ctrl_power->clk_config = devm_kzalloc(dev,
+			sizeof(struct dss_clk) * ctrl_power->num_clk,
+			GFP_KERNEL);
+	if (!ctrl_power->clk_config) {
+		ctrl_power->num_clk = 0;
+		return -EINVAL;
+	}
+
+	/* Initialize the STREAM power module */
+	if (stream_clk_count == 0) {
+		DRM_ERROR("no stream (pixel) clocks are defined\n");
+		return -EINVAL;
+	}
+
+	stream_power->num_clk = stream_clk_count;
+	stream_power->clk_config = devm_kzalloc(dev,
+			sizeof(struct dss_clk) * stream_power->num_clk,
+			GFP_KERNEL);
+	if (!stream_power->clk_config) {
+		stream_power->num_clk = 0;
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 static int edp_clk_init(struct edp_ctrl *ctrl)
 {
-	struct platform_device *pdev = ctrl->pdev;
-	int ret;
+	int rc = 0, i = 0;
+	int num_clk = 0;
+	int core_clk_index = 0, ctrl_clk_index = 0, stream_clk_index = 0;
+	int core_clk_count = 0, ctrl_clk_count = 0, stream_clk_count = 0;
+	const char *clk_name;
+	struct device *dev = &ctrl->pdev->dev;
+	struct dss_module_power *core_power = &ctrl->mp[EDP_CORE_PM];
+	struct dss_module_power *ctrl_power = &ctrl->mp[EDP_CTRL_PM];
+	struct dss_module_power *stream_power = &ctrl->mp[EDP_STREAM_PM];
 
-	ctrl->aux_clk = msm_clk_get(pdev, "core");
-	if (IS_ERR(ctrl->aux_clk)) {
-		ret = PTR_ERR(ctrl->aux_clk);
-		pr_err("%s: Can't find core clock, %d\n", __func__, ret);
-		ctrl->aux_clk = NULL;
-		return ret;
+	rc =  edp_init_clk_data(ctrl);
+	if (rc) {
+		DRM_ERROR("failed to initialize power data %d\n", rc);
+		return -EINVAL;
 	}
 
-	ctrl->pixel_clk = msm_clk_get(pdev, "pixel");
-	if (IS_ERR(ctrl->pixel_clk)) {
-		ret = PTR_ERR(ctrl->pixel_clk);
-		pr_err("%s: Can't find pixel clock, %d\n", __func__, ret);
-		ctrl->pixel_clk = NULL;
-		return ret;
+	core_clk_count = core_power->num_clk;
+	ctrl_clk_count = ctrl_power->num_clk;
+	stream_clk_count = stream_power->num_clk;
+
+	num_clk = core_clk_count + ctrl_clk_count + stream_clk_count;
+
+	for (i = 0; i < num_clk; i++) {
+		rc = of_property_read_string_index(dev->of_node, "clock-names",
+				i, &clk_name);
+		if (rc) {
+			DRM_ERROR("error reading clock-names %d\n", rc);
+			return rc;
+		}
+		if (edp_check_prefix("core", clk_name) &&
+				core_clk_index < core_clk_count) {
+			struct dss_clk *clk =
+				&core_power->clk_config[core_clk_index];
+			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			clk->type = DSS_CLK_AHB;
+			core_clk_index++;
+		} else if (edp_check_prefix("stream", clk_name) &&
+				stream_clk_index < stream_clk_count) {
+			struct dss_clk *clk =
+				&stream_power->clk_config[stream_clk_index];
+			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			clk->type = DSS_CLK_PCLK;
+			stream_clk_index++;
+		} else if (edp_check_prefix("ctrl", clk_name) &&
+			   ctrl_clk_index < ctrl_clk_count) {
+			struct dss_clk *clk =
+				&ctrl_power->clk_config[ctrl_clk_index];
+			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			ctrl_clk_index++;
+			if (edp_check_prefix("ctrl_link", clk_name) ||
+			    edp_check_prefix("stream_pixel", clk_name))
+				clk->type = DSS_CLK_PCLK;
+			else
+				clk->type = DSS_CLK_AHB;
+		}
 	}
 
-	ctrl->ahb_clk = msm_clk_get(pdev, "iface");
-	if (IS_ERR(ctrl->ahb_clk)) {
-		ret = PTR_ERR(ctrl->ahb_clk);
-		pr_err("%s: Can't find iface clock, %d\n", __func__, ret);
-		ctrl->ahb_clk = NULL;
-		return ret;
+	DRM_DEBUG_DP("clock parsing successful\n");
+
+	rc = msm_dss_get_clk(dev, core_power->clk_config, core_power->num_clk);
+	if (rc) {
+		DRM_ERROR("failed to get core clk. err=%d\n", rc);
+		return rc;
 	}
 
-	ctrl->link_clk = msm_clk_get(pdev, "link");
-	if (IS_ERR(ctrl->link_clk)) {
-		ret = PTR_ERR(ctrl->link_clk);
-		pr_err("%s: Can't find link clock, %d\n", __func__, ret);
-		ctrl->link_clk = NULL;
-		return ret;
+	rc = msm_dss_get_clk(dev, ctrl_power->clk_config, ctrl_power->num_clk);
+	if (rc) {
+		DRM_ERROR("failed to get ctrl clk. err=%d\n", rc);
+		msm_dss_put_clk(core_power->clk_config, core_power->num_clk);
+		return -ENODEV;
 	}
 
-	/* need mdp core clock to receive irq */
-	ctrl->mdp_core_clk = msm_clk_get(pdev, "mdp_core");
-	if (IS_ERR(ctrl->mdp_core_clk)) {
-		ret = PTR_ERR(ctrl->mdp_core_clk);
-		pr_err("%s: Can't find mdp_core clock, %d\n", __func__, ret);
-		ctrl->mdp_core_clk = NULL;
-		return ret;
+	rc = msm_dss_get_clk(dev, stream_power->clk_config, stream_power->num_clk);
+	if (rc) {
+		DRM_ERROR("failed to get strem clk. err=%d\n", rc);
+		msm_dss_put_clk(core_power->clk_config, core_power->num_clk);
+		return -ENODEV;
 	}
 
 	return 0;
 }
 
-static int edp_clk_enable(struct edp_ctrl *ctrl, u32 clk_mask)
+static void edp_clk_deinit(struct edp_ctrl *ctrl)
 {
-	int ret;
+	struct dss_module_power *core_power, *ctrl_power, *stream_power;
 
-	DBG("mask=%x", clk_mask);
-	/* ahb_clk should be enabled first */
-	if (clk_mask & EDP_CLK_MASK_AHB) {
-		ret = clk_prepare_enable(ctrl->ahb_clk);
-		if (ret) {
-			pr_err("%s: Failed to enable ahb clk\n", __func__);
-			goto f0;
-		}
-	}
-	if (clk_mask & EDP_CLK_MASK_AUX) {
-		ret = clk_set_rate(ctrl->aux_clk, 19200000);
-		if (ret) {
-			pr_err("%s: Failed to set rate aux clk\n", __func__);
-			goto f1;
-		}
-		ret = clk_prepare_enable(ctrl->aux_clk);
-		if (ret) {
-			pr_err("%s: Failed to enable aux clk\n", __func__);
-			goto f1;
-		}
-	}
-	/* Need to set rate and enable link_clk prior to pixel_clk */
-	if (clk_mask & EDP_CLK_MASK_LINK) {
-		DBG("edp->link_clk, set_rate %ld",
-				(unsigned long)ctrl->link_rate * 27000000);
-		ret = clk_set_rate(ctrl->link_clk,
-				(unsigned long)ctrl->link_rate * 27000000);
-		if (ret) {
-			pr_err("%s: Failed to set rate to link clk\n",
-				__func__);
-			goto f2;
-		}
+	core_power = &ctrl->mp[EDP_CORE_PM];
+	ctrl_power = &ctrl->mp[EDP_CTRL_PM];
+	stream_power = &ctrl->mp[EDP_STREAM_PM];
 
-		ret = clk_prepare_enable(ctrl->link_clk);
-		if (ret) {
-			pr_err("%s: Failed to enable link clk\n", __func__);
-			goto f2;
-		}
+	if (!core_power || !ctrl_power || !stream_power) {
+		DRM_ERROR("invalid power_data\n");
 	}
-	if (clk_mask & EDP_CLK_MASK_PIXEL) {
-		DBG("edp->pixel_clk, set_rate %ld",
-				(unsigned long)ctrl->pixel_rate * 1000);
-		ret = clk_set_rate(ctrl->pixel_clk,
-				(unsigned long)ctrl->pixel_rate * 1000);
-		if (ret) {
-			pr_err("%s: Failed to set rate to pixel clk\n",
-				__func__);
-			goto f3;
-		}
 
-		ret = clk_prepare_enable(ctrl->pixel_clk);
-		if (ret) {
-			pr_err("%s: Failed to enable pixel clk\n", __func__);
-			goto f3;
+	msm_dss_put_clk(ctrl_power->clk_config, ctrl_power->num_clk);
+	msm_dss_put_clk(core_power->clk_config, core_power->num_clk);
+	msm_dss_put_clk(stream_power->clk_config, stream_power->num_clk);
+}
+
+static int edp_clk_set_rate(struct edp_ctrl *ctrl,
+		enum edp_pm_type module, bool enable)
+{
+	int rc = 0;
+	struct dss_module_power *mp = &ctrl->mp[module];
+
+	if (enable) {
+		rc = msm_dss_clk_set_rate(mp->clk_config, mp->num_clk);
+		if (rc) {
+			DRM_ERROR("failed to set clks rate.\n");
+			return rc;
 		}
 	}
-	if (clk_mask & EDP_CLK_MASK_MDP_CORE) {
-		ret = clk_prepare_enable(ctrl->mdp_core_clk);
-		if (ret) {
-			pr_err("%s: Failed to enable mdp core clk\n", __func__);
-			goto f4;
-		}
+
+	rc = msm_dss_enable_clk(mp->clk_config, mp->num_clk, enable);
+	if (rc) {
+		DRM_ERROR("failed to %d clks, err: %d\n", enable, rc);
+		return rc;
 	}
 
 	return 0;
-
-f4:
-	if (clk_mask & EDP_CLK_MASK_PIXEL)
-		clk_disable_unprepare(ctrl->pixel_clk);
-f3:
-	if (clk_mask & EDP_CLK_MASK_LINK)
-		clk_disable_unprepare(ctrl->link_clk);
-f2:
-	if (clk_mask & EDP_CLK_MASK_AUX)
-		clk_disable_unprepare(ctrl->aux_clk);
-f1:
-	if (clk_mask & EDP_CLK_MASK_AHB)
-		clk_disable_unprepare(ctrl->ahb_clk);
-f0:
-	return ret;
 }
 
-static void edp_clk_disable(struct edp_ctrl *ctrl, u32 clk_mask)
+int edp_clk_enable(struct edp_ctrl *ctrl,
+		enum edp_pm_type pm_type, bool enable)
 {
-	if (clk_mask & EDP_CLK_MASK_MDP_CORE)
-		clk_disable_unprepare(ctrl->mdp_core_clk);
-	if (clk_mask & EDP_CLK_MASK_PIXEL)
-		clk_disable_unprepare(ctrl->pixel_clk);
-	if (clk_mask & EDP_CLK_MASK_LINK)
-		clk_disable_unprepare(ctrl->link_clk);
-	if (clk_mask & EDP_CLK_MASK_AUX)
-		clk_disable_unprepare(ctrl->aux_clk);
-	if (clk_mask & EDP_CLK_MASK_AHB)
-		clk_disable_unprepare(ctrl->ahb_clk);
+	int rc = 0;
+
+	if (pm_type != EDP_CORE_PM && pm_type != EDP_CTRL_PM &&
+			pm_type != EDP_STREAM_PM) {
+		DRM_ERROR("unsupported power module\n");
+		return -EINVAL;
+	}
+
+	if (enable) {
+		if (pm_type == EDP_CORE_PM && ctrl->core_clks_on) {
+			DRM_DEBUG_DP("core clks already enabled\n");
+			return 0;
+		}
+
+		if (pm_type == EDP_CTRL_PM && ctrl->link_clks_on) {
+			DRM_DEBUG_DP("links clks already enabled\n");
+			return 0;
+		}
+
+		if (pm_type == EDP_STREAM_PM && ctrl->stream_clks_on) {
+			DRM_DEBUG_DP("pixel clks already enabled\n");
+			return 0;
+		}
+
+		if ((pm_type == EDP_CTRL_PM) && (!ctrl->core_clks_on)) {
+			DRM_DEBUG_DP("Enable core clks before link clks\n");
+
+			rc = edp_clk_set_rate(ctrl, EDP_CORE_PM, enable);
+			if (rc) {
+				DRM_ERROR("fail to enable clks: core. err=%d\n",
+					rc);
+				return rc;
+			}
+			ctrl->core_clks_on = true;
+		}
+	}
+
+	rc = edp_clk_set_rate(ctrl, pm_type, enable);
+	if (rc) {
+		DRM_ERROR("failed to '%s' clks. err=%d\n",
+			enable ? "enable" : "disable", rc);
+			return rc;
+	}
+
+	if (pm_type == EDP_CORE_PM)
+		ctrl->core_clks_on = enable;
+	else if (pm_type == EDP_STREAM_PM)
+		ctrl->stream_clks_on = enable;
+	else
+		ctrl->link_clks_on = enable;
+
+	DRM_DEBUG_DP("stream_clks:%s link_clks:%s core_clks:%s\n",
+		ctrl->stream_clks_on ? "on" : "off",
+		ctrl->link_clks_on ? "on" : "off",
+		ctrl->core_clks_on ? "on" : "off");
+
+	return 0;
+}
+
+static void edp_ctrl_set_clock_rate(struct edp_ctrl *ctrl,
+			enum edp_pm_type module, char *name, unsigned long rate)
+{
+	u32 num = ctrl->mp[module].num_clk;
+	struct dss_clk *cfg = ctrl->mp[module].clk_config;
+
+	while (num && strcmp(cfg->clk_name, name)) {
+		num--;
+		cfg++;
+	}
+
+	DRM_DEBUG_DP("setting rate=%lu on clk=%s\n", rate, name);
+
+	if (num)
+		cfg->rate = rate;
+	else
+		DRM_ERROR("%s clock doesn't exit to set rate %lu\n",
+				name, rate);
 }
 
 static int edp_regulator_init(struct edp_ctrl *ctrl)
@@ -293,11 +446,10 @@ static int edp_regulator_init(struct edp_ctrl *ctrl)
 	struct device *dev = &ctrl->pdev->dev;
 	int ret;
 
-	DBG("");
 	ctrl->vdda_vreg = devm_regulator_get(dev, "vdda");
 	ret = PTR_ERR_OR_ZERO(ctrl->vdda_vreg);
 	if (ret) {
-		pr_err("%s: Could not get vdda reg, ret = %d\n", __func__,
+		DRM_ERROR("%s: Could not get vdda reg, ret = %d\n", __func__,
 				ret);
 		ctrl->vdda_vreg = NULL;
 		return ret;
@@ -305,7 +457,7 @@ static int edp_regulator_init(struct edp_ctrl *ctrl)
 	ctrl->lvl_vreg = devm_regulator_get(dev, "lvl-vdd");
 	ret = PTR_ERR_OR_ZERO(ctrl->lvl_vreg);
 	if (ret) {
-		pr_err("%s: Could not get lvl-vdd reg, ret = %d\n", __func__,
+		DRM_ERROR("%s: Could not get lvl-vdd reg, ret = %d\n", __func__,
 				ret);
 		ctrl->lvl_vreg = NULL;
 		return ret;
@@ -320,23 +472,28 @@ static int edp_regulator_enable(struct edp_ctrl *ctrl)
 
 	ret = regulator_set_load(ctrl->vdda_vreg, VDDA_UA_ON_LOAD);
 	if (ret < 0) {
-		pr_err("%s: vdda_vreg set regulator mode failed.\n", __func__);
+		DRM_ERROR("%s: vdda_vreg set regulator mode failed.\n", __func__);
 		goto vdda_set_fail;
 	}
 
 	ret = regulator_enable(ctrl->vdda_vreg);
 	if (ret) {
-		pr_err("%s: Failed to enable vdda_vreg regulator.\n", __func__);
+		DRM_ERROR("%s: Failed to enable vdda_vreg regulator.\n", __func__);
 		goto vdda_enable_fail;
+	}
+
+	ret = regulator_set_load(ctrl->lvl_vreg, LVL_UA_ON_LOAD);
+	if (ret < 0) {
+		DRM_ERROR("%s: vdda_vreg set regulator mode failed.\n", __func__);
+		goto vdda_set_fail;
 	}
 
 	ret = regulator_enable(ctrl->lvl_vreg);
 	if (ret) {
-		pr_err("Failed to enable lvl-vdd reg regulator, %d", ret);
+		DRM_ERROR("Failed to enable lvl-vdd reg regulator, %d", ret);
 		goto lvl_enable_fail;
 	}
 
-	DBG("exit");
 	return 0;
 
 lvl_enable_fail:
@@ -350,6 +507,7 @@ vdda_set_fail:
 static void edp_regulator_disable(struct edp_ctrl *ctrl)
 {
 	regulator_disable(ctrl->lvl_vreg);
+	regulator_set_load(ctrl->lvl_vreg, LVL_UA_OFF_LOAD);
 	regulator_disable(ctrl->vdda_vreg);
 	regulator_set_load(ctrl->vdda_vreg, VDDA_UA_OFF_LOAD);
 }
@@ -363,19 +521,45 @@ static int edp_gpio_config(struct edp_ctrl *ctrl)
 	if (IS_ERR(ctrl->panel_hpd_gpio)) {
 		ret = PTR_ERR(ctrl->panel_hpd_gpio);
 		ctrl->panel_hpd_gpio = NULL;
-		pr_err("%s: cannot get panel-hpd-gpios, %d\n", __func__, ret);
+		DRM_ERROR("%s: cannot get panel-hpd-gpios, %d\n", __func__, ret);
 		return ret;
 	}
 
-	ctrl->panel_en_gpio = devm_gpiod_get(dev, "panel-en", GPIOD_OUT_LOW);
+	ctrl->panel_en_gpio = devm_gpiod_get(dev, "panel-en", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctrl->panel_en_gpio)) {
 		ret = PTR_ERR(ctrl->panel_en_gpio);
 		ctrl->panel_en_gpio = NULL;
-		pr_err("%s: cannot get panel-en-gpios, %d\n", __func__, ret);
+		DRM_ERROR("%s: cannot get panel-en-gpios, %d\n", __func__, ret);
 		return ret;
 	}
 
-	DBG("gpio on");
+	ctrl->panel_bklt1_gpio = devm_gpiod_get(dev, "panel-bklt1",
+			GPIOD_OUT_HIGH);
+	if (IS_ERR(ctrl->panel_bklt1_gpio)) {
+		ret = PTR_ERR(ctrl->panel_bklt1_gpio);
+		ctrl->panel_bklt1_gpio = NULL;
+		DRM_ERROR("%s: cannot get panel-bklt1-gpios, %d\n", __func__, ret);
+		return ret;
+	}
+
+	ctrl->panel_bklt2_gpio = devm_gpiod_get(dev, "panel-bklt2",
+			GPIOD_OUT_HIGH);
+	if (IS_ERR(ctrl->panel_bklt2_gpio)) {
+		ret = PTR_ERR(ctrl->panel_bklt2_gpio);
+		ctrl->panel_bklt2_gpio = NULL;
+		DRM_ERROR("%s: cannot get panel-bklt2-gpios, %d\n", __func__, ret);
+		return ret;
+	}
+
+	ctrl->panel_pwm_gpio = devm_gpiod_get(dev, "panel-pwm", GPIOD_OUT_HIGH);
+	if (IS_ERR(ctrl->panel_pwm_gpio)) {
+		ret = PTR_ERR(ctrl->panel_pwm_gpio);
+		ctrl->panel_pwm_gpio = NULL;
+		DRM_ERROR("%s: cannot get panel-pwm-gpios, %d\n", __func__, ret);
+		return ret;
+	}
+
+	DRM_INFO("gpio on");
 
 	return 0;
 }
@@ -384,26 +568,26 @@ static void edp_ctrl_irq_enable(struct edp_ctrl *ctrl, int enable)
 {
 	unsigned long flags;
 
-	DBG("%d", enable);
 	spin_lock_irqsave(&ctrl->irq_lock, flags);
 	if (enable) {
-		edp_write(ctrl->base + REG_EDP_INTERRUPT_REG_1, EDP_INTR_MASK1);
-		edp_write(ctrl->base + REG_EDP_INTERRUPT_REG_2, EDP_INTR_MASK2);
+		edp_write_ahb(ctrl->base, REG_EDP_INTR_STATUS,
+				EDP_INTERRUPT_STATUS1_MASK);
+		edp_write_ahb(ctrl->base, REG_EDP_INTR_STATUS2,
+				EDP_INTERRUPT_STATUS2_MASK);
 	} else {
-		edp_write(ctrl->base + REG_EDP_INTERRUPT_REG_1, 0x0);
-		edp_write(ctrl->base + REG_EDP_INTERRUPT_REG_2, 0x0);
+		edp_write_ahb(ctrl->base, REG_EDP_INTR_STATUS,
+				EDP_INTERRUPT_STATUS1_ACK);
+		edp_write_ahb(ctrl->base, REG_EDP_INTR_STATUS2,
+				EDP_INTERRUPT_STATUS2_ACK);
 	}
 	spin_unlock_irqrestore(&ctrl->irq_lock, flags);
-	DBG("exit");
 }
 
 static void edp_fill_link_cfg(struct edp_ctrl *ctrl)
 {
 	u32 prate;
-	u32 lrate;
 	u32 bpp;
 	u8 max_lane = drm_dp_max_lane_count(ctrl->dpcd);
-	u8 lane;
 
 	prate = ctrl->pixel_rate;
 	bpp = ctrl->color_depth * 3;
@@ -413,52 +597,51 @@ static void edp_fill_link_cfg(struct edp_ctrl *ctrl)
 	 * so that we can do rate down shift during link training.
 	 */
 	ctrl->link_rate = ctrl->dpcd[DP_MAX_LINK_RATE];
-
-	prate *= bpp;
-	prate /= 8; /* in kByte */
-
-	lrate = 270000; /* in kHz */
-	lrate *= ctrl->link_rate;
-	lrate /= 10; /* in kByte, 10 bits --> 8 bits */
-
-	for (lane = 1; lane <= max_lane; lane <<= 1) {
-		if (lrate >= prate)
-			break;
-		lrate <<= 1;
-	}
-
-	ctrl->lane_cnt = lane;
-	DBG("rate=%d lane=%d", ctrl->link_rate, ctrl->lane_cnt);
+	ctrl->lane_cnt = max_lane;
+	DRM_INFO("rate=%d lane=%d", ctrl->link_rate, ctrl->lane_cnt);
 }
 
 static void edp_config_ctrl(struct edp_ctrl *ctrl)
 {
-	u32 data;
-	enum edp_color_depth depth;
+	u32 config = 0, depth = 0;
+	u8 *dpcd = ctrl->dpcd;
 
-	data = EDP_CONFIGURATION_CTRL_LANES(ctrl->lane_cnt - 1);
+	/* Default-> LSCLK DIV: 1/4 LCLK  */
+	config |= (2 << EDP_CONFIGURATION_CTRL_LSCLK_DIV_SHIFT);
 
-	if (drm_dp_enhanced_frame_cap(ctrl->dpcd))
-		data |= EDP_CONFIGURATION_CTRL_ENHANCED_FRAMING;
+	/* Scrambler reset enable */
+	if (dpcd[DP_EDP_CONFIGURATION_CAP] & DP_ALTERNATE_SCRAMBLER_RESET_CAP)
+		config |= EDP_CONFIGURATION_CTRL_ASSR;
 
-	depth = EDP_6BIT;
 	if (ctrl->color_depth == 8)
 		depth = EDP_8BIT;
+	else if (ctrl->color_depth == 10)
+		depth = EDP_10BIT;
+	else if (ctrl->color_depth == 12)
+		depth = EDP_12BIT;
+	else if (ctrl->color_depth == 16)
+		depth = EDP_16BIT;
+	config |= depth << EDP_CONFIGURATION_CTRL_BPC_SHIFT;
 
-	data |= EDP_CONFIGURATION_CTRL_COLOR(depth);
+	/* Num of Lanes */
+	config |= ((ctrl->lane_cnt - 1)
+			<< EDP_CONFIGURATION_CTRL_NUM_OF_LANES_SHIFT);
 
-	if (!ctrl->interlaced)	/* progressive */
-		data |= EDP_CONFIGURATION_CTRL_PROGRESSIVE;
+	if (drm_dp_enhanced_frame_cap(dpcd))
+		config |= EDP_CONFIGURATION_CTRL_ENHANCED_FRAMING;
 
-	data |= (EDP_CONFIGURATION_CTRL_SYNC_CLK |
-		EDP_CONFIGURATION_CTRL_STATIC_MVID);
+	config |= EDP_CONFIGURATION_CTRL_P_INTERLACED; /* progressive video */
 
-	edp_write(ctrl->base + REG_EDP_CONFIGURATION_CTRL, data);
+	/* sync clock & static Mvid */
+	config |= EDP_CONFIGURATION_CTRL_STATIC_DYNAMIC_CN;
+	config |= EDP_CONFIGURATION_CTRL_SYNC_ASYNC_CLK;
+
+	edp_write_link(ctrl->base, REG_EDP_CONFIGURATION_CTRL, config);
 }
 
 static void edp_state_ctrl(struct edp_ctrl *ctrl, u32 state)
 {
-	edp_write(ctrl->base + REG_EDP_STATE_CTRL, state);
+	edp_write_link(ctrl->base, REG_EDP_STATE_CTRL, state);
 	/* Make sure H/W status is set */
 	wmb();
 }
@@ -480,9 +663,9 @@ static int edp_lane_set_write(struct edp_ctrl *ctrl,
 	for (i = 0; i < 4; i++)
 		buf[i] = voltage_level | pre_emphasis_level;
 
-	DBG("%s: p|v=0x%x", __func__, voltage_level | pre_emphasis_level);
+	DRM_INFO("%s: p|v=0x%x", __func__, voltage_level | pre_emphasis_level);
 	if (drm_dp_dpcd_write(ctrl->drm_aux, 0x103, buf, 4) < 4) {
-		pr_err("%s: Set sw/pe to panel failed\n", __func__);
+		DRM_ERROR("%s: Set sw/pe to panel failed\n", __func__);
 		return -ENOLINK;
 	}
 
@@ -493,10 +676,10 @@ static int edp_train_pattern_set_write(struct edp_ctrl *ctrl, u8 pattern)
 {
 	u8 p = pattern;
 
-	DBG("pattern=%x", p);
+	DRM_DEBUG_DP("pattern=%x", p);
 	if (drm_dp_dpcd_write(ctrl->drm_aux,
 				DP_TRAINING_PATTERN_SET, &p, 1) < 1) {
-		pr_err("%s: Set training pattern to panel failed\n", __func__);
+		DRM_ERROR("%s: Set training pattern to panel failed\n", __func__);
 		return -ENOLINK;
 	}
 
@@ -513,7 +696,7 @@ static void edp_sink_train_set_adjust(struct edp_ctrl *ctrl,
 	/* use the max level across lanes */
 	for (i = 0; i < ctrl->lane_cnt; i++) {
 		data = drm_dp_get_adjust_request_voltage(link_status, i);
-		DBG("lane=%d req_voltage_swing=0x%x", i, data);
+		DRM_DEBUG_DP("lane=%d req_voltage_swing=0x%x", i, data);
 		if (max < data)
 			max = data;
 	}
@@ -524,13 +707,13 @@ static void edp_sink_train_set_adjust(struct edp_ctrl *ctrl,
 	max = 0;
 	for (i = 0; i < ctrl->lane_cnt; i++) {
 		data = drm_dp_get_adjust_request_pre_emphasis(link_status, i);
-		DBG("lane=%d req_pre_emphasis=0x%x", i, data);
+		DRM_DEBUG_DP("lane=%d req_pre_emphasis=0x%x", i, data);
 		if (max < data)
 			max = data;
 	}
 
 	ctrl->p_level = max >> DP_TRAIN_PRE_EMPHASIS_SHIFT;
-	DBG("v_level=%d, p_level=%d", ctrl->v_level, ctrl->p_level);
+	DRM_DEBUG_DP("v_level=%d, p_level=%d", ctrl->v_level, ctrl->p_level);
 }
 
 static void edp_host_train_set(struct edp_ctrl *ctrl, u32 train)
@@ -539,51 +722,25 @@ static void edp_host_train_set(struct edp_ctrl *ctrl, u32 train)
 	u32 data;
 	u32 shift = train - 1;
 
-	DBG("train=%d", train);
+	DRM_DEBUG_DP("train=%d", train);
 
-	edp_state_ctrl(ctrl, EDP_STATE_CTRL_TRAIN_PATTERN_1 << shift);
+	edp_state_ctrl(ctrl, EDP_STATE_CTRL_LINK_TRAINING_PATTERN1 << shift);
 	while (--cnt) {
-		data = edp_read(ctrl->base + REG_EDP_MAINLINK_READY);
+		data = edp_read_link(ctrl->base, REG_EDP_MAINLINK_READY);
 		if (data & (EDP_MAINLINK_READY_TRAIN_PATTERN_1_READY << shift))
 			break;
 	}
 
 	if (cnt == 0)
-		pr_err("%s: set link_train=%d failed\n", __func__, train);
+		DRM_DEBUG_DP("%s: set link_train=%d failed\n", __func__, train);
 }
 
-static const u8 vm_pre_emphasis[4][4] = {
-	{0x03, 0x06, 0x09, 0x0C},	/* pe0, 0 db */
-	{0x03, 0x06, 0x09, 0xFF},	/* pe1, 3.5 db */
-	{0x03, 0x06, 0xFF, 0xFF},	/* pe2, 6.0 db */
-	{0x03, 0xFF, 0xFF, 0xFF}	/* pe3, 9.5 db */
-};
-
-/* voltage swing, 0.2v and 1.0v are not support */
-static const u8 vm_voltage_swing[4][4] = {
-	{0x14, 0x18, 0x1A, 0x1E}, /* sw0, 0.4v  */
-	{0x18, 0x1A, 0x1E, 0xFF}, /* sw1, 0.6 v */
-	{0x1A, 0x1E, 0xFF, 0xFF}, /* sw1, 0.8 v */
-	{0x1E, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2 v, optional */
-};
-
-static int edp_voltage_pre_emphasise_set(struct edp_ctrl *ctrl)
+static int edp_voltage_pre_emphasis_set(struct edp_ctrl *ctrl)
 {
-	u32 value0;
-	u32 value1;
+	DRM_DEBUG_DP("v=%d p=%d", ctrl->v_level, ctrl->p_level);
 
-	DBG("v=%d p=%d", ctrl->v_level, ctrl->p_level);
-
-	value0 = vm_pre_emphasis[(int)(ctrl->v_level)][(int)(ctrl->p_level)];
-	value1 = vm_voltage_swing[(int)(ctrl->v_level)][(int)(ctrl->p_level)];
-
-	/* Configure host and panel only if both values are allowed */
-	if (value0 != 0xFF && value1 != 0xFF) {
-		msm_edp_phy_vm_pe_cfg(ctrl->phy, value0, value1);
-		return edp_lane_set_write(ctrl, ctrl->v_level, ctrl->p_level);
-	}
-
-	return -EINVAL;
+	msm_edp_phy_config(ctrl->phy, ctrl->v_level, ctrl->p_level);
+	return edp_lane_set_write(ctrl, ctrl->v_level, ctrl->p_level);
 }
 
 static int edp_start_link_train_1(struct edp_ctrl *ctrl)
@@ -594,12 +751,11 @@ static int edp_start_link_train_1(struct edp_ctrl *ctrl)
 	int ret;
 	int rlen;
 
-	DBG("");
-
 	edp_host_train_set(ctrl, DP_TRAINING_PATTERN_1);
-	ret = edp_voltage_pre_emphasise_set(ctrl);
+	ret = edp_voltage_pre_emphasis_set(ctrl);
 	if (ret)
 		return ret;
+
 	ret = edp_train_pattern_set_write(ctrl,
 			DP_TRAINING_PATTERN_1 | DP_RECOVERED_CLOCK_OUT_EN);
 	if (ret)
@@ -612,7 +768,7 @@ static int edp_start_link_train_1(struct edp_ctrl *ctrl)
 
 		rlen = drm_dp_dpcd_read_link_status(ctrl->drm_aux, link_status);
 		if (rlen < DP_LINK_STATUS_SIZE) {
-			pr_err("%s: read link status failed\n", __func__);
+			DRM_ERROR("%s: read link status failed\n", __func__);
 			return -ENOLINK;
 		}
 		if (drm_dp_clock_recovery_ok(link_status, ctrl->lane_cnt)) {
@@ -637,7 +793,7 @@ static int edp_start_link_train_1(struct edp_ctrl *ctrl)
 		}
 
 		edp_sink_train_set_adjust(ctrl, link_status);
-		ret = edp_voltage_pre_emphasise_set(ctrl);
+		ret = edp_voltage_pre_emphasis_set(ctrl);
 		if (ret)
 			return ret;
 	}
@@ -652,10 +808,8 @@ static int edp_start_link_train_2(struct edp_ctrl *ctrl)
 	int ret;
 	int rlen;
 
-	DBG("");
-
 	edp_host_train_set(ctrl, DP_TRAINING_PATTERN_2);
-	ret = edp_voltage_pre_emphasise_set(ctrl);
+	ret = edp_voltage_pre_emphasis_set(ctrl);
 	if (ret)
 		return ret;
 
@@ -669,7 +823,7 @@ static int edp_start_link_train_2(struct edp_ctrl *ctrl)
 
 		rlen = drm_dp_dpcd_read_link_status(ctrl->drm_aux, link_status);
 		if (rlen < DP_LINK_STATUS_SIZE) {
-			pr_err("%s: read link status failed\n", __func__);
+			DRM_ERROR("%s: read link status failed\n", __func__);
 			return -ENOLINK;
 		}
 		if (drm_dp_channel_eq_ok(link_status, ctrl->lane_cnt)) {
@@ -684,7 +838,7 @@ static int edp_start_link_train_2(struct edp_ctrl *ctrl)
 		}
 
 		edp_sink_train_set_adjust(ctrl, link_status);
-		ret = edp_voltage_pre_emphasise_set(ctrl);
+		ret = edp_voltage_pre_emphasis_set(ctrl);
 		if (ret)
 			return ret;
 	}
@@ -721,7 +875,7 @@ static int edp_link_rate_down_shift(struct edp_ctrl *ctrl)
 		lrate /= 10; /* kByte, 10 bits --> 8 bits */
 		lrate *= lane;
 
-		DBG("new lrate=%u prate=%u(kHz) rate=%d lane=%d p=%u b=%d",
+		DRM_DEBUG_DP("new lrate=%u prate=%u(kHz) rate=%d lane=%d p=%u b=%d",
 			lrate, prate, rate, lane,
 			ctrl->pixel_rate,
 			bpp);
@@ -729,7 +883,7 @@ static int edp_link_rate_down_shift(struct edp_ctrl *ctrl)
 		if (lrate > prate) {
 			ctrl->link_rate = rate;
 			ctrl->lane_cnt = lane;
-			DBG("new rate=%d %d", rate, lane);
+			DRM_DEBUG_DP("new rate=%d %d", rate, lane);
 			return 0;
 		}
 	}
@@ -750,10 +904,9 @@ static int edp_clear_training_pattern(struct edp_ctrl *ctrl)
 
 static int edp_do_link_train(struct edp_ctrl *ctrl)
 {
-	u8 values[2];
+	u8 values[2], edp_config = 0;
 	int ret;
 
-	DBG("");
 	/*
 	 * Set the current link rate and lane cnt to panel. They may have been
 	 * adjusted and the values are different from them in DPCD CAP
@@ -762,14 +915,19 @@ static int edp_do_link_train(struct edp_ctrl *ctrl)
 	values[1] = ctrl->link_rate;
 
 	if (drm_dp_enhanced_frame_cap(ctrl->dpcd))
-		values[1] |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
+		values[0] |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
 
-	if (drm_dp_dpcd_write(ctrl->drm_aux, DP_LINK_BW_SET, values,
-			      sizeof(values)) < 0)
+	if (drm_dp_dpcd_write(ctrl->drm_aux, DP_LINK_BW_SET, &values[1], 1) < 0)
 		return EDP_TRAIN_FAIL;
 
+	drm_dp_dpcd_write(ctrl->drm_aux, DP_LANE_COUNT_SET, &values[0], 1);
 	ctrl->v_level = 0; /* start from default level */
 	ctrl->p_level = 0;
+
+	values[0] = DP_SPREAD_AMP_0_5;
+	values[1] = 1;
+	drm_dp_dpcd_write(ctrl->drm_aux, DP_DOWNSPREAD_CTRL, &values[0], 1);
+	drm_dp_dpcd_write(ctrl->drm_aux, DP_MAIN_LINK_CHANNEL_CODING_SET, &values[1], 1);
 
 	edp_state_ctrl(ctrl, 0);
 	if (edp_clear_training_pattern(ctrl))
@@ -778,16 +936,16 @@ static int edp_do_link_train(struct edp_ctrl *ctrl)
 	ret = edp_start_link_train_1(ctrl);
 	if (ret < 0) {
 		if (edp_link_rate_down_shift(ctrl) == 0) {
-			DBG("link reconfig");
+			DRM_ERROR("link reconfig");
 			ret = EDP_TRAIN_RECONFIG;
 			goto clear;
 		} else {
-			pr_err("%s: Training 1 failed", __func__);
+			DRM_ERROR("%s: Training 1 failed", __func__);
 			ret = EDP_TRAIN_FAIL;
 			goto clear;
 		}
 	}
-	DBG("Training 1 completed successfully");
+	DRM_INFO("Training 1 completed successfully");
 
 	edp_state_ctrl(ctrl, 0);
 	if (edp_clear_training_pattern(ctrl))
@@ -796,16 +954,20 @@ static int edp_do_link_train(struct edp_ctrl *ctrl)
 	ret = edp_start_link_train_2(ctrl);
 	if (ret < 0) {
 		if (edp_link_rate_down_shift(ctrl) == 0) {
-			DBG("link reconfig");
+			DRM_ERROR("link reconfig");
 			ret = EDP_TRAIN_RECONFIG;
 			goto clear;
 		} else {
-			pr_err("%s: Training 2 failed", __func__);
+			DRM_ERROR("%s: Training 2 failed", __func__);
 			ret = EDP_TRAIN_FAIL;
 			goto clear;
 		}
 	}
-	DBG("Training 2 completed successfully");
+	DRM_INFO("Training 2 completed successfully");
+
+	edp_config = DP_ALTERNATE_SCRAMBLER_RESET_ENABLE;
+	drm_dp_dpcd_write(ctrl->drm_aux, DP_EDP_CONFIGURATION_SET,
+			&edp_config, 1);
 
 	edp_state_ctrl(ctrl, EDP_STATE_CTRL_SEND_VIDEO);
 clear:
@@ -814,20 +976,13 @@ clear:
 	return ret;
 }
 
-static void edp_clock_synchrous(struct edp_ctrl *ctrl, int sync)
+static void edp_ctrl_config_misc(struct edp_ctrl *ctrl)
 {
-	u32 data;
-	enum edp_color_depth depth;
+	u32 misc_val;
+	enum edp_color_depth depth = EDP_8BIT;
 
-	data = edp_read(ctrl->base + REG_EDP_MISC1_MISC0);
+	misc_val = edp_read_link(ctrl->base, REG_EDP_MISC1_MISC0);
 
-	if (sync)
-		data |= EDP_MISC1_MISC0_SYNC;
-	else
-		data &= ~EDP_MISC1_MISC0_SYNC;
-
-	/* only legacy rgb mode supported */
-	depth = EDP_6BIT; /* Default */
 	if (ctrl->color_depth == 8)
 		depth = EDP_8BIT;
 	else if (ctrl->color_depth == 10)
@@ -837,88 +992,194 @@ static void edp_clock_synchrous(struct edp_ctrl *ctrl, int sync)
 	else if (ctrl->color_depth == 16)
 		depth = EDP_16BIT;
 
-	data |= EDP_MISC1_MISC0_COLOR(depth);
+	/* clear bpp bits */
+	misc_val &= ~(0x07 << EDP_MISC0_TEST_BITS_DEPTH_SHIFT);
+	misc_val |= depth << EDP_MISC0_TEST_BITS_DEPTH_SHIFT;
 
-	edp_write(ctrl->base + REG_EDP_MISC1_MISC0, data);
+	/* Configure clock to synchronous mode */
+	misc_val |= EDP_MISC0_SYNCHRONOUS_CLK;
+
+	DRM_DEBUG_DP("misc settings = 0x%x\n", misc_val);
+	edp_write_link(ctrl->base, REG_EDP_MISC1_MISC0, misc_val);
 }
 
-static int edp_sw_mvid_nvid(struct edp_ctrl *ctrl, u32 m, u32 n)
+static void edp_ctrl_config_msa(struct edp_ctrl *ctrl)
 {
-	u32 n_multi, m_multi = 5;
+	u32 pixel_m, pixel_n;
+	u32 mvid, nvid, pixel_div = 0, dispcc_input_rate;
+	unsigned long den, num;
+	u8 rate = ctrl->link_rate;
+	u32 stream_rate_khz = ctrl->pixel_rate;
 
-	if (ctrl->link_rate == DP_LINK_BW_1_62) {
-		n_multi = 1;
-	} else if (ctrl->link_rate == DP_LINK_BW_2_7) {
-		n_multi = 2;
-	} else {
-		pr_err("%s: Invalid link rate, %d\n", __func__,
-			ctrl->link_rate);
-		return -EINVAL;
+	if (rate == DP_LINK_BW_8_1)
+		pixel_div = 6;
+	else if (rate == DP_LINK_BW_1_62 || rate == DP_LINK_BW_2_7)
+		pixel_div = 2;
+	else if (rate == DP_LINK_BW_5_4)
+		pixel_div = 4;
+	else
+		DRM_ERROR("Invalid pixel mux divider\n");
+
+	dispcc_input_rate = (drm_dp_bw_code_to_link_rate(rate) * 10) / pixel_div;
+
+	rational_best_approximation(dispcc_input_rate, stream_rate_khz,
+			(unsigned long)(1 << 16) - 1,
+			(unsigned long)(1 << 16) - 1, &den, &num);
+
+	den = ~(den - num);
+	den = den & 0xFFFF;
+	pixel_m = num;
+	pixel_n = den;
+
+	mvid = (pixel_m & 0xFFFF) * 5;
+	nvid = (0xFFFF & (~pixel_n)) + (pixel_m & 0xFFFF);
+
+	if (DP_LINK_BW_5_4 == rate)
+		nvid *= 2;
+
+	if (DP_LINK_BW_8_1 == rate)
+		nvid *= 3;
+
+	DRM_DEBUG_DP("mvid=0x%x, nvid=0x%x\n", mvid, nvid);
+	edp_write_link(ctrl->base, REG_EDP_SOFTWARE_MVID, mvid);
+	edp_write_link(ctrl->base, REG_EDP_SOFTWARE_NVID, nvid);
+	edp_write_p0(ctrl->base, REG_EDP_DSC_DTO, 0x0);
+}
+
+static void edp_ctrl_config_TU(struct edp_ctrl *ctrl)
+{
+	int i;
+
+	for (i = 0; i < MAX_TU_TABLE; i++)
+	{
+		if (tu[i].rate == ctrl->pixel_rate)
+			break;
 	}
 
-	edp_write(ctrl->base + REG_EDP_SOFTWARE_MVID, m * m_multi);
-	edp_write(ctrl->base + REG_EDP_SOFTWARE_NVID, n * n_multi);
+	edp_write_link(ctrl->base, REG_EDP_VALID_BOUNDARY,
+			tu[i].valid_boundary);
 
-	return 0;
+	edp_write_link(ctrl->base, REG_EDP_TU, tu[i].edp_tu);
+
+	edp_write_link(ctrl->base, REG_EDP_VALID_BOUNDARY_2,
+			tu[i].valid_boundary2);
+}
+
+static void edp_ctrl_timing_cfg(struct edp_ctrl *ctrl)
+{
+	struct drm_display_mode *mode = &ctrl->drm_mode;
+	u32 hstart_from_sync, vstart_from_sync;
+	u32 data;
+
+	/* Configure eDP timing to HW */
+	edp_write_link(ctrl->base, REG_EDP_TOTAL_HOR_VER,
+		EDP_TOTAL_HOR_VER_HORIZ(mode->htotal) |
+		EDP_TOTAL_HOR_VER_VERT(mode->vtotal));
+
+	vstart_from_sync = mode->vtotal - mode->vsync_start;
+	hstart_from_sync = mode->htotal - mode->hsync_start;
+	edp_write_link(ctrl->base, REG_EDP_START_HOR_VER_FROM_SYNC,
+		EDP_START_HOR_VER_FROM_SYNC_HORIZ(hstart_from_sync) |
+		EDP_START_HOR_VER_FROM_SYNC_VERT(vstart_from_sync));
+
+	data = EDP_HSYNC_VSYNC_WIDTH_POLARITY_VERT(
+			mode->vsync_end - mode->vsync_start);
+	data |= EDP_HSYNC_VSYNC_WIDTH_POLARITY_HORIZ(
+			mode->hsync_end - mode->hsync_start);
+	if (mode->flags & DRM_MODE_FLAG_NVSYNC)
+		data |= EDP_HSYNC_VSYNC_WIDTH_POLARITY_NVSYNC;
+	if (mode->flags & DRM_MODE_FLAG_NHSYNC)
+		data |= EDP_HSYNC_VSYNC_WIDTH_POLARITY_NHSYNC;
+	edp_write_link(ctrl->base, REG_EDP_HSYNC_VSYNC_WIDTH_POLARITY, data);
+
+	edp_write_link(ctrl->base, REG_EDP_ACTIVE_HOR_VER,
+		EDP_ACTIVE_HOR_VER_HORIZ(mode->hdisplay) |
+		EDP_ACTIVE_HOR_VER_VERT(mode->vdisplay));
+
 }
 
 static void edp_mainlink_ctrl(struct edp_ctrl *ctrl, int enable)
 {
 	u32 data = 0;
 
-	edp_write(ctrl->base + REG_EDP_MAINLINK_CTRL, EDP_MAINLINK_CTRL_RESET);
+	edp_write_link(ctrl->base, REG_EDP_MAINLINK_CTRL, EDP_MAINLINK_CTRL_RESET);
 	/* Make sure fully reset */
 	wmb();
 	usleep_range(500, 1000);
 
-	if (enable)
-		data |= EDP_MAINLINK_CTRL_ENABLE;
+	if (enable) {
+		data = (EDP_MAINLINK_CTRL_ENABLE |
+				EDP_MAINLINK_FB_BOUNDARY_SEL);
+	}
 
-	edp_write(ctrl->base + REG_EDP_MAINLINK_CTRL, data);
+	edp_write_link(ctrl->base, REG_EDP_MAINLINK_CTRL, data);
+}
+
+static void edp_ctrl_phy_enable(struct edp_ctrl *ctrl, int enable)
+{
+	if (enable) {
+		edp_write_ahb(ctrl->base, REG_EDP_PHY_CTRL,
+			EDP_PHY_CTRL_SW_RESET | EDP_PHY_CTRL_SW_RESET_PLL);
+		usleep_range(1000, 1100);
+		edp_write_ahb(ctrl->base, REG_EDP_PHY_CTRL, 0);
+
+		msm_edp_phy_enable(ctrl->phy);
+	}
 }
 
 static void edp_ctrl_phy_aux_enable(struct edp_ctrl *ctrl, int enable)
 {
+	if (ctrl->core_initialized == enable)
+		return;
+
 	if (enable) {
+		pm_runtime_get_sync(&ctrl->pdev->dev);
 		edp_regulator_enable(ctrl);
-		edp_clk_enable(ctrl, EDP_CLK_MASK_AUX_CHAN);
-		msm_edp_phy_ctrl(ctrl->phy, 1);
+		edp_clk_enable(ctrl, EDP_CORE_PM, 1);
+		edp_ctrl_phy_enable(ctrl, 1);
 		msm_edp_aux_ctrl(ctrl->aux, 1);
-		gpiod_set_value(ctrl->panel_en_gpio, 1);
+		ctrl->core_initialized =  true;
 	} else {
-		gpiod_set_value(ctrl->panel_en_gpio, 0);
 		msm_edp_aux_ctrl(ctrl->aux, 0);
-		msm_edp_phy_ctrl(ctrl->phy, 0);
-		edp_clk_disable(ctrl, EDP_CLK_MASK_AUX_CHAN);
+		edp_clk_enable(ctrl, EDP_CORE_PM, 0);
 		edp_regulator_disable(ctrl);
+		pm_runtime_put_sync(&ctrl->pdev->dev);
+		ctrl->core_initialized =  false;
 	}
 }
 
 static void edp_ctrl_link_enable(struct edp_ctrl *ctrl, int enable)
 {
-	u32 m, n;
+	unsigned long link_rate;
+
+	link_rate = drm_dp_max_link_rate(ctrl->dpcd);
+	ctrl->edp_opts.link_rate = link_rate;
+	ctrl->edp_opts.lanes = drm_dp_max_lane_count(ctrl->dpcd);
 
 	if (enable) {
+		msm_edp_phy_vm_pe_init(ctrl->phy, &ctrl->edp_opts);
+		msm_edp_phy_power_on(ctrl->phy);
+
 		/* Enable link channel clocks */
-		edp_clk_enable(ctrl, EDP_CLK_MASK_LINK_CHAN);
+		edp_ctrl_set_clock_rate(ctrl, EDP_CTRL_PM, "ctrl_link",
+				link_rate * 1000);
+		edp_clk_enable(ctrl, EDP_CTRL_PM, 1);
 
-		msm_edp_phy_lane_power_ctrl(ctrl->phy, true, ctrl->lane_cnt);
+		edp_ctrl_set_clock_rate(ctrl, EDP_STREAM_PM, "stream_pixel",
+				ctrl->pixel_rate * 1000);
+		edp_clk_enable(ctrl, EDP_STREAM_PM, 1);
 
-		msm_edp_phy_vm_pe_init(ctrl->phy);
-
-		/* Make sure phy is programed */
-		wmb();
-		msm_edp_phy_ready(ctrl->phy);
-
-		edp_config_ctrl(ctrl);
-		msm_edp_ctrl_pixel_clock_valid(ctrl, ctrl->pixel_rate, &m, &n);
-		edp_sw_mvid_nvid(ctrl, m, n);
 		edp_mainlink_ctrl(ctrl, 1);
+		edp_config_ctrl(ctrl);
+		edp_ctrl_config_misc(ctrl);
+		edp_ctrl_timing_cfg(ctrl);
+		edp_ctrl_config_msa(ctrl);
+		edp_ctrl_config_TU(ctrl);
+
 	} else {
 		edp_mainlink_ctrl(ctrl, 0);
-
-		msm_edp_phy_lane_power_ctrl(ctrl->phy, false, 0);
-		edp_clk_disable(ctrl, EDP_CLK_MASK_LINK_CHAN);
+		edp_clk_enable(ctrl, EDP_STREAM_PM, 0);
+		edp_clk_enable(ctrl, EDP_CTRL_PM, 0);
 	}
 }
 
@@ -936,15 +1197,14 @@ train_start:
 		/* Re-configure main link */
 		edp_ctrl_irq_enable(ctrl, 0);
 		edp_ctrl_link_enable(ctrl, 0);
-		msm_edp_phy_ctrl(ctrl->phy, 0);
 
 		/* Make sure link is fully disabled */
 		wmb();
 		usleep_range(500, 1000);
 
-		msm_edp_phy_ctrl(ctrl->phy, 1);
-		edp_ctrl_link_enable(ctrl, 1);
+		edp_ctrl_phy_enable(ctrl, 1);
 		edp_ctrl_irq_enable(ctrl, 1);
+		edp_ctrl_link_enable(ctrl, 1);
 		goto train_start;
 	}
 
@@ -961,14 +1221,14 @@ static void edp_ctrl_on_worker(struct work_struct *work)
 	mutex_lock(&ctrl->dev_mutex);
 
 	if (ctrl->power_on) {
-		DBG("already on");
+		DRM_INFO("already on");
 		goto unlock_ret;
 	}
 
 	edp_ctrl_phy_aux_enable(ctrl, 1);
+	edp_ctrl_irq_enable(ctrl, 1);
 	edp_ctrl_link_enable(ctrl, 1);
 
-	edp_ctrl_irq_enable(ctrl, 1);
 
 	/* DP_SET_POWER register is only available on DPCD v1.1 and later */
 	if (ctrl->dpcd[DP_DPCD_REV] >= 0x11) {
@@ -998,7 +1258,7 @@ static void edp_ctrl_on_worker(struct work_struct *work)
 	if (ret != EDP_TRAIN_SUCCESS)
 		goto fail;
 
-	DBG("DONE");
+	DRM_INFO("DONE");
 	goto unlock_ret;
 
 fail:
@@ -1019,17 +1279,18 @@ static void edp_ctrl_off_worker(struct work_struct *work)
 	mutex_lock(&ctrl->dev_mutex);
 
 	if (!ctrl->power_on) {
-		DBG("already off");
+		DRM_INFO("already off");
 		goto unlock_ret;
 	}
 
 	reinit_completion(&ctrl->idle_comp);
+
 	edp_state_ctrl(ctrl, EDP_STATE_CTRL_PUSH_IDLE);
 
 	time_left = wait_for_completion_timeout(&ctrl->idle_comp,
 						msecs_to_jiffies(500));
 	if (!time_left)
-		DBG("%s: idle pattern timedout\n", __func__);
+		DRM_ERROR("%s: idle pattern timedout\n", __func__);
 
 	edp_state_ctrl(ctrl, 0);
 
@@ -1064,39 +1325,35 @@ irqreturn_t msm_edp_ctrl_irq(struct edp_ctrl *ctrl)
 	u32 isr1, isr2, mask1, mask2;
 	u32 ack;
 
-	DBG("");
 	spin_lock(&ctrl->irq_lock);
-	isr1 = edp_read(ctrl->base + REG_EDP_INTERRUPT_REG_1);
-	isr2 = edp_read(ctrl->base + REG_EDP_INTERRUPT_REG_2);
+	isr1 = edp_read_ahb(ctrl->base, REG_EDP_INTR_STATUS);
+	isr2 = edp_read_ahb(ctrl->base, REG_EDP_INTR_STATUS2);
 
-	mask1 = isr1 & EDP_INTR_MASK1;
-	mask2 = isr2 & EDP_INTR_MASK2;
+	mask1 = isr1 & EDP_INTERRUPT_STATUS1_MASK;
+	mask2 = isr2 & EDP_INTERRUPT_STATUS2_MASK;
 
 	isr1 &= ~mask1;	/* remove masks bit */
 	isr2 &= ~mask2;
 
-	DBG("isr=%x mask=%x isr2=%x mask2=%x",
+	DRM_DEBUG_DP("isr=%x mask=%x isr2=%x mask2=%x",
 			isr1, mask1, isr2, mask2);
 
-	ack = isr1 & EDP_INTR_STATUS1;
+	ack = isr1 & EDP_INTERRUPT_STATUS1;
 	ack <<= 1;	/* ack bits */
 	ack |= mask1;
-	edp_write(ctrl->base + REG_EDP_INTERRUPT_REG_1, ack);
+	edp_write_ahb(ctrl->base, REG_EDP_INTR_STATUS, ack);
 
-	ack = isr2 & EDP_INTR_STATUS2;
+	ack = isr2 & EDP_INTERRUPT_STATUS2;
 	ack <<= 1;	/* ack bits */
 	ack |= mask2;
-	edp_write(ctrl->base + REG_EDP_INTERRUPT_REG_2, ack);
+	edp_write_ahb(ctrl->base, REG_EDP_INTR_STATUS2, ack);
 	spin_unlock(&ctrl->irq_lock);
 
-	if (isr1 & EDP_INTERRUPT_REG_1_HPD)
-		DBG("edp_hpd");
+	if (isr2 & EDP_INTR_READY_FOR_VIDEO)
+		DRM_INFO("edp_video_ready");
 
-	if (isr2 & EDP_INTERRUPT_REG_2_READY_FOR_VIDEO)
-		DBG("edp_video_ready");
-
-	if (isr2 & EDP_INTERRUPT_REG_2_IDLE_PATTERNs_SENT) {
-		DBG("idle_patterns_sent");
+	if (isr2 & EDP_INTR_IDLE_PATTERN_SENT) {
+		DRM_INFO("idle_patterns_sent");
 		complete(&ctrl->idle_comp);
 	}
 
@@ -1120,7 +1377,7 @@ int msm_edp_ctrl_init(struct msm_edp *edp)
 	int ret;
 
 	if (!edp) {
-		pr_err("%s: edp is NULL!\n", __func__);
+		DRM_ERROR("%s: edp is NULL!\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1131,41 +1388,46 @@ int msm_edp_ctrl_init(struct msm_edp *edp)
 	edp->ctrl = ctrl;
 	ctrl->pdev = edp->pdev;
 
-	ctrl->base = msm_ioremap(ctrl->pdev, "edp", "eDP");
+	ctrl->base = msm_ioremap(ctrl->pdev, "edp_ctrl", "eDP_CTRL");
 	if (IS_ERR(ctrl->base))
 		return PTR_ERR(ctrl->base);
+
+	ctrl->phy_base = msm_ioremap(ctrl->pdev, "edp_phy", "eDP_PHY");
+	if (IS_ERR(ctrl->phy_base))
+		return PTR_ERR(ctrl->phy_base);
 
 	/* Get regulator, clock, gpio, pwm */
 	ret = edp_regulator_init(ctrl);
 	if (ret) {
-		pr_err("%s:regulator init fail\n", __func__);
+		DRM_ERROR("%s:regulator init fail\n", __func__);
 		return ret;
 	}
 	ret = edp_clk_init(ctrl);
 	if (ret) {
-		pr_err("%s:clk init fail\n", __func__);
+		DRM_ERROR("%s:clk init fail\n", __func__);
 		return ret;
 	}
 	ret = edp_gpio_config(ctrl);
 	if (ret) {
-		pr_err("%s:failed to configure GPIOs: %d", __func__, ret);
+		DRM_ERROR("%s:failed to configure GPIOs: %d", __func__, ret);
 		return ret;
 	}
 
 	/* Init aux and phy */
 	ctrl->aux = msm_edp_aux_init(dev, ctrl->base, &ctrl->drm_aux);
 	if (!ctrl->aux || !ctrl->drm_aux) {
-		pr_err("%s:failed to init aux\n", __func__);
+		DRM_ERROR("%s:failed to init aux\n", __func__);
 		return -ENOMEM;
 	}
 
-	ctrl->phy = msm_edp_phy_init(dev, ctrl->base);
+	ctrl->phy = msm_edp_phy_init(dev, ctrl->phy_base, &ctrl->edp_opts);
 	if (!ctrl->phy) {
-		pr_err("%s:failed to init phy\n", __func__);
+		DRM_ERROR("%s:failed to init phy\n", __func__);
 		ret = -ENOMEM;
 		goto err_destory_aux;
 	}
 
+	pm_runtime_enable(dev);
 	spin_lock_init(&ctrl->irq_lock);
 	mutex_init(&ctrl->dev_mutex);
 	init_completion(&ctrl->idle_comp);
@@ -1199,6 +1461,8 @@ void msm_edp_ctrl_destroy(struct edp_ctrl *ctrl)
 		ctrl->aux = NULL;
 	}
 
+	edp_clk_deinit(ctrl);
+
 	kfree(ctrl->edid);
 	ctrl->edid = NULL;
 
@@ -1208,7 +1472,6 @@ void msm_edp_ctrl_destroy(struct edp_ctrl *ctrl)
 bool msm_edp_ctrl_panel_connected(struct edp_ctrl *ctrl)
 {
 	mutex_lock(&ctrl->dev_mutex);
-	DBG("connect status = %d", ctrl->edp_connected);
 	if (ctrl->edp_connected) {
 		mutex_unlock(&ctrl->dev_mutex);
 		return true;
@@ -1221,18 +1484,20 @@ bool msm_edp_ctrl_panel_connected(struct edp_ctrl *ctrl)
 
 	if (drm_dp_dpcd_read(ctrl->drm_aux, DP_DPCD_REV, ctrl->dpcd,
 				DP_RECEIVER_CAP_SIZE) < DP_RECEIVER_CAP_SIZE) {
-		pr_err("%s: AUX channel is NOT ready\n", __func__);
+		DRM_ERROR("%s: AUX channel is NOT ready\n", __func__);
 		memset(ctrl->dpcd, 0, DP_RECEIVER_CAP_SIZE);
+
+		if (!ctrl->power_on) {
+			edp_ctrl_irq_enable(ctrl, 0);
+			edp_ctrl_phy_aux_enable(ctrl, 0);
+		}
+
 	} else {
 		ctrl->edp_connected = true;
 	}
 
-	if (!ctrl->power_on) {
-		edp_ctrl_irq_enable(ctrl, 0);
-		edp_ctrl_phy_aux_enable(ctrl, 0);
-	}
 
-	DBG("exit: connect status=%d", ctrl->edp_connected);
+	DRM_INFO("connect status=%d", ctrl->edp_connected);
 
 	mutex_unlock(&ctrl->dev_mutex);
 
@@ -1248,128 +1513,74 @@ int msm_edp_ctrl_get_panel_info(struct edp_ctrl *ctrl,
 
 	if (ctrl->edid) {
 		if (edid) {
-			DBG("Just return edid buffer");
+			DRM_DEBUG_DP("Just return edid buffer");
 			*edid = ctrl->edid;
 		}
 		goto unlock_ret;
 	}
 
-	if (!ctrl->power_on) {
+	if (!ctrl->power_on && !ctrl->edp_connected) {
 		edp_ctrl_phy_aux_enable(ctrl, 1);
 		edp_ctrl_irq_enable(ctrl, 1);
 	}
 
 	/* Initialize link rate as panel max link rate */
 	ctrl->link_rate = ctrl->dpcd[DP_MAX_LINK_RATE];
+ 
 
 	ctrl->edid = drm_get_edid(connector, &ctrl->drm_aux->ddc);
 	if (!ctrl->edid) {
-		pr_err("%s: edid read fail\n", __func__);
-		goto disable_ret;
+		DRM_ERROR("%s: edid read fail\n", __func__);
+		if (!ctrl->power_on) {
+			edp_ctrl_irq_enable(ctrl, 0);
+			edp_ctrl_phy_aux_enable(ctrl, 0);
+		}
+		goto unlock_ret;
 	}
 
 	if (edid)
 		*edid = ctrl->edid;
 
-disable_ret:
-	if (!ctrl->power_on) {
-		edp_ctrl_irq_enable(ctrl, 0);
-		edp_ctrl_phy_aux_enable(ctrl, 0);
-	}
 unlock_ret:
 	mutex_unlock(&ctrl->dev_mutex);
 	return ret;
 }
 
-int msm_edp_ctrl_timing_cfg(struct edp_ctrl *ctrl,
+int msm_edp_ctrl_mode_set(struct edp_ctrl *ctrl,
 				const struct drm_display_mode *mode,
 				const struct drm_display_info *info)
 {
-	u32 hstart_from_sync, vstart_from_sync;
-	u32 data;
-	int ret = 0;
-
-	mutex_lock(&ctrl->dev_mutex);
 	/*
 	 * Need to keep color depth, pixel rate and
 	 * interlaced information in ctrl context
 	 */
 	ctrl->color_depth = info->bpc;
 	ctrl->pixel_rate = mode->clock;
+
+	memcpy(&ctrl->drm_mode, mode, sizeof(*mode));
+
 	ctrl->interlaced = !!(mode->flags & DRM_MODE_FLAG_INTERLACE);
 
 	/* Fill initial link config based on passed in timing */
 	edp_fill_link_cfg(ctrl);
 
-	if (edp_clk_enable(ctrl, EDP_CLK_MASK_AHB)) {
-		pr_err("%s, fail to prepare enable ahb clk\n", __func__);
-		ret = -EINVAL;
-		goto unlock_ret;
-	}
-	edp_clock_synchrous(ctrl, 1);
-
-	/* Configure eDP timing to HW */
-	edp_write(ctrl->base + REG_EDP_TOTAL_HOR_VER,
-		EDP_TOTAL_HOR_VER_HORIZ(mode->htotal) |
-		EDP_TOTAL_HOR_VER_VERT(mode->vtotal));
-
-	vstart_from_sync = mode->vtotal - mode->vsync_start;
-	hstart_from_sync = mode->htotal - mode->hsync_start;
-	edp_write(ctrl->base + REG_EDP_START_HOR_VER_FROM_SYNC,
-		EDP_START_HOR_VER_FROM_SYNC_HORIZ(hstart_from_sync) |
-		EDP_START_HOR_VER_FROM_SYNC_VERT(vstart_from_sync));
-
-	data = EDP_HSYNC_VSYNC_WIDTH_POLARITY_VERT(
-			mode->vsync_end - mode->vsync_start);
-	data |= EDP_HSYNC_VSYNC_WIDTH_POLARITY_HORIZ(
-			mode->hsync_end - mode->hsync_start);
-	if (mode->flags & DRM_MODE_FLAG_NVSYNC)
-		data |= EDP_HSYNC_VSYNC_WIDTH_POLARITY_NVSYNC;
-	if (mode->flags & DRM_MODE_FLAG_NHSYNC)
-		data |= EDP_HSYNC_VSYNC_WIDTH_POLARITY_NHSYNC;
-	edp_write(ctrl->base + REG_EDP_HSYNC_VSYNC_WIDTH_POLARITY, data);
-
-	edp_write(ctrl->base + REG_EDP_ACTIVE_HOR_VER,
-		EDP_ACTIVE_HOR_VER_HORIZ(mode->hdisplay) |
-		EDP_ACTIVE_HOR_VER_VERT(mode->vdisplay));
-
-	edp_clk_disable(ctrl, EDP_CLK_MASK_AHB);
-
-unlock_ret:
-	mutex_unlock(&ctrl->dev_mutex);
-	return ret;
+	return 0;
 }
 
-bool msm_edp_ctrl_pixel_clock_valid(struct edp_ctrl *ctrl,
-	u32 pixel_rate, u32 *pm, u32 *pn)
-{
-	const struct edp_pixel_clk_div *divs;
-	u32 err = 1; /* 1% error tolerance */
-	u32 clk_err;
-	int i;
 
-	if (ctrl->link_rate == DP_LINK_BW_1_62) {
-		divs = clk_divs[0];
-	} else if (ctrl->link_rate == DP_LINK_BW_2_7) {
-		divs = clk_divs[1];
-	} else {
-		pr_err("%s: Invalid link rate,%d\n", __func__, ctrl->link_rate);
+bool msm_edp_ctrl_pixel_clock_valid(struct edp_ctrl *ctrl, u32 pixel_rate)
+{
+	u32 link_clock = 0;
+	unsigned long link_bw = 0, stream_bw = 0;
+
+	link_clock = drm_dp_bw_code_to_link_rate(ctrl->link_rate);
+	link_bw = link_clock * ctrl->lane_cnt;
+	stream_bw = pixel_rate * ctrl->color_depth * 3 / 8;
+
+	if (stream_bw > link_bw) {
+		DRM_ERROR("pixel clock %d(kHz) not supported", pixel_rate);
 		return false;
 	}
 
-	for (i = 0; i < EDP_PIXEL_CLK_NUM; i++) {
-		clk_err = abs(divs[i].rate - pixel_rate);
-		if ((divs[i].rate * err / 100) >= clk_err) {
-			if (pm)
-				*pm = divs[i].m;
-			if (pn)
-				*pn = divs[i].n;
-			return true;
-		}
-	}
-
-	DBG("pixel clock %d(kHz) not supported", pixel_rate);
-
-	return false;
+	return true;
 }
-

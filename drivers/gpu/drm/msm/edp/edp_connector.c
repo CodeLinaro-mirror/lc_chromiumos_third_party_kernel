@@ -60,25 +60,9 @@ static int edp_connector_mode_valid(struct drm_connector *connector,
 {
 	struct edp_connector *edp_connector = to_edp_connector(connector);
 	struct msm_edp *edp = edp_connector->edp;
-	struct msm_drm_private *priv = connector->dev->dev_private;
-	struct msm_kms *kms = priv->kms;
-	long actual, requested;
 
-	requested = 1000 * mode->clock;
-	actual = kms->funcs->round_pixclk(kms,
-			requested, edp_connector->edp->encoder);
-
-	DBG("requested=%ld, actual=%ld", requested, actual);
-	if (actual != requested)
+	if (!msm_edp_ctrl_pixel_clock_valid(edp->ctrl, mode->clock))
 		return MODE_CLOCK_RANGE;
-
-	if (!msm_edp_ctrl_pixel_clock_valid(
-		edp->ctrl, mode->clock, NULL, NULL))
-		return MODE_CLOCK_RANGE;
-
-	/* Invalidate all modes if color format is not supported */
-	if (connector->display_info.bpc > 8)
-		return MODE_BAD;
 
 	return MODE_OK;
 }
@@ -104,7 +88,8 @@ struct drm_connector *msm_edp_connector_init(struct msm_edp *edp)
 	struct edp_connector *edp_connector;
 	int ret;
 
-	edp_connector = kzalloc(sizeof(*edp_connector), GFP_KERNEL);
+	edp_connector = devm_kzalloc(edp->dev->dev, sizeof(*edp_connector),
+				GFP_KERNEL);
 	if (!edp_connector)
 		return ERR_PTR(-ENOMEM);
 
