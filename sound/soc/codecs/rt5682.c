@@ -1094,6 +1094,7 @@ void rt5682_jack_detect_handler(struct work_struct *work)
 			/* jack was out, report jack type */
 			rt5682->jack_type =
 				rt5682_headset_detect(rt5682->component, 1);
+			rt5682->irq_work_delay_time = 0;
 		} else if ((rt5682->jack_type & SND_JACK_HEADSET) ==
 			SND_JACK_HEADSET) {
 			/* jack is already in, report button event */
@@ -1139,6 +1140,7 @@ void rt5682_jack_detect_handler(struct work_struct *work)
 	} else {
 		/* jack out */
 		rt5682->jack_type = rt5682_headset_detect(rt5682->component, 0);
+		rt5682->irq_work_delay_time = 50;
 	}
 
 	snd_soc_jack_report(rt5682->hs_jack, rt5682->jack_type,
@@ -2873,7 +2875,10 @@ static int rt5682_probe(struct snd_soc_component *component)
 	} else {
 #ifdef CONFIG_COMMON_CLK
 		/* Check if MCLK provided */
-		rt5682->mclk = devm_clk_get(component->dev, "mclk");
+		if (rt5682->pdata.mclk_name)
+			rt5682->mclk = clk_get(NULL, rt5682->pdata.mclk_name);
+		if (!rt5682->mclk)
+			rt5682->mclk = devm_clk_get(component->dev, "mclk");
 		if (IS_ERR(rt5682->mclk)) {
 			if (PTR_ERR(rt5682->mclk) != -ENOENT) {
 				ret = PTR_ERR(rt5682->mclk);
@@ -3002,6 +3007,7 @@ int rt5682_parse_dt(struct rt5682_priv *rt5682, struct device *dev)
 
 	rt5682->pdata.dmic_clk_driving_high = device_property_read_bool(dev,
 		"realtek,dmic-clk-driving-high");
+	device_property_read_string(dev, "realtek,mclk-name", &rt5682->pdata.mclk_name);
 
 	return 0;
 }
