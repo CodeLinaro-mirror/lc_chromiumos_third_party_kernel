@@ -2665,6 +2665,18 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 		sband = local->hw.wiphy->bands[status->band];
 		bitrate = sband->bitrates[status->rate_idx].bitrate;
 		ri.legacy = DIV_ROUND_UP(bitrate, (1 << shift));
+
+		if (status->flag & RX_FLAG_MACTIME_PLCP_START) {
+			/* TODO: handle HT/VHT preambles */
+			if (status->band == IEEE80211_BAND_5GHZ) {
+				ts += 20 << shift;
+				mpdu_offset += 2;
+			} else if (status->flag & RX_FLAG_SHORTPRE) {
+				ts += 96;
+			} else {
+				ts += 192;
+			}
+		}
 	}
 
 	rate = cfg80211_calculate_bitrate(&ri);
