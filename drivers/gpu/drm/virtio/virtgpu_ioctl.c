@@ -382,7 +382,6 @@ static int virtio_gpu_resource_info_cros_ioctl(struct drm_device *dev,
 	struct virtio_gpu_object *qobj = NULL;
 	int ret = 0;
 
-	/* validate only as the extended info is returned in either case */
 	if (ri->type != VIRTGPU_RESOURCE_INFO_TYPE_DEFAULT &&
 	    ri->type != VIRTGPU_RESOURCE_INFO_TYPE_EXTENDED)
 		return -EINVAL;
@@ -395,6 +394,14 @@ static int virtio_gpu_resource_info_cros_ioctl(struct drm_device *dev,
 	ri->res_handle = qobj->hw_res_handle;
 	ri->size = qobj->gem_base.size;
 
+	if (ri->type == VIRTGPU_RESOURCE_INFO_TYPE_DEFAULT) {
+		ri->blob_mem = qobj->blob_mem;
+		goto out;
+	} else if (qobj->blob_mem == VIRTGPU_BLOB_MEM_GUEST) {
+		ret = -EINVAL;
+		goto out;
+	}
+
 	if (!qobj->create_callback_done) {
 		ret = wait_event_interruptible(vgdev->resp_wq,
 					       qobj->create_callback_done);
@@ -402,6 +409,7 @@ static int virtio_gpu_resource_info_cros_ioctl(struct drm_device *dev,
 			goto out;
 	}
 
+	ri->stride = 0;
 	if (qobj->num_planes) {
 		int i;
 
