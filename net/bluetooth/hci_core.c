@@ -1586,6 +1586,7 @@ setup_failed:
 		ret = hdev->set_diag(hdev, true);
 
 	msft_do_open(hdev);
+	msft_power_on(hdev);
 
 	clear_bit(HCI_INIT, &hdev->flags);
 
@@ -1782,7 +1783,7 @@ int hci_dev_do_close(struct hci_dev *hdev)
 
 	hci_sock_dev_event(hdev, HCI_DEV_DOWN);
 
-	msft_do_close(hdev);
+	msft_power_off(hdev);
 
 	if (hdev->flush)
 		hdev->flush(hdev);
@@ -3743,6 +3744,8 @@ struct hci_dev *hci_alloc_dev(void)
 	hdev->adv_instance_cnt = 0;
 	hdev->cur_adv_instance = 0x00;
 	hdev->adv_instance_timeout = 0;
+	hdev->ext_directed_advertising = false;
+	hdev->eir_max_name_len = 48;
 
 	hdev->advmon_allowlist_duration = 300;
 	hdev->advmon_no_filter_duration = 500;
@@ -3985,6 +3988,8 @@ void hci_unregister_dev(struct hci_dev *hdev)
 		unregister_pm_notifier(&hdev->suspend_notifier);
 		cancel_work_sync(&hdev->suspend_prepare);
 	}
+
+	msft_do_close(hdev);
 
 	hci_dev_do_close(hdev);
 
