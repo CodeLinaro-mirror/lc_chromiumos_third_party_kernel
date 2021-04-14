@@ -30,6 +30,7 @@
 #include <linux/module.h>
 #include <linux/ucs2_string.h>
 #include <linux/suspend.h>
+#include <linux/thermal.h>
 
 #define GSMI_SHUTDOWN_CLEAN	0	/* Clean Shutdown */
 /* TODO(mikew@google.com): Tie in HARDLOCKUP_DETECTOR with NMIWDT */
@@ -41,6 +42,7 @@
 #define GSMI_SHUTDOWN_SOFTWDT	6	/* Software Watchdog */
 #define GSMI_SHUTDOWN_MBE	7	/* Uncorrected ECC */
 #define GSMI_SHUTDOWN_TRIPLE	8	/* Triple Fault */
+#define GSMI_SHUTDOWN_THERMAL	9	/* Critical Thermal Threshold */
 
 #define DRIVER_VERSION		"1.0"
 #define GSMI_GUID_SIZE		16
@@ -136,12 +138,16 @@ MODULE_PARM_DESC(spincount,
 	"The number of loop iterations to use when using the spin handshake.");
 
 /*
- * Platforms might not support S0ix logging in their GSMI handlers. In order to
- * avoid any side-effects of generating an SMI for S0ix logging, use the S0ix
- * related GSMI commands only for those platforms that explicitly enable this
- * option.
+ * Some older platforms with Apollo Lake chipsets do not support S0ix logging
+ * in their GSMI handlers, and behaved poorly when resuming via power button
+ * press if the logging was attempted. Updated firmware with proper behavior
+ * has long since shipped, removing the need for this opt-in parameter. It
+ * now exists as an opt-out parameter for folks defiantly running old
+ * firmware, or unforeseen circumstances. After the change from opt-in to
+ * opt-out has baked sufficiently, this parameter should probably be removed
+ * entirely.
  */
-static bool s0ix_logging_enable;
+static bool s0ix_logging_enable = true;
 module_param(s0ix_logging_enable, bool, 0600);
 
 static struct gsmi_buf *gsmi_buf_alloc(void)
@@ -684,6 +690,18 @@ static struct notifier_block gsmi_panic_notifier = {
 	.notifier_call = gsmi_panic_callback,
 };
 
+static int gsmi_thermal_callback(struct notifier_block *nb,
+				 unsigned long reason, void *arg)
+{
+	if (reason == THERMAL_TRIP_CRITICAL)
+		gsmi_shutdown_reason(GSMI_SHUTDOWN_THERMAL);
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block gsmi_thermal_notifier = {
+	.notifier_call = gsmi_thermal_callback
+};
+
 /*
  * This hash function was blatantly copied from include/linux/hash.h.
  * It is used by this driver to obfuscate a board name that requires a
@@ -1023,6 +1041,7 @@ static __init int gsmi_init(void)
 	}
 #endif
 
+	register_thermal_notifier(&gsmi_thermal_notifier);
 	register_reboot_notifier(&gsmi_reboot_notifier);
 	register_die_notifier(&gsmi_die_notifier);
 	atomic_notifier_chain_register(&panic_notifier_list,
@@ -1050,6 +1069,7 @@ out_err:
 
 static void __exit gsmi_exit(void)
 {
+	unregister_thermal_notifier(&gsmi_thermal_notifier);
 	unregister_reboot_notifier(&gsmi_reboot_notifier);
 	unregister_die_notifier(&gsmi_die_notifier);
 	atomic_notifier_chain_unregister(&panic_notifier_list,
