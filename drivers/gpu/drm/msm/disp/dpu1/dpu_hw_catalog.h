@@ -105,7 +105,6 @@ enum {
  * @DPU_SSPP_EXCL_RECT,      SSPP supports exclusion rect
  * @DPU_SSPP_SMART_DMA_V1,   SmartDMA 1.0 support
  * @DPU_SSPP_SMART_DMA_V2,   SmartDMA 2.0 support
- * @DPU_SSPP_SMART_DMA_V2_5, SmartDMA 2.5 support
  * @DPU_SSPP_TS_PREFILL      Supports prefill with traffic shaper
  * @DPU_SSPP_TS_PREFILL_REC1 Supports prefill with traffic shaper multirec
  * @DPU_SSPP_CDP             Supports client driven prefetch
@@ -125,7 +124,6 @@ enum {
 	DPU_SSPP_EXCL_RECT,
 	DPU_SSPP_SMART_DMA_V1,
 	DPU_SSPP_SMART_DMA_V2,
-	DPU_SSPP_SMART_DMA_V2_5,
 	DPU_SSPP_TS_PREFILL,
 	DPU_SSPP_TS_PREFILL_REC1,
 	DPU_SSPP_CDP,
@@ -185,6 +183,7 @@ enum {
 enum {
 	DPU_CTL_SPLIT_DISPLAY = 0x1,
 	DPU_CTL_ACTIVE_CFG,
+	DPU_CTL_FETCH_ACTIVE,
 	DPU_CTL_MAX
 };
 
@@ -193,11 +192,14 @@ enum {
  * @DPU_INTF_INPUT_CTRL         Supports the setting of pp block from which
  *                              pixel data arrives to this INTF
  * @DPU_INTF_TE                 INTF block has TE configuration support
+ * @DPU_DATA_HCTL_EN            Allows data to be transferred at different rate
+                                than video timing
  * @DPU_INTF_MAX
  */
 enum {
 	DPU_INTF_INPUT_CTRL = 0x1,
 	DPU_INTF_TE,
+	DPU_DATA_HCTL_EN,
 	DPU_INTF_MAX
 };
 
@@ -719,6 +721,7 @@ struct dpu_perf_cfg {
  * @cursor_formats     Supported formats for cursor pipe
  * @vig_formats        Supported formats for vig pipe
  * @mdss_irqs:         Bitmap with the irqs supported by the target
+ * @obsolete_irq:       Irq types that are obsolete for a particular target
  */
 struct dpu_mdss_cfg {
 	u32 hwversion;
@@ -765,6 +768,7 @@ struct dpu_mdss_cfg {
 	const struct dpu_format_extended *vig_formats;
 
 	unsigned long mdss_irqs;
+	unsigned long obsolete_irq;
 };
 
 struct dpu_mdss_hw_cfg_handler {

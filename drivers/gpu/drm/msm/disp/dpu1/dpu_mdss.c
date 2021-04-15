@@ -205,7 +205,7 @@ static int dpu_mdss_enable(struct msm_mdss *mdss)
 		writel_relaxed(0x1e, dpu_mdss->mmio + UBWC_STATIC);
 		break;
 	case DPU_HW_VER_720:
-		writel_relaxed(0x1e, dpu_mdss->mmio + UBWC_STATIC);
+		writel_relaxed(0x101e, dpu_mdss->mmio + UBWC_STATIC);
 		break;
 	}
 

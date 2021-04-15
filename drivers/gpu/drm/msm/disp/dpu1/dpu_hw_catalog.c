@@ -41,6 +41,9 @@
 #define PINGPONG_SDM845_SPLIT_MASK \
 	(PINGPONG_SDM845_MASK | BIT(DPU_PINGPONG_TE2))
 
+#define CTL_SC7280_MASK \
+	(BIT(DPU_CTL_ACTIVE_CFG) | BIT(DPU_CTL_FETCH_ACTIVE))
+
 #define MERGE_3D_SM8150_MASK (0)
 
 #define DSPP_SC7180_MASK BIT(DPU_DSPP_PCC)
@@ -48,6 +51,15 @@
 #define INTF_SDM845_MASK (0)
 
 #define INTF_SC7180_MASK BIT(DPU_INTF_INPUT_CTRL) | BIT(DPU_INTF_TE)
+
+#define INTF_SC7280_MASK INTF_SC7180_MASK | BIT(DPU_DATA_HCTL_EN)
+
+#define INTR_SC7180_MASK \
+	(BIT(DPU_IRQ_TYPE_PING_PONG_RD_PTR) |\
+	BIT(DPU_IRQ_TYPE_PING_PONG_WR_PTR) |\
+	BIT(DPU_IRQ_TYPE_PING_PONG_AUTO_REF) |\
+	BIT(DPU_IRQ_TYPE_PING_PONG_TEAR_CHECK) |\
+	BIT(DPU_IRQ_TYPE_PING_PONG_TE_CHECK))
 
 #define DEFAULT_PIXEL_RAM_SIZE		(50 * 1024)
 #define DEFAULT_DPU_LINE_WIDTH		2048
@@ -129,7 +141,7 @@ static const struct dpu_caps sc7280_dpu_caps = {
 	.max_mixer_width = DEFAULT_DPU_OUTPUT_LINE_WIDTH,
 	.max_mixer_blendstages = 0x7,
 	.qseed_type = DPU_SSPP_SCALER_QSEED4,
-	.smart_dma_rev = DPU_SSPP_SMART_DMA_V2_5,
+	.smart_dma_rev = DPU_SSPP_SMART_DMA_V2,
 	.ubwc_version = DPU_HW_UBWC_VER_30,
 	.has_dim_layer = true,
 	.has_idle_pc = true,
@@ -308,22 +320,22 @@ static const struct dpu_ctl_cfg sc7280_ctl[] = {
 	{
 	.name = "ctl_0", .id = CTL_0,
 	.base = 0x15000, .len = 0x1E8,
-	.features = BIT(DPU_CTL_ACTIVE_CFG)
+	.features = CTL_SC7280_MASK
 	},
 	{
 	.name = "ctl_1", .id = CTL_1,
 	.base = 0x16000, .len = 0x1E8,
-	.features = BIT(DPU_CTL_ACTIVE_CFG)
+	.features = CTL_SC7280_MASK
 	},
 	{
 	.name = "ctl_2", .id = CTL_2,
 	.base = 0x17000, .len = 0x1E8,
-	.features = BIT(DPU_CTL_ACTIVE_CFG)
+	.features = CTL_SC7280_MASK
 	},
 	{
 	.name = "ctl_3", .id = CTL_3,
 	.base = 0x18000, .len = 0x1E8,
-	.features = BIT(DPU_CTL_ACTIVE_CFG)
+	.features = CTL_SC7280_MASK
 	},
 };
 
@@ -559,49 +571,42 @@ static const struct dpu_pingpong_sub_blks sc7280_pp_sblk = {
 	.len = 0x20, .version = 0x20000},
 };
 
-#define PP_BLK_TE(_name, _id, _base, _merge_3d) \
+#define PP_BLK_TE(_name, _id, _base, _merge_3d, _sblk) \
 	{\
 	.name = _name, .id = _id, \
 	.base = _base, .len = 0xd4, \
 	.features = PINGPONG_SDM845_SPLIT_MASK, \
 	.merge_3d = _merge_3d, \
-	.sblk = &sdm845_pp_sblk_te \
+	.sblk = &_sblk \
 	}
-#define PP_BLK(_name, _id, _base, _merge_3d) \
+#define PP_BLK(_name, _id, _base, _merge_3d, _sblk) \
 	{\
 	.name = _name, .id = _id, \
 	.base = _base, .len = 0xd4, \
 	.features = PINGPONG_SDM845_MASK, \
 	.merge_3d = _merge_3d, \
-	.sblk = &sdm845_pp_sblk \
-	}
-#define PP_BLK_sc7280(_name, _id, _base) \
-	{\
-	.name = _name, .id = _id, \
-	.base = _base, .len = 0xd4, \
-	.features = PINGPONG_SDM845_MASK, \
-	.sblk = &sc7280_pp_sblk \
+	.sblk = &_sblk \
 	}
 
 static const struct dpu_pingpong_cfg sdm845_pp[] = {
-	PP_BLK_TE("pingpong_0", PINGPONG_0, 0x70000, 0),
-	PP_BLK_TE("pingpong_1", PINGPONG_1, 0x70800, 0),
-	PP_BLK("pingpong_2", PINGPONG_2, 0x71000, 0),
-	PP_BLK("pingpong_3", PINGPONG_3, 0x71800, 0),
+	PP_BLK_TE("pingpong_0", PINGPONG_0, 0x70000, 0, sdm845_pp_sblk_te),
+	PP_BLK_TE("pingpong_1", PINGPONG_1, 0x70800, 0, sdm845_pp_sblk_te),
+	PP_BLK("pingpong_2", PINGPONG_2, 0x71000, 0, sdm845_pp_sblk),
+	PP_BLK("pingpong_3", PINGPONG_3, 0x71800, 0, sdm845_pp_sblk),
 };
 
 static struct dpu_pingpong_cfg sc7180_pp[] = {
-	PP_BLK_TE("pingpong_0", PINGPONG_0, 0x70000, 0),
-	PP_BLK_TE("pingpong_1", PINGPONG_1, 0x70800, 0),
+	PP_BLK_TE("pingpong_0", PINGPONG_0, 0x70000, 0, sdm845_pp_sblk_te),
+	PP_BLK_TE("pingpong_1", PINGPONG_1, 0x70800, 0, sdm845_pp_sblk_te),
 };
 
 static const struct dpu_pingpong_cfg sm8150_pp[] = {
-	PP_BLK_TE("pingpong_0", PINGPONG_0, 0x70000, MERGE_3D_0),
-	PP_BLK_TE("pingpong_1", PINGPONG_1, 0x70800, MERGE_3D_0),
-	PP_BLK("pingpong_2", PINGPONG_2, 0x71000, MERGE_3D_1),
-	PP_BLK("pingpong_3", PINGPONG_3, 0x71800, MERGE_3D_1),
-	PP_BLK("pingpong_4", PINGPONG_4, 0x72000, MERGE_3D_2),
-	PP_BLK("pingpong_5", PINGPONG_5, 0x72800, MERGE_3D_2),
+	PP_BLK_TE("pingpong_0", PINGPONG_0, 0x70000, MERGE_3D_0, sdm845_pp_sblk_te),
+	PP_BLK_TE("pingpong_1", PINGPONG_1, 0x70800, MERGE_3D_0, sdm845_pp_sblk_te),
+	PP_BLK("pingpong_2", PINGPONG_2, 0x71000, MERGE_3D_1, sdm845_pp_sblk),
+	PP_BLK("pingpong_3", PINGPONG_3, 0x71800, MERGE_3D_1, sdm845_pp_sblk),
+	PP_BLK("pingpong_4", PINGPONG_4, 0x72000, MERGE_3D_2, sdm845_pp_sblk),
+	PP_BLK("pingpong_5", PINGPONG_5, 0x72800, MERGE_3D_2, sdm845_pp_sblk),
 };
 
 /*************************************************************
@@ -622,10 +627,10 @@ static const struct dpu_merge_3d_cfg sm8150_merge_3d[] = {
 };
 
 static const struct dpu_pingpong_cfg sc7280_pp[] = {
-	PP_BLK_sc7280("pingpong_0", PINGPONG_0, 0x59000),
-	PP_BLK_sc7280("pingpong_1", PINGPONG_1, 0x6a000),
-	PP_BLK_sc7280("pingpong_2", PINGPONG_2, 0x6b000),
-	PP_BLK_sc7280("pingpong_3", PINGPONG_3, 0x6c000),
+	PP_BLK("pingpong_0", PINGPONG_0, 0x59000, 0, sc7280_pp_sblk),
+	PP_BLK("pingpong_1", PINGPONG_1, 0x6a000, 0, sc7280_pp_sblk),
+	PP_BLK("pingpong_2", PINGPONG_2, 0x6b000, 0, sc7280_pp_sblk),
+	PP_BLK("pingpong_3", PINGPONG_3, 0x6c000, 0, sc7280_pp_sblk),
 };
 /*************************************************************
  * INTF sub blocks config
@@ -660,9 +665,9 @@ static const struct dpu_intf_cfg sm8150_intf[] = {
 };
 
 static const struct dpu_intf_cfg sc7280_intf[] = {
-	INTF_BLK("intf_0", INTF_0, 0x34000, INTF_DP, 0, INTF_SC7180_MASK),
-	INTF_BLK("intf_1", INTF_1, 0x35000, INTF_DSI, 0, INTF_SC7180_MASK),
-	INTF_BLK("intf_5", INTF_5, 0x39000, INTF_DP, 0, INTF_SC7180_MASK),
+	INTF_BLK("intf_0", INTF_0, 0x34000, INTF_DP, 0, INTF_SC7280_MASK),
+	INTF_BLK("intf_1", INTF_1, 0x35000, INTF_DSI, 0, INTF_SC7280_MASK),
+	INTF_BLK("intf_5", INTF_5, 0x39000, INTF_EDP, 0, INTF_SC7280_MASK),
 };
 
 /*************************************************************
@@ -896,7 +901,7 @@ static const struct dpu_perf_cfg sc7280_perf_data = {
 		{.rd_enable = 1, .wr_enable = 0}
 	},
 	.clk_inefficiency_factor = 105,
-	.bw_inefficiency_factor = 200,
+	.bw_inefficiency_factor = 120,
 };
 
 /*************************************************************
@@ -960,6 +965,7 @@ static void sc7180_cfg_init(struct dpu_mdss_cfg *dpu_cfg)
 		.dma_cfg = sdm845_regdma,
 		.perf = sc7180_perf_data,
 		.mdss_irqs = 0x3f,
+		.obsolete_irq = INTR_SC7180_MASK,
 	};
 }
 
@@ -1045,6 +1051,8 @@ static void sc7280_cfg_init(struct dpu_mdss_cfg *dpu_cfg)
 		.vbif_count = ARRAY_SIZE(sdm845_vbif),
 		.vbif = sdm845_vbif,
 		.perf = sc7280_perf_data,
+		.mdss_irqs = 0x1c07,
+		.obsolete_irq = INTR_SC7180_MASK,
 	};
 }
 
