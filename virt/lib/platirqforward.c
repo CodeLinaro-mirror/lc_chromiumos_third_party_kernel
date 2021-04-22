@@ -30,7 +30,6 @@ MODULE_VERSION(VERSION);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR(AUTHOR);
 MODULE_DESCRIPTION(DESC);
-MODULE_ALIAS_MISCDEV(PLAT_IRQ_FORWARD_MINOR);
 MODULE_ALIAS("devname:plat-irq-forward");
 
 static LIST_HEAD(level_triggered_irqs);
@@ -311,7 +310,7 @@ static const struct file_operations plat_irq_forward_fops = {
 };
 
 static struct miscdevice plat_irq_forward_dev = {
-	.minor = PLAT_IRQ_FORWARD_MINOR,
+	.minor = MISC_DYNAMIC_MINOR,
 	.name = "plat-irq-forward",
 	.fops = &plat_irq_forward_fops,
 	.nodename = "plat-irq-forward",
