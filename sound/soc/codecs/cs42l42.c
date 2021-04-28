@@ -925,13 +925,23 @@ static int cs42l42_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
 							       (regval & 1),
 							       CS42L42_PLL_LOCK_POLL_US,
 							       CS42L42_PLL_LOCK_TIMEOUT_US);
-				if (ret < 0)
+				if (ret < 0) {
 					dev_warn(component->dev, "PLL failed to lock: %d\n", ret);
+					/*
+					 * Switch to the internal oscillator
+					 * Without a source of clock the I2C bus doesn't work
+					*/
+					regmap_multi_reg_write(cs42l42->regmap, cs42l42_to_osc_seq,
+											ARRAY_SIZE(cs42l42_to_osc_seq));
+					snd_soc_component_update_bits(component, CS42L42_PLL_CTL1,
+						      CS42L42_PLL_START_MASK, 0);
+				} else {
+					/* Mark SCLK as present, turn off internal oscillator */
+					regmap_multi_reg_write(cs42l42->regmap, cs42l42_to_sclk_seq,
+											ARRAY_SIZE(cs42l42_to_sclk_seq));
+				}
 			}
 
-			/* Mark SCLK as present, turn off internal oscillator */
-			regmap_multi_reg_write(cs42l42->regmap, cs42l42_to_sclk_seq,
-					       ARRAY_SIZE(cs42l42_to_sclk_seq));
 		}
 		cs42l42->stream_use |= 1 << stream;
 
@@ -952,7 +962,6 @@ static int cs42l42_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
 						      CS42L42_HP_FULL_SCALE_VOL_MASK, fullScaleVol);
 		}
 	}
-
 	return 0;
 }
 
