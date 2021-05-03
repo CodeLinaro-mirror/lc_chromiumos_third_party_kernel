@@ -48,8 +48,7 @@
 #define RT5682_PLL_FREQ (48000 * 512)
 
 static struct snd_soc_jack cz_jack;
-static struct clk *da7219_dai_wclk;
-static struct clk *da7219_dai_bclk;
+static struct clk *da7219_dai_clk;
 static struct clk *rt5682_dai_wclk;
 static struct clk *rt5682_dai_bclk;
 extern bool bt_uart_enable;
@@ -78,8 +77,7 @@ static int cz_da7219_init(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 
-	da7219_dai_wclk = clk_get(component->dev, "da7219-dai-wclk");
-	da7219_dai_bclk = clk_get(component->dev, "da7219-dai-bclk");
+	da7219_dai_clk = clk_get(component->dev, "da7219-dai-clks");
 
 	ret = snd_soc_card_jack_new(card, "Headset Jack",
 				SND_JACK_HEADSET | SND_JACK_LINEOUT |
@@ -106,15 +104,7 @@ static int da7219_clk_enable(struct snd_pcm_substream *substream)
 	int ret = 0;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 
-	/*
-	 * Set wclk to 48000 because the rate constraint of this driver is
-	 * 48000. ADAU7002 spec: "The ADAU7002 requires a BCLK rate that is
-	 * minimum of 64x the LRCLK sample rate." DA7219 is the only clk
-	 * source so for all codecs we have to limit bclk to 64X lrclk.
-	 */
-	clk_set_rate(da7219_dai_wclk, 48000);
-	clk_set_rate(da7219_dai_bclk, 48000 * 64);
-	ret = clk_prepare_enable(da7219_dai_bclk);
+	ret = clk_prepare_enable(da7219_dai_clk);
 	if (ret < 0) {
 		dev_err(rtd->dev, "can't enable master clock %d\n", ret);
 		return ret;
@@ -125,7 +115,7 @@ static int da7219_clk_enable(struct snd_pcm_substream *substream)
 
 static void da7219_clk_disable(void)
 {
-	clk_disable_unprepare(da7219_dai_bclk);
+	clk_disable_unprepare(da7219_dai_clk);
 }
 
 static int cz_rt5682_init(struct snd_soc_pcm_runtime *rtd)
