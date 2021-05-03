@@ -1092,7 +1092,6 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	int max_ports;
 	unsigned long flags;
 	u32 temp, status;
-	int timeout_pdis;
 	int retval = 0;
 	int slot_id;
 	struct xhci_bus_state *bus_state;
@@ -1382,15 +1381,9 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			xhci_set_port_power(xhci, hcd, wIndex, true, &flags);
 			break;
 		case USB_PORT_FEAT_RESET:
-			temp = readl(ports[wIndex]->addr);
-			timeout_pdis = 20000;
-			writel(temp | PORT_PE, ports[wIndex]->addr);
-			while ((readl(ports[wIndex]->addr) & PORT_PE) && timeout_pdis)
-			    timeout_pdis--;
-			if (timeout_pdis <= 0)
-			    xhci_dbg(xhci, "timeout waiting for port disable\n");
 			temp = (temp | PORT_RESET);
 			writel(temp, ports[wIndex]->addr);
+
 			temp = readl(ports[wIndex]->addr);
 			xhci_dbg(xhci, "set port reset, actual port %d status  = 0x%x\n", wIndex, temp);
 			break;
