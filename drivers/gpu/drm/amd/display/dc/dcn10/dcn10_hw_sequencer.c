@@ -2434,6 +2434,8 @@ void dcn10_update_visual_confirm_color(struct dc *dc, struct pipe_ctx *pipe_ctx,
 		hws->funcs.get_hdr_visual_confirm_color(pipe_ctx, color);
 	else if (dc->debug.visual_confirm == VISUAL_CONFIRM_SURFACE)
 		hws->funcs.get_surface_visual_confirm_color(pipe_ctx, color);
+	else if (dc->debug.visual_confirm == VISUAL_CONFIRM_SWIZZLE)
+		hws->funcs.get_surface_tile_visual_confirm_color(pipe_ctx, color);
 	else
 		color_space_to_black_color(
 				dc, pipe_ctx->stream->output_color_space, color);
