@@ -51,6 +51,7 @@
 #include "dccg.h"
 #include "dc_dmub_srv.h"
 #include "dce/dmub_hw_lock_mgr.h"
+#include "hw_sequencer.h"
 
 #define DC_LOGGER_INIT(logger)
 
@@ -2278,28 +2279,6 @@ void dcn20_reset_hw_ctx_wrap(
 	}
 }
 
-void dcn20_get_mpctree_visual_confirm_color(
-		struct pipe_ctx *pipe_ctx,
-		struct tg_color *color)
-{
-	const struct tg_color pipe_colors[6] = {
-			{MAX_TG_COLOR_VALUE, 0, 0}, // red
-			{MAX_TG_COLOR_VALUE, MAX_TG_COLOR_VALUE / 4, 0}, // orange
-			{MAX_TG_COLOR_VALUE, MAX_TG_COLOR_VALUE, 0}, // yellow
-			{0, MAX_TG_COLOR_VALUE, 0}, // green
-			{0, 0, MAX_TG_COLOR_VALUE}, // blue
-			{MAX_TG_COLOR_VALUE / 2, 0, MAX_TG_COLOR_VALUE / 2}, // purple
-	};
-
-	struct pipe_ctx *top_pipe = pipe_ctx;
-
-	while (top_pipe->top_pipe) {
-		top_pipe = top_pipe->top_pipe;
-	}
-
-	*color = pipe_colors[top_pipe->pipe_idx];
-}
-
 void dcn20_update_visual_confirm_color(struct dc *dc, struct pipe_ctx *pipe_ctx, struct tg_color *color, int mpcc_id)
 {
 	struct dce_hwseq *hws = dc->hwseq;
@@ -2366,6 +2345,7 @@ void dcn20_update_mpcc(struct dc *dc, struct pipe_ctx *pipe_ctx)
 	if (!pipe_ctx->plane_state->update_flags.bits.full_update &&
 		!pipe_ctx->update_flags.bits.mpcc) {
 		mpc->funcs->update_blending(mpc, &blnd_cfg, mpcc_id);
+		dc->hwss.update_visual_confirm_color(dc, pipe_ctx, &blnd_cfg.black_color, mpcc_id);
 		return;
 	}
 
@@ -2387,6 +2367,7 @@ void dcn20_update_mpcc(struct dc *dc, struct pipe_ctx *pipe_ctx)
 			NULL,
 			hubp->inst,
 			mpcc_id);
+	dc->hwss.update_visual_confirm_color(dc, pipe_ctx, &blnd_cfg.black_color, mpcc_id);
 
 	ASSERT(new_mpcc != NULL);
 	hubp->opp_id = pipe_ctx->stream_res.opp->inst;
