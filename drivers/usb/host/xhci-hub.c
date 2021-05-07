@@ -11,6 +11,7 @@
 
 #include <linux/slab.h>
 #include <asm/unaligned.h>
+#include <linux/iopoll.h>
 
 #include "xhci.h"
 #include "xhci-trace.h"
@@ -1091,7 +1092,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
 	int max_ports;
 	unsigned long flags;
-	u32 temp, status;
+	u32 temp, status, uframe_idx, uframe_idx_start;
 	int retval = 0;
 	int slot_id;
 	struct xhci_bus_state *bus_state;
@@ -1381,9 +1382,14 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			xhci_set_port_power(xhci, hcd, wIndex, true, &flags);
 			break;
 		case USB_PORT_FEAT_RESET:
+			if (xhci->quirks & XHCI_SNPS_UFRAME_CHANGE_BEFORE_PRESET) {
+			    uframe_idx_start = readl(&xhci->run_regs->microframe_index);
+			    if (readl_poll_timeout_atomic(&xhci->run_regs->microframe_index,
+				uframe_idx, uframe_idx > uframe_idx_start, 1, 125))
+				    xhci_dbg(xhci, "timeout waiting for uframe idx change\n");
+			}
 			temp = (temp | PORT_RESET);
 			writel(temp, ports[wIndex]->addr);
-
 			temp = readl(ports[wIndex]->addr);
 			xhci_dbg(xhci, "set port reset, actual port %d status  = 0x%x\n", wIndex, temp);
 			break;
