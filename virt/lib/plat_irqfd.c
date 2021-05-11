@@ -13,12 +13,11 @@
 #include <uapi/linux/platirqforward.h>
 #include <linux/plat_irqfd.h>
 
-static struct workqueue_struct *vfio_irqfd_cleanup_wq;
 static DEFINE_SPINLOCK(plat_irqfd_lock);
 
 static void plat_irqfd_deactivate(struct plat_irq_forward_irqfd *plat_irqfd)
 {
-	queue_work(vfio_irqfd_cleanup_wq, &plat_irqfd->shutdown);
+	schedule_work(&plat_irqfd->shutdown);
 }
 
 static int plat_irqfd_wakeup(wait_queue_entry_t *wait, unsigned int mode,
