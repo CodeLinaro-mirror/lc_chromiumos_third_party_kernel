@@ -427,6 +427,13 @@ struct amdgpu_display_manager {
 	 * DAL fb memory allocation list, for communication with SMU.
 	 */
 	struct list_head da_list;
+
+	/**
+	 * @brightness:
+	 *
+	 * cached backlight values.
+	 */
+	u32 brightness[AMDGPU_DM_MAX_NUM_EDP];
 };
 
 enum dsc_clock_force_state {
