@@ -1548,9 +1548,8 @@
 		dma-names = "tx", "rx";
 		clock-names = "i2s_clk", "i2s_hclk";
 		clocks = <&cru SCLK_I2S0_8CH>, <&cru HCLK_I2S0_8CH>;
-		pinctrl-names = "bclk_on", "bclk_off";
+		pinctrl-names = "default";
 		pinctrl-0 = <&i2s0_8ch_bus>;
-		pinctrl-1 = <&i2s0_8ch_bus_bclk_off>;
 		status = "disabled";
 	};
 
@@ -2030,10 +2029,6 @@
 			drive-strength = <13>;
 		};
 
-		pcfg_pull_none_hiz: pcfg-pull-none-hiz {
-			bias-disable;
-		};
-
 		clock {
 			clk_32k: clk-32k {
 				rockchip,pins = <0 0 RK_FUNC_2 &pcfg_pull_none>;
@@ -2185,34 +2180,12 @@
 					<3 31 RK_FUNC_1 &pcfg_pull_none>,
 					<4 0 RK_FUNC_1 &pcfg_pull_none>;
 			};
-
-			i2s0_8ch_bus_bclk_off: i2s0-8ch-bus-bclk-off {
-				rockchip,pins =
-					<3 24 RK_FUNC_GPIO &pcfg_pull_none_hiz>,
-					<3 25 RK_FUNC_1 &pcfg_pull_none>,
-					<3 26 RK_FUNC_1 &pcfg_pull_none>,
-					<3 27 RK_FUNC_1 &pcfg_pull_none>,
-					<3 28 RK_FUNC_1 &pcfg_pull_none>,
-					<3 29 RK_FUNC_1 &pcfg_pull_none>,
-					<3 30 RK_FUNC_1 &pcfg_pull_none>,
-					<3 31 RK_FUNC_1 &pcfg_pull_none>,
-					<4 0 RK_FUNC_1 &pcfg_pull_none>;
-			};
 		};
 
 		i2s1 {
 			i2s1_2ch_bus: i2s1-2ch-bus {
 				rockchip,pins =
 					<4 3 RK_FUNC_1 &pcfg_pull_none>,
-					<4 4 RK_FUNC_1 &pcfg_pull_none>,
-					<4 5 RK_FUNC_1 &pcfg_pull_none>,
-					<4 6 RK_FUNC_1 &pcfg_pull_none>,
-					<4 7 RK_FUNC_1 &pcfg_pull_none>;
-			};
-
-			i2s1_2ch_bus_bclk_off: i2s1-2ch-bus-bclk-off {
-				rockchip,pins =
-					<4 3 RK_FUNC_GPIO &pcfg_pull_none_hiz>,
 					<4 4 RK_FUNC_1 &pcfg_pull_none>,
 					<4 5 RK_FUNC_1 &pcfg_pull_none>,
 					<4 6 RK_FUNC_1 &pcfg_pull_none>,
