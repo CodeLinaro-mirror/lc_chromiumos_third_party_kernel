@@ -661,6 +661,26 @@ out:
 }
 
 /**
+ * ioctl_drop_cache - drop all caches for a superblock
+ *
+ * @sb: superblock to drop caches for
+ *
+ * Clears the dcache and evicts all inodes for a mount
+ *
+ * Returns 0 on success, -EPERM on permission failure.
+ */
+static int ioctl_drop_cache(struct super_block *sb)
+{
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	shrink_dcache_sb(sb);
+	invalidate_inodes(sb, false);
+
+	return 0;
+}
+
+/**
  * fileattr_fill_xflags - initialize fileattr with xflags
  * @fa:		fileattr pointer
  * @xflags:	FS_XFLAG_* flags
@@ -1042,6 +1062,9 @@ static int do_vfs_ioctl(struct file *filp, unsigned int fd,
 
 	case FS_IOC_FSSETXATTR:
 		return ioctl_fssetxattr(filp, argp);
+
+	case FS_IOC_DROP_CACHE:
+		return ioctl_drop_cache(inode->i_sb);
 
 	default:
 		if (S_ISREG(inode->i_mode))
