@@ -239,6 +239,10 @@ struct hw_sequencer_funcs {
 			struct pipe_ctx *pipe_ctx,
 			struct tg_color *color,
 			int mpcc_id);
+
+#if defined(CONFIG_DRM_AMD_DC_DCN3_1)
+	void (*z10_restore)(struct dc *dc);
+#endif
 };
 
 void color_space_to_black_color(
