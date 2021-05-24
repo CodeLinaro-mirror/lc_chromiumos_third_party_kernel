@@ -861,19 +861,19 @@ void ieee80211_rx_h_sta_stats(struct sta_info *sta, struct sk_buff *skb)
 		goto out;
 
 	/* Not support 5Mhz and 10Mhz currently  */
-	if (status->flag & (RX_FLAG_5MHZ | RX_FLAG_10MHZ))
+	if (status->flag & (RX_ENC_FLAG_5MHZ | RX_ENC_FLAG_10MHZ))
 		goto out;
 
-	if (status->vht_flag & RX_VHT_FLAG_160MHZ)
+	if (status->enc_flags & RX_ENC_FLAG_160MHZ)
 		bw_idx = 3;
-	else if (status->vht_flag & RX_VHT_FLAG_80MHZ)
+	else if (status->enc_flags & RX_ENC_FLAG_80MHZ)
 		bw_idx = 2;
-	else if (status->flag & RX_FLAG_40MHZ)
+	else if (status->flag & RX_ENC_FLAG_40MHZ)
 		bw_idx = 1;
 	else
 		bw_idx = 0;
 
-	if (status->flag & RX_FLAG_HT) {
+	if (status->flag & RX_ENC_FLAG_HT) {
 		mcs_idx = status->rate_idx;
 		nss_idx = mcs_idx >> 3;
 
@@ -887,7 +887,7 @@ void ieee80211_rx_h_sta_stats(struct sta_info *sta, struct sk_buff *skb)
 		sta->rx_nss_byte[nss_idx] += pkt_len;
 		/* To fit into rate table for HT packets */
 		mcs_idx = mcs_idx % 8;
-	} else if (status->flag & RX_FLAG_VHT) {
+	} else if (status->flag & RX_ENC_FLAG_VHT) {
 		mcs_idx = status->rate_idx;
 		nss_idx = status->vht_nss - 1;
 
@@ -901,13 +901,13 @@ void ieee80211_rx_h_sta_stats(struct sta_info *sta, struct sk_buff *skb)
 		sta->rx_nss_byte[nss_idx] += pkt_len;
 	}
 
-	gi_idx = (status->flag & RX_FLAG_SHORT_GI) ? 1 : 0;
+	gi_idx = (status->flag & RX_ENC_FLAG_SHORT_GI) ? 1 : 0;
 	sta->rx_gi_pkt[gi_idx]++;
 	sta->rx_gi_byte[gi_idx] += pkt_len;
 	sta->rx_bw_pkt[bw_idx]++;
 	sta->rx_bw_byte[bw_idx] += pkt_len;
 
-	if (status->flag & (RX_FLAG_HT | RX_FLAG_VHT)) {
+	if (status->flag & (RX_ENC_FLAG_HT | RX_ENC_FLAG_VHT)) {
 		/* Update Rate table for HT and VHT packets */
 		i = mcs_idx * 8 + 8 * 10 * nss_idx;
 		i += bw_idx * 2 + gi_idx;
