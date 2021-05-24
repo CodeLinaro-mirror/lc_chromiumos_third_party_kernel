@@ -1011,9 +1011,17 @@ static void ieee80211_update_sta_info(struct ieee80211_sub_if_data *sdata,
 			prev_rates = sta->sta.supp_rates[band];
 			/* make sure mandatory rates are always added */
 			scan_width = NL80211_BSS_CHAN_WIDTH_20;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 			if (rx_status->flag & RX_FLAG_5MHZ)
+=======
+			if (rx_status->bw == RATE_INFO_BW_5)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 				scan_width = NL80211_BSS_CHAN_WIDTH_5;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 			if (rx_status->flag & RX_FLAG_10MHZ)
+=======
+			else if (rx_status->bw == RATE_INFO_BW_10)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 				scan_width = NL80211_BSS_CHAN_WIDTH_10;
 
 			sta->sta.supp_rates[band] = supp_rates |

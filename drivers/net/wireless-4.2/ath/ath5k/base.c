@@ -1414,10 +1414,18 @@ ath5k_receive_frame(struct ath5k_hw *ah, struct sk_buff *skb,
 	rxs->flag |= ath5k_rx_decrypted(ah, skb, rs);
 	switch (ah->ah_bwmode) {
 	case AR5K_BWMODE_5MHZ:
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		rxs->flag |= RX_FLAG_5MHZ;
+=======
+		rxs->bw = RATE_INFO_BW_5;
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		break;
 	case AR5K_BWMODE_10MHZ:
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		rxs->flag |= RX_FLAG_10MHZ;
+=======
+		rxs->bw = RATE_INFO_BW_10;
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		break;
 	default:
 		break;

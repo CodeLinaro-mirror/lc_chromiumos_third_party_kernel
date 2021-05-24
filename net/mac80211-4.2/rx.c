@@ -127,7 +127,11 @@ ieee80211_rx_radiotap_hdrlen(struct ieee80211_local *local,
 	/* padding for RX_FLAGS if necessary */
 	len = ALIGN(len, 2);
 
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	if (status->flag & RX_FLAG_HT) /* HT info */
+=======
+	if (status->encoding == RX_ENC_HT) /* HT info */
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		len += 3;
 
 	if (status->flag & RX_FLAG_AMPDU_DETAILS) {
@@ -135,7 +139,11 @@ ieee80211_rx_radiotap_hdrlen(struct ieee80211_local *local,
 		len += 8;
 	}
 
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	if (status->flag & RX_FLAG_VHT) {
+=======
+	if (status->encoding == RX_ENC_VHT) {
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		len = ALIGN(len, 2);
 		len += 12;
 	}
@@ -255,7 +263,11 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 	pos++;
 
 	/* IEEE80211_RADIOTAP_RATE */
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	if (!rate || status->flag & (RX_FLAG_HT | RX_FLAG_VHT)) {
+=======
+	if (!rate || status->encoding != RX_ENC_LEGACY) {
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		/*
 		 * Without rate information don't add it. If we have,
 		 * MCS information is a separate field in radiotap,
@@ -266,9 +278,17 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 	} else {
 		int shift = 0;
 		rthdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_RATE);
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		if (status->flag & RX_FLAG_10MHZ)
+=======
+		if (status->bw == RATE_INFO_BW_10)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			shift = 1;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		else if (status->flag & RX_FLAG_5MHZ)
+=======
+		else if (status->bw == RATE_INFO_BW_5)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			shift = 2;
 		*pos = DIV_ROUND_UP(rate->bitrate, 5 * (1 << shift));
 	}
@@ -277,14 +297,26 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 	/* IEEE80211_RADIOTAP_CHANNEL */
 	put_unaligned_le16(status->freq, pos);
 	pos += 2;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	if (status->flag & RX_FLAG_10MHZ)
+=======
+	if (status->bw == RATE_INFO_BW_10)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		channel_flags |= IEEE80211_CHAN_HALF;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	else if (status->flag & RX_FLAG_5MHZ)
+=======
+	else if (status->bw == RATE_INFO_BW_5)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		channel_flags |= IEEE80211_CHAN_QUARTER;
 
 	if (status->band == IEEE80211_BAND_5GHZ)
 		channel_flags |= IEEE80211_CHAN_OFDM | IEEE80211_CHAN_5GHZ;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	else if (status->flag & (RX_FLAG_HT | RX_FLAG_VHT))
+=======
+	else if (status->encoding != RX_ENC_LEGACY)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		channel_flags |= IEEE80211_CHAN_DYN | IEEE80211_CHAN_2GHZ;
 	else if (rate && rate->flags & IEEE80211_RATE_ERP_G)
 		channel_flags |= IEEE80211_CHAN_OFDM | IEEE80211_CHAN_2GHZ;
@@ -323,7 +355,11 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 	put_unaligned_le16(rx_flags, pos);
 	pos += 2;
 
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	if (status->flag & RX_FLAG_HT) {
+=======
+	if (status->encoding == RX_ENC_HT) {
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		unsigned int stbc;
 
 		rthdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_MCS);
@@ -331,7 +367,11 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 		*pos = 0;
 		if (status->flag & RX_FLAG_SHORT_GI)
 			*pos |= IEEE80211_RADIOTAP_MCS_SGI;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		if (status->flag & RX_FLAG_40MHZ)
+=======
+		if (status->bw == RATE_INFO_BW_40)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			*pos |= IEEE80211_RADIOTAP_MCS_BW_40;
 		if (status->flag & RX_FLAG_HT_GF)
 			*pos |= IEEE80211_RADIOTAP_MCS_FMT_GF;
@@ -370,7 +410,11 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 		*pos++ = 0;
 	}
 
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	if (status->flag & RX_FLAG_VHT) {
+=======
+	if (status->encoding == RX_ENC_VHT) {
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		u16 known = local->hw.radiotap_vht_details;
 
 		rthdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_VHT);
@@ -386,14 +430,31 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 			*pos |= IEEE80211_RADIOTAP_VHT_FLAG_BEAMFORMED;
 		pos++;
 		/* bandwidth */
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		if (status->vht_flag & RX_VHT_FLAG_80MHZ)
+=======
+		switch (status->bw) {
+		case RATE_INFO_BW_80:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			*pos++ = 4;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		else if (status->vht_flag & RX_VHT_FLAG_160MHZ)
+=======
+			break;
+		case RATE_INFO_BW_160:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			*pos++ = 11;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		else if (status->flag & RX_FLAG_40MHZ)
+=======
+			break;
+		case RATE_INFO_BW_40:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			*pos++ = 1;
-		else /* 20 MHz */
+			break;
+		default:
 			*pos++ = 0;
+		}
 		/* MCS/NSS */
 		*pos = (status->rate_idx << 4) | status->vht_nss;
 		pos += 4;
@@ -3382,8 +3443,13 @@ static void ieee80211_rx_handlers_result(struct ieee80211_rx_data *rx,
 		status = IEEE80211_SKB_RXCB((rx->skb));
 
 		sband = rx->local->hw.wiphy->bands[status->band];
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		if (!(status->flag & RX_FLAG_HT) &&
 		    !(status->flag & RX_FLAG_VHT))
+=======
+		if (!(status->encoding == RX_ENC_HT) &&
+		    !(status->encoding == RX_ENC_VHT))
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			rate = &sband->bitrates[status->rate_idx];
 
 		ieee80211_rx_cooked_monitor(rx, rate);
@@ -3587,7 +3653,11 @@ static bool ieee80211_accept_frame(struct ieee80211_rx_data *rx)
 			return false;
 		if (!rx->sta) {
 			int rate_idx;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 			if (status->flag & (RX_FLAG_HT | RX_FLAG_VHT))
+=======
+			if (status->encoding != RX_ENC_LEGACY)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 				rate_idx = 0; /* TODO: HT/VHT rates */
 			else
 				rate_idx = status->rate_idx;
@@ -3607,7 +3677,11 @@ static bool ieee80211_accept_frame(struct ieee80211_rx_data *rx)
 			return false;
 		if (!rx->sta) {
 			int rate_idx;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 			if (status->flag & RX_FLAG_HT)
+=======
+			if (status->encoding != RX_ENC_LEGACY)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 				rate_idx = 0; /* TODO: HT rates */
 			else
 				rate_idx = status->rate_idx;
@@ -3869,7 +3943,12 @@ void ieee80211_rx(struct ieee80211_hw *hw, struct sk_buff *skb)
 		 * we probably can't have a valid rate here anyway.
 		 */
 
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		if (status->flag & RX_FLAG_HT) {
+=======
+		switch (status->encoding) {
+		case RX_ENC_HT:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			/*
 			 * rate_idx is MCS index, which can be [0-76]
 			 * as documented on:
@@ -3887,14 +3966,23 @@ void ieee80211_rx(struct ieee80211_hw *hw, struct sk_buff *skb)
 				 status->rate_idx,
 				 status->rate_idx))
 				goto drop;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		} else if (status->flag & RX_FLAG_VHT) {
+=======
+			break;
+		case RX_ENC_VHT:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			if (WARN_ONCE(status->rate_idx > 9 ||
 				      !status->vht_nss ||
 				      status->vht_nss > 8,
 				      "Rate marked as a VHT rate but data is invalid: MCS: %d, NSS: %d\n",
 				      status->rate_idx, status->vht_nss))
 				goto drop;
-		} else {
+			break;
+		default:
+			WARN_ON_ONCE(1);
+			/* fall through */
+		case RX_ENC_LEGACY:
 			if (WARN_ON(status->rate_idx >= sband->n_bitrates))
 				goto drop;
 			rate = &sband->bitrates[status->rate_idx];

@@ -2624,19 +2624,35 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 	memset(&ri, 0, sizeof(ri));
 
 	/* Fill cfg80211 rate info */
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	if (status->flag & RX_FLAG_HT) {
+=======
+	switch (status->encoding) {
+	case RX_ENC_HT:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		ri.mcs = status->rate_idx;
 		ri.flags |= RATE_INFO_FLAGS_MCS;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		if (status->flag & RX_FLAG_40MHZ)
 			ri.bw = RATE_INFO_BW_40;
 		else
 			ri.bw = RATE_INFO_BW_20;
 		if (status->flag & RX_FLAG_SHORT_GI)
+=======
+		ri.bw = status->bw;
+		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			ri.flags |= RATE_INFO_FLAGS_SHORT_GI;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	} else if (status->flag & RX_FLAG_VHT) {
+=======
+		break;
+	case RX_ENC_VHT:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		ri.flags |= RATE_INFO_FLAGS_VHT_MCS;
 		ri.mcs = status->rate_idx;
 		ri.nss = status->vht_nss;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		if (status->flag & RX_FLAG_40MHZ)
 			ri.bw = RATE_INFO_BW_40;
 		else if (status->vht_flag & RX_VHT_FLAG_80MHZ)
@@ -2646,20 +2662,38 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 		else
 			ri.bw = RATE_INFO_BW_20;
 		if (status->flag & RX_FLAG_SHORT_GI)
+=======
+		ri.bw = status->bw;
+		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			ri.flags |= RATE_INFO_FLAGS_SHORT_GI;
-	} else {
+		break;
+	default:
+		WARN_ON(1);
+		/* fall through */
+	case RX_ENC_LEGACY: {
 		struct ieee80211_supported_band *sband;
 		int shift = 0;
 		int bitrate;
 
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		if (status->flag & RX_FLAG_10MHZ) {
+=======
+		ri.bw = status->bw;
+
+		switch (status->bw) {
+		case RATE_INFO_BW_10:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			shift = 1;
+<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 			ri.bw = RATE_INFO_BW_10;
 		} else if (status->flag & RX_FLAG_5MHZ) {
+=======
+			break;
+		case RATE_INFO_BW_5:
+>>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			shift = 2;
-			ri.bw = RATE_INFO_BW_5;
-		} else {
-			ri.bw = RATE_INFO_BW_20;
+			break;
 		}
 
 		sband = local->hw.wiphy->bands[status->band];
@@ -2676,6 +2710,8 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 			} else {
 				ts += 192;
 			}
+		}
+		break;
 		}
 	}
 
