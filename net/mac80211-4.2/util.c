@@ -2624,48 +2624,72 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 	memset(&ri, 0, sizeof(ri));
 
 	/* Fill cfg80211 rate info */
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (status->flag & RX_FLAG_HT) {
 =======
 	switch (status->encoding) {
 	case RX_ENC_HT:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	if (status->enc_flags & RX_ENC_FLAG_HT) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		ri.mcs = status->rate_idx;
 		ri.flags |= RATE_INFO_FLAGS_MCS;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (status->flag & RX_FLAG_40MHZ)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_40MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			ri.bw = RATE_INFO_BW_40;
 		else
 			ri.bw = RATE_INFO_BW_20;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		if (status->flag & RX_FLAG_SHORT_GI)
 =======
 		ri.bw = status->bw;
 		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			ri.flags |= RATE_INFO_FLAGS_SHORT_GI;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	} else if (status->flag & RX_FLAG_VHT) {
 =======
 		break;
 	case RX_ENC_VHT:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	} else if (status->enc_flags & RX_ENC_FLAG_VHT) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		ri.flags |= RATE_INFO_FLAGS_VHT_MCS;
 		ri.mcs = status->rate_idx;
 		ri.nss = status->vht_nss;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (status->flag & RX_FLAG_40MHZ)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_40MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			ri.bw = RATE_INFO_BW_40;
-		else if (status->vht_flag & RX_VHT_FLAG_80MHZ)
+		else if (status->enc_flags & RX_ENC_FLAG_80MHZ)
 			ri.bw = RATE_INFO_BW_80;
-		else if (status->vht_flag & RX_VHT_FLAG_160MHZ)
+		else if (status->enc_flags & RX_ENC_FLAG_160MHZ)
 			ri.bw = RATE_INFO_BW_160;
 		else
 			ri.bw = RATE_INFO_BW_20;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		if (status->flag & RX_FLAG_SHORT_GI)
 =======
 		ri.bw = status->bw;
 		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			ri.flags |= RATE_INFO_FLAGS_SHORT_GI;
 		break;
 	default:
@@ -2676,6 +2700,7 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 		int shift = 0;
 		int bitrate;
 
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (status->flag & RX_FLAG_10MHZ) {
 =======
@@ -2684,14 +2709,21 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 		switch (status->bw) {
 		case RATE_INFO_BW_10:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_10MHZ) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			shift = 1;
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 			ri.bw = RATE_INFO_BW_10;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		} else if (status->flag & RX_FLAG_5MHZ) {
 =======
 			break;
 		case RATE_INFO_BW_5:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		} else if (status->enc_flags & RX_ENC_FLAG_5MHZ) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			shift = 2;
 			break;
 		}

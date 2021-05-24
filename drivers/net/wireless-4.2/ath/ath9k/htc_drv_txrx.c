@@ -929,20 +929,28 @@ void ath9k_host_rx_init(struct ath9k_htc_priv *priv)
 static inline void convert_htc_flag(struct ath_rx_status *rx_stats,
 				   struct ath_htc_rx_status *rxstatus)
 {
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	rx_stats->flag = 0;
 =======
 	rx_stats->enc_flags = 0;
 	rx_stats->bw = RATE_INFO_BW_20;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	rx_stats->enc_flags = 0;
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 	if (rxstatus->rs_flags & ATH9K_RX_2040)
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		rx_stats->flag |= RX_FLAG_40MHZ;
 =======
 		rx_stats->bw = RATE_INFO_BW_40;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		rx_stats->enc_flags |= RX_ENC_FLAG_40MHZ;
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 	if (rxstatus->rs_flags & ATH9K_RX_GI)
-		rx_stats->flag |= RX_FLAG_SHORT_GI;
+		rx_stats->enc_flags |= RX_ENC_FLAG_SHORT_GI;
 }
 
 static void rx_status_htc_to_ath(struct ath_rx_status *rx_stats,

@@ -130,16 +130,20 @@ void ath_debug_rate_stats(struct ath_softc *sc,
 		if (rxs->rate_idx >= ARRAY_SIZE(rstats->ht_stats))
 			goto exit;
 
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (rxs->flag & RX_FLAG_40MHZ)
 =======
 		if ((rxs->bw == RATE_INFO_BW_40))
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (rxs->enc_flags & RX_ENC_FLAG_40MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			rstats->ht_stats[rxs->rate_idx].ht40_cnt++;
 		else
 			rstats->ht_stats[rxs->rate_idx].ht20_cnt++;
 
-		if (rxs->flag & RX_FLAG_SHORT_GI)
+		if (rxs->enc_flags & RX_ENC_FLAG_SHORT_GI)
 			rstats->ht_stats[rxs->rate_idx].sgi_cnt++;
 		else
 			rstats->ht_stats[rxs->rate_idx].lgi_cnt++;
@@ -148,7 +152,7 @@ void ath_debug_rate_stats(struct ath_softc *sc,
 	}
 
 	if (IS_CCK_RATE(rs->rs_rate)) {
-		if (rxs->flag & RX_FLAG_SHORTPRE)
+		if (rxs->enc_flags & RX_ENC_FLAG_SHORTPRE)
 			rstats->cck_stats[rxs->rate_idx].cck_sp_cnt++;
 		else
 			rstats->cck_stats[rxs->rate_idx].cck_lp_cnt++;

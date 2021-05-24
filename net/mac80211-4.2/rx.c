@@ -127,11 +127,15 @@ ieee80211_rx_radiotap_hdrlen(struct ieee80211_local *local,
 	/* padding for RX_FLAGS if necessary */
 	len = ALIGN(len, 2);
 
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (status->flag & RX_FLAG_HT) /* HT info */
 =======
 	if (status->encoding == RX_ENC_HT) /* HT info */
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	if (status->enc_flags & RX_ENC_FLAG_HT) /* HT info */
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		len += 3;
 
 	if (status->flag & RX_FLAG_AMPDU_DETAILS) {
@@ -139,11 +143,15 @@ ieee80211_rx_radiotap_hdrlen(struct ieee80211_local *local,
 		len += 8;
 	}
 
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (status->flag & RX_FLAG_VHT) {
 =======
 	if (status->encoding == RX_ENC_VHT) {
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	if (status->enc_flags & RX_ENC_FLAG_VHT) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		len = ALIGN(len, 2);
 		len += 12;
 	}
@@ -258,16 +266,20 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 		*pos |= IEEE80211_RADIOTAP_F_FCS;
 	if (status->flag & (RX_FLAG_FAILED_FCS_CRC | RX_FLAG_FAILED_PLCP_CRC))
 		*pos |= IEEE80211_RADIOTAP_F_BADFCS;
-	if (status->flag & RX_FLAG_SHORTPRE)
+	if (status->enc_flags & RX_ENC_FLAG_SHORTPRE)
 		*pos |= IEEE80211_RADIOTAP_F_SHORTPRE;
 	pos++;
 
 	/* IEEE80211_RADIOTAP_RATE */
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (!rate || status->flag & (RX_FLAG_HT | RX_FLAG_VHT)) {
 =======
 	if (!rate || status->encoding != RX_ENC_LEGACY) {
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	if (!rate || status->enc_flags & (RX_ENC_FLAG_HT | RX_ENC_FLAG_VHT)) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		/*
 		 * Without rate information don't add it. If we have,
 		 * MCS information is a separate field in radiotap,
@@ -278,17 +290,25 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 	} else {
 		int shift = 0;
 		rthdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_RATE);
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (status->flag & RX_FLAG_10MHZ)
 =======
 		if (status->bw == RATE_INFO_BW_10)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_10MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			shift = 1;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		else if (status->flag & RX_FLAG_5MHZ)
 =======
 		else if (status->bw == RATE_INFO_BW_5)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		else if (status->enc_flags & RX_ENC_FLAG_5MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			shift = 2;
 		*pos = DIV_ROUND_UP(rate->bitrate, 5 * (1 << shift));
 	}
@@ -297,26 +317,38 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 	/* IEEE80211_RADIOTAP_CHANNEL */
 	put_unaligned_le16(status->freq, pos);
 	pos += 2;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (status->flag & RX_FLAG_10MHZ)
 =======
 	if (status->bw == RATE_INFO_BW_10)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	if (status->enc_flags & RX_ENC_FLAG_10MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		channel_flags |= IEEE80211_CHAN_HALF;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	else if (status->flag & RX_FLAG_5MHZ)
 =======
 	else if (status->bw == RATE_INFO_BW_5)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	else if (status->enc_flags & RX_ENC_FLAG_5MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		channel_flags |= IEEE80211_CHAN_QUARTER;
 
 	if (status->band == IEEE80211_BAND_5GHZ)
 		channel_flags |= IEEE80211_CHAN_OFDM | IEEE80211_CHAN_5GHZ;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	else if (status->flag & (RX_FLAG_HT | RX_FLAG_VHT))
 =======
 	else if (status->encoding != RX_ENC_LEGACY)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	else if (status->enc_flags & (RX_ENC_FLAG_HT | RX_ENC_FLAG_VHT))
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		channel_flags |= IEEE80211_CHAN_DYN | IEEE80211_CHAN_2GHZ;
 	else if (rate && rate->flags & IEEE80211_RATE_ERP_G)
 		channel_flags |= IEEE80211_CHAN_OFDM | IEEE80211_CHAN_2GHZ;
@@ -355,29 +387,37 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 	put_unaligned_le16(rx_flags, pos);
 	pos += 2;
 
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (status->flag & RX_FLAG_HT) {
 =======
 	if (status->encoding == RX_ENC_HT) {
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	if (status->enc_flags & RX_ENC_FLAG_HT) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		unsigned int stbc;
 
 		rthdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_MCS);
 		*pos++ = local->hw.radiotap_mcs_details;
 		*pos = 0;
-		if (status->flag & RX_FLAG_SHORT_GI)
+		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
 			*pos |= IEEE80211_RADIOTAP_MCS_SGI;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (status->flag & RX_FLAG_40MHZ)
 =======
 		if (status->bw == RATE_INFO_BW_40)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_40MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			*pos |= IEEE80211_RADIOTAP_MCS_BW_40;
-		if (status->flag & RX_FLAG_HT_GF)
+		if (status->enc_flags & RX_ENC_FLAG_HT_GF)
 			*pos |= IEEE80211_RADIOTAP_MCS_FMT_GF;
-		if (status->flag & RX_FLAG_LDPC)
+		if (status->enc_flags & RX_ENC_FLAG_LDPC)
 			*pos |= IEEE80211_RADIOTAP_MCS_FEC_LDPC;
-		stbc = (status->flag & RX_FLAG_STBC_MASK) >> RX_FLAG_STBC_SHIFT;
+		stbc = (status->enc_flags & RX_ENC_FLAG_STBC_MASK) >> RX_ENC_FLAG_STBC_SHIFT;
 		*pos |= stbc << IEEE80211_RADIOTAP_MCS_STBC_SHIFT;
 		pos++;
 		*pos++ = status->rate_idx;
@@ -410,46 +450,62 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 		*pos++ = 0;
 	}
 
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (status->flag & RX_FLAG_VHT) {
 =======
 	if (status->encoding == RX_ENC_VHT) {
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+	if (status->enc_flags & RX_ENC_FLAG_VHT) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		u16 known = local->hw.radiotap_vht_details;
 
 		rthdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_VHT);
 		put_unaligned_le16(known, pos);
 		pos += 2;
 		/* flags */
-		if (status->flag & RX_FLAG_SHORT_GI)
+		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
 			*pos |= IEEE80211_RADIOTAP_VHT_FLAG_SGI;
 		/* in VHT, STBC is binary */
-		if (status->flag & RX_FLAG_STBC_MASK)
+		if (status->enc_flags & RX_ENC_FLAG_STBC_MASK)
 			*pos |= IEEE80211_RADIOTAP_VHT_FLAG_STBC;
-		if (status->vht_flag & RX_VHT_FLAG_BF)
+		if (status->enc_flags & RX_ENC_FLAG_BF)
 			*pos |= IEEE80211_RADIOTAP_VHT_FLAG_BEAMFORMED;
 		pos++;
 		/* bandwidth */
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (status->vht_flag & RX_VHT_FLAG_80MHZ)
 =======
 		switch (status->bw) {
 		case RATE_INFO_BW_80:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_80MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			*pos++ = 4;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		else if (status->vht_flag & RX_VHT_FLAG_160MHZ)
 =======
 			break;
 		case RATE_INFO_BW_160:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		else if (status->enc_flags & RX_ENC_FLAG_160MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			*pos++ = 11;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		else if (status->flag & RX_FLAG_40MHZ)
 =======
 			break;
 		case RATE_INFO_BW_40:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		else if (status->enc_flags & RX_ENC_FLAG_40MHZ)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			*pos++ = 1;
 			break;
 		default:
@@ -459,7 +515,7 @@ ieee80211_add_rx_radiotap_header(struct ieee80211_local *local,
 		*pos = (status->rate_idx << 4) | status->vht_nss;
 		pos += 4;
 		/* coding field */
-		if (status->flag & RX_FLAG_LDPC)
+		if (status->enc_flags & RX_ENC_FLAG_LDPC)
 			*pos |= IEEE80211_RADIOTAP_CODING_LDPC_USER0;
 		pos++;
 		/* group ID */
@@ -1430,7 +1486,7 @@ ieee80211_rx_h_sta_process(struct ieee80211_rx_data *rx)
 			    !is_multicast_ether_addr(hdr->addr1)) {
 				sta->last_rx_rate_idx = status->rate_idx;
 				sta->last_rx_rate_flag = status->flag;
-				sta->last_rx_rate_vht_flag = status->vht_flag;
+				sta->last_rx_rate_vht_flag = status->enc_flags;
 				sta->last_rx_rate_vht_nss = status->vht_nss;
 			}
 		}
@@ -1445,7 +1501,7 @@ ieee80211_rx_h_sta_process(struct ieee80211_rx_data *rx)
 		if (ieee80211_is_data(hdr->frame_control)) {
 			sta->last_rx_rate_idx = status->rate_idx;
 			sta->last_rx_rate_flag = status->flag;
-			sta->last_rx_rate_vht_flag = status->vht_flag;
+			sta->last_rx_rate_vht_flag = status->enc_flags;
 			sta->last_rx_rate_vht_nss = status->vht_nss;
 			ieee80211_rx_h_sta_stats(sta, skb);
 		}
@@ -3398,6 +3454,7 @@ static void ieee80211_rx_handlers_result(struct ieee80211_rx_data *rx,
 		status = IEEE80211_SKB_RXCB((rx->skb));
 
 		sband = rx->local->hw.wiphy->bands[status->band];
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (!(status->flag & RX_FLAG_HT) &&
 		    !(status->flag & RX_FLAG_VHT))
@@ -3405,6 +3462,10 @@ static void ieee80211_rx_handlers_result(struct ieee80211_rx_data *rx,
 		if (!(status->encoding == RX_ENC_HT) &&
 		    !(status->encoding == RX_ENC_VHT))
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (!(status->enc_flags & RX_ENC_FLAG_HT) &&
+		    !(status->enc_flags & RX_ENC_FLAG_VHT))
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			rate = &sband->bitrates[status->rate_idx];
 
 		ieee80211_rx_cooked_monitor(rx, rate);
@@ -3608,11 +3669,15 @@ static bool ieee80211_accept_frame(struct ieee80211_rx_data *rx)
 			return false;
 		if (!rx->sta) {
 			int rate_idx;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 			if (status->flag & (RX_FLAG_HT | RX_FLAG_VHT))
 =======
 			if (status->encoding != RX_ENC_LEGACY)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+			if (status->enc_flags & (RX_ENC_FLAG_HT | RX_ENC_FLAG_VHT))
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 				rate_idx = 0; /* TODO: HT/VHT rates */
 			else
 				rate_idx = status->rate_idx;
@@ -3632,11 +3697,15 @@ static bool ieee80211_accept_frame(struct ieee80211_rx_data *rx)
 			return false;
 		if (!rx->sta) {
 			int rate_idx;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 			if (status->flag & RX_FLAG_HT)
 =======
 			if (status->encoding != RX_ENC_LEGACY)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+			if (status->enc_flags & RX_ENC_FLAG_HT)
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 				rate_idx = 0; /* TODO: HT rates */
 			else
 				rate_idx = status->rate_idx;
@@ -3898,12 +3967,16 @@ void ieee80211_rx(struct ieee80211_hw *hw, struct sk_buff *skb)
 		 * we probably can't have a valid rate here anyway.
 		 */
 
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (status->flag & RX_FLAG_HT) {
 =======
 		switch (status->encoding) {
 		case RX_ENC_HT:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		if (status->enc_flags & RX_ENC_FLAG_HT) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			/*
 			 * rate_idx is MCS index, which can be [0-76]
 			 * as documented on:
@@ -3921,12 +3994,16 @@ void ieee80211_rx(struct ieee80211_hw *hw, struct sk_buff *skb)
 				 status->rate_idx,
 				 status->rate_idx))
 				goto drop;
+<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		} else if (status->flag & RX_FLAG_VHT) {
 =======
 			break;
 		case RX_ENC_VHT:
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
+=======
+		} else if (status->enc_flags & RX_ENC_FLAG_VHT) {
+>>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 			if (WARN_ONCE(status->rate_idx > 9 ||
 				      !status->vht_nss ||
 				      status->vht_nss > 8,
