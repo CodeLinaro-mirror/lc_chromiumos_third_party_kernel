@@ -16,6 +16,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of_device.h>
 #include <linux/clk.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <sound/pcm_params.h>
@@ -51,7 +52,40 @@ struct rk_i2s_dev {
 	bool rx_start;
 	bool is_master_mode;
 	const struct rk_i2s_pins *pins;
+
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *bclk_on;
+	struct pinctrl_state *bclk_off;
 };
+
+static int i2s_pinctrl_select_bclk_on(struct rk_i2s_dev *i2s)
+{
+	int ret = 0;
+
+	if (!IS_ERR(i2s->pinctrl) && !IS_ERR_OR_NULL(i2s->bclk_on))
+		ret = pinctrl_select_state(i2s->pinctrl,
+				     i2s->bclk_on);
+
+	if (ret)
+		dev_err(i2s->dev, "bclk enable failed %d\n", ret);
+
+	return ret;
+}
+
+static int i2s_pinctrl_select_bclk_off(struct rk_i2s_dev *i2s)
+{
+
+	int ret = 0;
+
+	if (!IS_ERR(i2s->pinctrl) && !IS_ERR_OR_NULL(i2s->bclk_off))
+		ret = pinctrl_select_state(i2s->pinctrl,
+				     i2s->bclk_off);
+
+	if (ret)
+		dev_err(i2s->dev, "bclk disable failed %d\n", ret);
+
+	return ret;
+}
 
 static int i2s_runtime_suspend(struct device *dev)
 {
@@ -89,37 +123,55 @@ static inline struct rk_i2s_dev *to_info(struct snd_soc_dai *dai)
 	return snd_soc_dai_get_drvdata(dai);
 }
 
-static void rockchip_snd_txctrl(struct rk_i2s_dev *i2s, int on)
+static int rockchip_snd_txctrl(struct rk_i2s_dev *i2s, int on)
 {
 	unsigned int val = 0;
 	int retry = 10;
+	int ret = 0;
 
 	if (on) {
-		regmap_update_bits(i2s->regmap, I2S_DMACR,
-				   I2S_DMACR_TDE_ENABLE, I2S_DMACR_TDE_ENABLE);
-
-		regmap_update_bits(i2s->regmap, I2S_XFER,
-				   I2S_XFER_TXS_START | I2S_XFER_RXS_START,
-				   I2S_XFER_TXS_START | I2S_XFER_RXS_START);
+		ret = regmap_update_bits(i2s->regmap, I2S_DMACR,
+				I2S_DMACR_TDE_ENABLE, I2S_DMACR_TDE_ENABLE);
+		if (ret < 0) {
+			dev_err(i2s->dev, "I2S_DMACR enable failed\n");
+			return ret;
+		}
+		ret = regmap_update_bits(i2s->regmap, I2S_XFER,
+				I2S_XFER_TXS_START | I2S_XFER_RXS_START,
+				I2S_XFER_TXS_START | I2S_XFER_RXS_START);
+		if (ret < 0) {
+			dev_err(i2s->dev, "lrclk enable failed\n");
+			return ret;
+		}
 
 		i2s->tx_start = true;
 	} else {
 		i2s->tx_start = false;
 
-		regmap_update_bits(i2s->regmap, I2S_DMACR,
-				   I2S_DMACR_TDE_ENABLE, I2S_DMACR_TDE_DISABLE);
+		ret = regmap_update_bits(i2s->regmap, I2S_DMACR,
+				I2S_DMACR_TDE_ENABLE, I2S_DMACR_TDE_DISABLE);
+		if (ret < 0) {
+			dev_err(i2s->dev, "I2S_DMACR disable failed\n");
+			return ret;
+		}
 
 		if (!i2s->rx_start) {
-			regmap_update_bits(i2s->regmap, I2S_XFER,
-					   I2S_XFER_TXS_START |
-					   I2S_XFER_RXS_START,
-					   I2S_XFER_TXS_STOP |
-					   I2S_XFER_RXS_STOP);
-
-			regmap_update_bits(i2s->regmap, I2S_CLR,
-					   I2S_CLR_TXC | I2S_CLR_RXC,
-					   I2S_CLR_TXC | I2S_CLR_RXC);
-
+			ret = regmap_update_bits(i2s->regmap, I2S_XFER,
+					I2S_XFER_TXS_START |
+					I2S_XFER_RXS_START,
+					I2S_XFER_TXS_STOP |
+					I2S_XFER_RXS_STOP);
+			if (ret < 0) {
+				dev_err(i2s->dev, "lrclk disable failed\n");
+				return ret;
+			}
+			ret = regmap_update_bits(i2s->regmap, I2S_CLR,
+					I2S_CLR_TXC | I2S_CLR_RXC,
+					I2S_CLR_TXC | I2S_CLR_RXC);
+			if (ret < 0) {
+				dev_err(i2s->dev, "I2S_CLR update failed\n");
+				return ret;
+			}
 			regmap_read(i2s->regmap, I2S_CLR, &val);
 
 			/* Should wait for clear operation to finish */
@@ -127,58 +179,76 @@ static void rockchip_snd_txctrl(struct rk_i2s_dev *i2s, int on)
 				regmap_read(i2s->regmap, I2S_CLR, &val);
 				retry--;
 				if (!retry) {
-					dev_warn(i2s->dev, "fail to clear\n");
-					break;
+					dev_err(i2s->dev, "fail to clear I2S_CLR\n");
+					return -EBUSY;
 				}
 			}
 		}
 	}
+	return 0;
 }
 
-static void rockchip_snd_rxctrl(struct rk_i2s_dev *i2s, int on)
+static int rockchip_snd_rxctrl(struct rk_i2s_dev *i2s, int on)
 {
 	unsigned int val = 0;
 	int retry = 10;
+	int ret = 0;
 
 	if (on) {
-		regmap_update_bits(i2s->regmap, I2S_DMACR,
+		ret = regmap_update_bits(i2s->regmap, I2S_DMACR,
 				   I2S_DMACR_RDE_ENABLE, I2S_DMACR_RDE_ENABLE);
-
-		regmap_update_bits(i2s->regmap, I2S_XFER,
+		if (ret < 0) {
+			dev_err(i2s->dev, "I2S_DMACR enable failed\n");
+			return ret;
+		}
+		ret = regmap_update_bits(i2s->regmap, I2S_XFER,
 				   I2S_XFER_TXS_START | I2S_XFER_RXS_START,
 				   I2S_XFER_TXS_START | I2S_XFER_RXS_START);
+		if (ret < 0) {
+			dev_err(i2s->dev, "lrclk enable failed\n");
+			return ret;
+		}
 
 		i2s->rx_start = true;
 	} else {
 		i2s->rx_start = false;
 
-		regmap_update_bits(i2s->regmap, I2S_DMACR,
+		ret = regmap_update_bits(i2s->regmap, I2S_DMACR,
 				   I2S_DMACR_RDE_ENABLE, I2S_DMACR_RDE_DISABLE);
-
+		if (ret < 0) {
+			dev_err(i2s->dev, "I2S_DMACR disable failed\n");
+			return ret;
+		}
 		if (!i2s->tx_start) {
-			regmap_update_bits(i2s->regmap, I2S_XFER,
+			ret = regmap_update_bits(i2s->regmap, I2S_XFER,
 					   I2S_XFER_TXS_START |
 					   I2S_XFER_RXS_START,
 					   I2S_XFER_TXS_STOP |
 					   I2S_XFER_RXS_STOP);
-
-			regmap_update_bits(i2s->regmap, I2S_CLR,
+			if (ret < 0) {
+				dev_err(i2s->dev, "lrclk disable failed\n");
+				return ret;
+			}
+			ret = regmap_update_bits(i2s->regmap, I2S_CLR,
 					   I2S_CLR_TXC | I2S_CLR_RXC,
 					   I2S_CLR_TXC | I2S_CLR_RXC);
-
+			if (ret < 0) {
+				dev_err(i2s->dev, "I2S_CLR update failed\n");
+				return ret;
+			}
 			regmap_read(i2s->regmap, I2S_CLR, &val);
-
 			/* Should wait for clear operation to finish */
 			while (val) {
 				regmap_read(i2s->regmap, I2S_CLR, &val);
 				retry--;
 				if (!retry) {
-					dev_warn(i2s->dev, "fail to clear\n");
-					break;
+					dev_err(i2s->dev, "fail to clear I2S_CLR\n");
+					return -EBUSY;
 				}
 			}
 		}
 	}
+	return 0;
 }
 
 static int rockchip_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
@@ -367,17 +437,22 @@ static int rockchip_i2s_trigger(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-			rockchip_snd_rxctrl(i2s, 1);
+			ret = rockchip_snd_rxctrl(i2s, 1);
 		else
-			rockchip_snd_txctrl(i2s, 1);
+			ret = rockchip_snd_txctrl(i2s, 1);
+		/* Do not turn on bclk if lrclk open fails. */
+		if (ret < 0)
+			return ret;
+		i2s_pinctrl_select_bclk_on(i2s);
 		break;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		i2s_pinctrl_select_bclk_off(i2s);
 		if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-			rockchip_snd_rxctrl(i2s, 0);
+			ret = rockchip_snd_rxctrl(i2s, 0);
 		else
-			rockchip_snd_txctrl(i2s, 0);
+			ret = rockchip_snd_txctrl(i2s, 0);
 		break;
 	default:
 		ret = -EINVAL;
@@ -597,6 +672,22 @@ static int rockchip_i2s_probe(struct platform_device *pdev)
 			"Failed to initialise managed register map\n");
 		return PTR_ERR(i2s->regmap);
 	}
+
+	i2s->pinctrl = devm_pinctrl_get(&pdev->dev);
+	if (!IS_ERR(i2s->pinctrl))
+		dev_info(&pdev->dev, "find i2s pinctrl property\n");
+
+	i2s->bclk_on = pinctrl_lookup_state(i2s->pinctrl,
+				   "bclk_on");
+	if (!IS_ERR_OR_NULL(i2s->bclk_on))
+		dev_info(&pdev->dev, "find i2s bclk state\n");
+
+	i2s->bclk_off = pinctrl_lookup_state(i2s->pinctrl,
+				  "bclk_off");
+	if (!IS_ERR_OR_NULL(i2s->bclk_off))
+		dev_info(&pdev->dev, "find i2s bclk_off state\n");
+
+	i2s_pinctrl_select_bclk_off(i2s);
 
 	i2s->playback_dma_data.addr = res->start + I2S_TXDR;
 	i2s->playback_dma_data.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
