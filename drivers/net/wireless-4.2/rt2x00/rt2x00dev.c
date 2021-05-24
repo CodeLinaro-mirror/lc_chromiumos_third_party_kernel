@@ -757,7 +757,7 @@ void rt2x00lib_rxdone(struct queue_entry *entry, gfp_t gfp)
 	rate_idx = rt2x00lib_rxdone_read_signal(rt2x00dev, &rxdesc);
 	if (rxdesc.rate_mode == RATE_MODE_HT_MIX ||
 	    rxdesc.rate_mode == RATE_MODE_HT_GREENFIELD)
-		rxdesc.flags |= RX_ENC_FLAG_HT;
+		rxdesc.flags |= RX_ENC_HT;
 
 	/*
 	 * Check if this is a beacon, and more frames have been

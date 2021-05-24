@@ -473,10 +473,10 @@ void sta_set_rate_info_rx(struct sta_info *sta, struct rate_info *rinfo)
 {
 	rinfo->flags = 0;
 
-	if (sta->last_rx_rate_flag & RX_ENC_FLAG_HT) {
+	if (sta->last_rx_rate_flag & RX_ENC_HT) {
 		rinfo->flags |= RATE_INFO_FLAGS_MCS;
 		rinfo->mcs = sta->last_rx_rate_idx;
-	} else if (sta->last_rx_rate_flag & RX_ENC_FLAG_VHT) {
+	} else if (sta->last_rx_rate_flag & RX_ENC_VHT) {
 		rinfo->flags |= RATE_INFO_FLAGS_VHT_MCS;
 		rinfo->nss = sta->last_rx_rate_vht_nss;
 		rinfo->mcs = sta->last_rx_rate_idx;
@@ -494,15 +494,15 @@ void sta_set_rate_info_rx(struct sta_info *sta, struct rate_info *rinfo)
 	if (sta->last_rx_rate_flag & RX_ENC_FLAG_SHORT_GI)
 		rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
 
-	if (sta->last_rx_rate_flag & RX_ENC_FLAG_5MHZ)
+	if (sta->last_rx_rate_flag & RATE_INFO_BW_5)
 		rinfo->bw = RATE_INFO_BW_5;
-	else if (sta->last_rx_rate_flag & RX_ENC_FLAG_10MHZ)
+	else if (sta->last_rx_rate_flag & RATE_INFO_BW_10)
 		rinfo->bw = RATE_INFO_BW_10;
-	else if (sta->last_rx_rate_flag & RX_ENC_FLAG_40MHZ)
+	else if (sta->last_rx_rate_flag & RATE_INFO_BW_40)
 		rinfo->bw = RATE_INFO_BW_40;
-	else if (sta->last_rx_rate_vht_flag & RX_ENC_FLAG_80MHZ)
+	else if (sta->last_rx_rate_vht_flag & RATE_INFO_BW_80)
 		rinfo->bw = RATE_INFO_BW_80;
-	else if (sta->last_rx_rate_vht_flag & RX_ENC_FLAG_160MHZ)
+	else if (sta->last_rx_rate_vht_flag & RATE_INFO_BW_160)
 		rinfo->bw = RATE_INFO_BW_160;
 	else
 		rinfo->bw = RATE_INFO_BW_20;
