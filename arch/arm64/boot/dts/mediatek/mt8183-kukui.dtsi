@@ -217,6 +217,10 @@
 	status = "okay";
 };
 
+&cci {
+	proc-supply = <&mt6358_vproc12_reg>;
+};
+
 &cpu0 {
 	proc-supply = <&mt6358_vproc12_reg>;
 };
@@ -263,6 +267,7 @@
 		avee-supply = <&ppvarp_lcd>;
 		pp1800-supply = <&pp1800_lcd>;
 		backlight = <&backlight_lcd0>;
+		rotation = <270>;
 		port {
 			panel_in: endpoint {
 				remote-endpoint = <&dsi_out>;
@@ -276,6 +281,24 @@
 				remote-endpoint = <&panel_in>;
 			};
 		};
+	};
+};
+
+&gpu {
+	supply-names = "mali","mali_sram";
+	mali-supply = <&mt6358_vgpu_reg>;
+	mali_sram-supply = <&mt6358_vsram_gpu_reg>;
+	operating-points-v2 = <&gpu_opp_table>;
+	power_model@0 {
+		compatible = "arm,mali-simple-power-model";
+		static-coefficient = <2427750>;
+		dynamic-coefficient = <4687>;
+		ts = <20000 2000 (-20) 2>;
+		thermal-zone = "cpu_thermal";
+	};
+	power_model@1 {
+		compatible = "arm,mali-g72-power-model";
+		scale = <15000>;
 	};
 };
 
@@ -845,6 +868,20 @@
 	wakeup-source;
 	vusb33-supply = <&mt6358_vusb_reg>;
 	status = "okay";
+};
+
+&thermal_zones {
+	Tboard1 {
+		polling-delay = <1000>; /* milliseconds */
+		polling-delay-passive = <0>; /* milliseconds */
+		thermal-sensors = <&tboard_thermistor1>;
+	};
+
+	Tboard2 {
+		polling-delay = <1000>; /* milliseconds */
+		polling-delay-passive = <0>; /* milliseconds */
+		thermal-sensors = <&tboard_thermistor2>;
+	};
 };
 
 &u3phy {
