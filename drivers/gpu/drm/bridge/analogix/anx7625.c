@@ -2385,14 +2385,15 @@ static ssize_t anx7625_power_supply_store(struct device *dev,
 					  struct device_attribute *attr,
 					  const char *buf, size_t size)
 {
-	struct anx7625_data *ctx = dev_get_drvdata(dev);
 	unsigned long state;
 
 	if (kstrtoul(buf, 10, &state))
 		return -EINVAL;
 
-	if (state == 0 || state == 1)
-		anx7625_chip_control(ctx, state);
+	if (state == 0)
+		pm_runtime_put_sync(dev);
+	else if (state == 1)
+		pm_runtime_get_sync(dev);
 	else
 		return -EINVAL;
 
