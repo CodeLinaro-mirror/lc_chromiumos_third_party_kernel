@@ -45,6 +45,7 @@
 #define I2C_HID_QUIRK_BOGUS_IRQ			BIT(4)
 #define I2C_HID_QUIRK_RESET_ON_RESUME		BIT(5)
 #define I2C_HID_QUIRK_BAD_INPUT_SIZE		BIT(6)
+#define I2C_HID_QUIRK_NO_WAKEUP_AFTER_RESET	BIT(7)
 
 
 /* flags */
@@ -54,6 +55,10 @@
 
 #define I2C_HID_PWR_ON		0x00
 #define I2C_HID_PWR_SLEEP	0x01
+
+#define EVE_TP_I2C_ADDR	0x49
+#define EVE_TP_RETRIES	10
+#define EVE_TP_DELAY_MS 1
 
 /* debug option */
 static bool debug;
@@ -178,6 +183,11 @@ static const struct i2c_hid_quirks {
 		 I2C_HID_QUIRK_RESET_ON_RESUME },
 	{ USB_VENDOR_ID_ITE, I2C_DEVICE_ID_ITE_LENOVO_LEGION_Y720,
 		I2C_HID_QUIRK_BAD_INPUT_SIZE },
+	/*
+	 * Sending the wakeup after reset actually break ELAN touchscreen controller
+	 */
+	{ USB_VENDOR_ID_ELAN, HID_ANY_ID,
+		 I2C_HID_QUIRK_NO_WAKEUP_AFTER_RESET },
 	{ 0, 0 }
 };
 
@@ -461,7 +471,8 @@ static int i2c_hid_hwreset(struct i2c_client *client)
 	}
 
 	/* At least some SIS devices need this after reset */
-	ret = i2c_hid_set_power(client, I2C_HID_PWR_ON);
+	if (!(ihid->quirks & I2C_HID_QUIRK_NO_WAKEUP_AFTER_RESET))
+		ret = i2c_hid_set_power(client, I2C_HID_PWR_ON);
 
 out_unlock:
 	mutex_unlock(&ihid->reset_lock);
@@ -908,7 +919,7 @@ static void i2c_hid_core_shutdown_tail(struct i2c_hid *ihid)
 int i2c_hid_core_probe(struct i2c_client *client, struct i2chid_ops *ops,
 		       u16 hid_descriptor_address)
 {
-	int ret;
+	int ret, retries = 0;
 	struct i2c_hid *ihid;
 	struct hid_device *hid;
 
@@ -955,8 +966,22 @@ int i2c_hid_core_probe(struct i2c_client *client, struct i2chid_ops *ops,
 
 	device_enable_async_suspend(&client->dev);
 
+	/*
+	 * Eve touchpad does not consistently ACK the slave address.
+	 * Retry the SMBUS sequence as a mitigation until proper fix
+	 * is prepared.
+	 * This is a temporary workaround for b/156232671.
+	 */
+	if (client->addr == EVE_TP_I2C_ADDR)
+		retries = EVE_TP_RETRIES;
+
 	/* Make sure there is something at this address */
 	ret = i2c_smbus_read_byte(client);
+	while ((ret < 0) && (retries--)) {
+		dev_err(&client->dev, "no response, retry left %d", retries);
+		msleep(EVE_TP_DELAY_MS);
+		ret = i2c_smbus_read_byte(client);
+	}
 	if (ret < 0) {
 		dev_dbg(&client->dev, "nothing at this address: %d\n", ret);
 		ret = -ENXIO;
