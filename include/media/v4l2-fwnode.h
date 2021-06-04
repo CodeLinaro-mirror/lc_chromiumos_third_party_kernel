@@ -23,6 +23,7 @@
 #include <linux/types.h>
 
 #include <media/v4l2-mediabus.h>
+#include <media/v4l2-subdev.h>
 
 struct fwnode_handle;
 struct v4l2_async_notifier;
@@ -200,7 +201,7 @@ void v4l2_fwnode_put_link(struct v4l2_fwnode_link *link);
  *			    %-EINVAL if the endpoint configuration is invalid
  *
  * Parse the fwnode endpoints of the @dev device and populate the async sub-
- * devices array of the notifier. The @parse_endpoint callback function is
+ * devices list in the notifier. The @parse_endpoint callback function is
  * called for each endpoint with the corresponding async sub-device pointer to
  * let the caller initialize the driver-specific part of the async sub-device
  * structure.
@@ -211,10 +212,11 @@ void v4l2_fwnode_put_link(struct v4l2_fwnode_link *link);
  * This function may not be called on a registered notifier and may be called on
  * a notifier only once.
  *
- * Do not change the notifier's subdevs array, take references to the subdevs
- * array itself or change the notifier's num_subdevs field. This is because this
- * function allocates and reallocates the subdevs array based on parsing
- * endpoints.
+ * Do not allocate the notifier's subdevs array, or change the notifier's
+ * num_subdevs field. This is because this function uses
+ * @v4l2_async_notifier_add_subdev to populate the notifier's asd_list,
+ * which is in-place-of the subdevs array which must remain unallocated
+ * and unused.
  *
  * The &struct v4l2_fwnode_endpoint passed to the callback function
  * @parse_endpoint is released once the function is finished. If there is a need
@@ -262,7 +264,7 @@ int v4l2_async_notifier_parse_fwnode_endpoints(
  * devices). In this case the driver must know which ports to parse.
  *
  * Parse the fwnode endpoints of the @dev device on a given @port and populate
- * the async sub-devices array of the notifier. The @parse_endpoint callback
+ * the async sub-devices list of the notifier. The @parse_endpoint callback
  * function is called for each endpoint with the corresponding async sub-device
  * pointer to let the caller initialize the driver-specific part of the async
  * sub-device structure.
@@ -273,10 +275,11 @@ int v4l2_async_notifier_parse_fwnode_endpoints(
  * This function may not be called on a registered notifier and may be called on
  * a notifier only once per port.
  *
- * Do not change the notifier's subdevs array, take references to the subdevs
- * array itself or change the notifier's num_subdevs field. This is because this
- * function allocates and reallocates the subdevs array based on parsing
- * endpoints.
+ * Do not allocate the notifier's subdevs array, or change the notifier's
+ * num_subdevs field. This is because this function uses
+ * @v4l2_async_notifier_add_subdev to populate the notifier's asd_list,
+ * which is in-place-of the subdevs array which must remain unallocated
+ * and unused.
  *
  * The &struct v4l2_fwnode_endpoint passed to the callback function
  * @parse_endpoint is released once the function is finished. If there is a need
@@ -318,5 +321,42 @@ int v4l2_async_notifier_parse_fwnode_endpoints_by_port(
  */
 int v4l2_async_notifier_parse_fwnode_sensor_common(
 	struct device *dev, struct v4l2_async_notifier *notifier);
+
+/**
+ * v4l2_async_register_fwnode_subdev - registers a sub-device to the
+ *					asynchronous sub-device framework
+ *					and parses fwnode endpoints
+ *
+ * @sd: pointer to struct &v4l2_subdev
+ * @asd_struct_size: size of the driver's async sub-device struct, including
+ *		     sizeof(struct v4l2_async_subdev). The &struct
+ *		     v4l2_async_subdev shall be the first member of
+ *		     the driver's async sub-device struct, i.e. both
+ *		     begin at the same memory address.
+ * @ports: array of port id's to parse for fwnode endpoints. If NULL, will
+ *	   parse all ports owned by the sub-device.
+ * @num_ports: number of ports in @ports array. Ignored if @ports is NULL.
+ * @parse_endpoint: Driver's callback function called on each V4L2 fwnode
+ *		    endpoint. Optional.
+ *
+ * This function is just like v4l2_async_register_subdev() with the
+ * exception that calling it will also allocate a notifier for the
+ * sub-device, parse the sub-device's firmware node endpoints using
+ * v4l2_async_notifier_parse_fwnode_endpoints() or
+ * v4l2_async_notifier_parse_fwnode_endpoints_by_port(), and
+ * registers the sub-device notifier. The sub-device is similarly
+ * unregistered by calling v4l2_async_unregister_subdev().
+ *
+ * While registered, the subdev module is marked as in-use.
+ *
+ * An error is returned if the module is no longer loaded on any attempts
+ * to register it.
+ */
+int v4l2_async_register_fwnode_subdev(
+	struct v4l2_subdev *sd, size_t asd_struct_size,
+	unsigned int *ports, unsigned int num_ports,
+	int (*parse_endpoint)(struct device *dev,
+			      struct v4l2_fwnode_endpoint *vep,
+			      struct v4l2_async_subdev *asd));
 
 #endif /* _V4L2_FWNODE_H */

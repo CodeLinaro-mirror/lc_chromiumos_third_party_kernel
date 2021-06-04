@@ -36,10 +36,11 @@
 static int subdev_fh_init(struct v4l2_subdev_fh *fh, struct v4l2_subdev *sd)
 {
 #if defined(CONFIG_VIDEO_V4L2_SUBDEV_API)
-	fh->pad = kvmalloc_array(sd->entity.num_pads, sizeof(*fh->pad),
-				 GFP_KERNEL | __GFP_ZERO);
-	if (fh->pad == NULL)
-		return -ENOMEM;
+	if (sd->entity.num_pads) {
+		fh->pad = v4l2_subdev_alloc_pad_config(sd);
+		if (fh->pad == NULL)
+			return -ENOMEM;
+	}
 #endif
 	return 0;
 }
@@ -47,7 +48,7 @@ static int subdev_fh_init(struct v4l2_subdev_fh *fh, struct v4l2_subdev *sd)
 static void subdev_fh_free(struct v4l2_subdev_fh *fh)
 {
 #if defined(CONFIG_VIDEO_V4L2_SUBDEV_API)
-	kvfree(fh->pad);
+	v4l2_subdev_free_pad_config(fh->pad);
 	fh->pad = NULL;
 #endif
 }
@@ -571,6 +572,36 @@ int v4l2_subdev_link_validate(struct media_link *link)
 		sink, link, &source_fmt, &sink_fmt);
 }
 EXPORT_SYMBOL_GPL(v4l2_subdev_link_validate);
+
+struct v4l2_subdev_pad_config *
+v4l2_subdev_alloc_pad_config(struct v4l2_subdev *sd)
+{
+	struct v4l2_subdev_pad_config *cfg;
+	int ret;
+
+	if (!sd->entity.num_pads)
+		return NULL;
+
+	cfg = kvmalloc_array(sd->entity.num_pads, sizeof(*cfg),
+			     GFP_KERNEL | __GFP_ZERO);
+	if (!cfg)
+		return NULL;
+
+	ret = v4l2_subdev_call(sd, pad, init_cfg, cfg);
+	if (ret < 0 && ret != -ENOIOCTLCMD) {
+		kvfree(cfg);
+		return NULL;
+	}
+
+	return cfg;
+}
+EXPORT_SYMBOL_GPL(v4l2_subdev_alloc_pad_config);
+
+void v4l2_subdev_free_pad_config(struct v4l2_subdev_pad_config *cfg)
+{
+	kvfree(cfg);
+}
+EXPORT_SYMBOL_GPL(v4l2_subdev_free_pad_config);
 #endif /* CONFIG_MEDIA_CONTROLLER */
 
 void v4l2_subdev_init(struct v4l2_subdev *sd, const struct v4l2_subdev_ops *ops)

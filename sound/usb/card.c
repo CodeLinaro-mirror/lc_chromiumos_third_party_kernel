@@ -173,17 +173,17 @@ static int snd_usb_create_stream(struct snd_usb_audio *chip, int ctrlif, int int
 	if ((altsd->bInterfaceClass == USB_CLASS_AUDIO ||
 	     altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC) &&
 	    altsd->bInterfaceSubClass == USB_SUBCLASS_MIDISTREAMING) {
-		int err = snd_usbmidi_create(chip->card, iface,
-					     &chip->midi_list, NULL);
+		int err = __snd_usbmidi_create(chip->card, iface,
+					     &chip->midi_list, NULL,
+					     chip->usb_id);
 		if (err < 0) {
 			dev_err(&dev->dev,
 				"%u:%d: cannot create sequencer device\n",
 				ctrlif, interface);
 			return -EINVAL;
 		}
-		usb_driver_claim_interface(&usb_audio_driver, iface, (void *)-1L);
-
-		return 0;
+		return usb_driver_claim_interface(&usb_audio_driver, iface,
+						  USB_AUDIO_IFACE_UNUSED);
 	}
 
 	if ((altsd->bInterfaceClass != USB_CLASS_AUDIO &&
@@ -203,7 +203,8 @@ static int snd_usb_create_stream(struct snd_usb_audio *chip, int ctrlif, int int
 
 	if (! snd_usb_parse_audio_interface(chip, interface)) {
 		usb_set_interface(dev, interface, 0); /* reset the current interface */
-		usb_driver_claim_interface(&usb_audio_driver, iface, (void *)-1L);
+		return usb_driver_claim_interface(&usb_audio_driver, iface,
+						  USB_AUDIO_IFACE_UNUSED);
 	}
 
 	return 0;
@@ -333,6 +334,8 @@ static int snd_usb_audio_free(struct snd_usb_audio *chip)
 		snd_usb_endpoint_free(ep);
 
 	mutex_destroy(&chip->mutex);
+	if (!atomic_read(&chip->shutdown))
+		dev_set_drvdata(&chip->dev->dev, NULL);
 	kfree(chip);
 	return 0;
 }
@@ -506,7 +509,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 	if (quirk && quirk->ifnum >= 0 && ifnum != quirk->ifnum)
 		return -ENXIO;
 
-	err = snd_usb_apply_boot_quirk(dev, intf, quirk);
+	err = snd_usb_apply_boot_quirk(dev, intf, quirk, id);
 	if (err < 0)
 		return err;
 
@@ -550,6 +553,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 			goto __error;
 		}
 	}
+	dev_set_drvdata(&dev->dev, chip);
 
 	/*
 	 * For devices with more than one control interface, we assume the
@@ -613,7 +617,7 @@ static void usb_audio_disconnect(struct usb_interface *intf)
 	struct snd_card *card;
 	struct list_head *p;
 
-	if (chip == (void *)-1L)
+	if (chip == USB_AUDIO_IFACE_UNUSED)
 		return;
 
 	card = chip->card;
@@ -713,7 +717,7 @@ static int usb_audio_suspend(struct usb_interface *intf, pm_message_t message)
 	struct usb_mixer_interface *mixer;
 	struct list_head *p;
 
-	if (chip == (void *)-1L)
+	if (chip == USB_AUDIO_IFACE_UNUSED)
 		return 0;
 
 	if (!chip->num_suspended_intf++) {
@@ -743,7 +747,7 @@ static int __usb_audio_resume(struct usb_interface *intf, bool reset_resume)
 	struct list_head *p;
 	int err = 0;
 
-	if (chip == (void *)-1L)
+	if (chip == USB_AUDIO_IFACE_UNUSED)
 		return 0;
 
 	atomic_inc(&chip->active); /* avoid autopm */

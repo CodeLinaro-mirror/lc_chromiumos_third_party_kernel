@@ -1870,7 +1870,7 @@ static int sh_mobile_ceu_probe(struct platform_device *pdev)
 				dev_dbg(&pdev->dev, "%s(): subdev #%d, type %u\n",
 					__func__, i, (*asd)->match_type);
 				if ((*asd)->match_type == V4L2_ASYNC_MATCH_DEVNAME &&
-				    !strncmp(name, (*asd)->match.device_name.name,
+				    !strncmp(name, (*asd)->match.device_name,
 					     sizeof(name) - 1)) {
 					pcdev->csi2_asd = *asd;
 					break;

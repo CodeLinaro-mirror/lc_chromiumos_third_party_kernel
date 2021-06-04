@@ -13,6 +13,7 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/gpio.h>
@@ -28,25 +29,17 @@
 #include <sound/soc-dapm.h>
 
 struct max98357a_priv {
-	struct delayed_work enable_sdmode_work;
 	struct gpio_desc *sdmode;
 	unsigned int sdmode_delay;
+	int sdmode_switch;
 };
-
-static void max98357a_enable_sdmode_work(struct work_struct *work)
-{
-	struct max98357a_priv *max98357a =
-	container_of(work, struct max98357a_priv,
-			enable_sdmode_work.work);
-
-	gpiod_set_value(max98357a->sdmode, 1);
-}
 
 static int max98357a_daiops_trigger(struct snd_pcm_substream *substream,
 		int cmd, struct snd_soc_dai *dai)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	struct max98357a_priv *max98357a = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = dai->component;
+	struct max98357a_priv *max98357a =
+		snd_soc_component_get_drvdata(component);
 
 	if (!max98357a->sdmode)
 		return 0;
@@ -55,59 +48,52 @@ static int max98357a_daiops_trigger(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		queue_delayed_work(system_power_efficient_wq,
-				&max98357a->enable_sdmode_work,
-				msecs_to_jiffies(max98357a->sdmode_delay));
+		mdelay(max98357a->sdmode_delay);
+		if (max98357a->sdmode_switch) {
+			gpiod_set_value(max98357a->sdmode, 1);
+			dev_dbg(component->dev, "set sdmode to 1");
+		}
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		cancel_delayed_work(&max98357a->enable_sdmode_work);
 		gpiod_set_value(max98357a->sdmode, 0);
+		dev_dbg(component->dev, "set sdmode to 0");
 		break;
 	}
 
 	return 0;
 }
 
+static int max98357a_sdmode_event(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_component *component =
+		snd_soc_dapm_to_component(w->dapm);
+	struct max98357a_priv *max98357a =
+		snd_soc_component_get_drvdata(component);
+
+	if (event & SND_SOC_DAPM_POST_PMU)
+		max98357a->sdmode_switch = 1;
+	else if (event & SND_SOC_DAPM_POST_PMD)
+		max98357a->sdmode_switch = 0;
+
+	return 0;
+}
+
 static const struct snd_soc_dapm_widget max98357a_dapm_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("Speaker"),
+	SND_SOC_DAPM_OUT_DRV_E("SD_MODE", SND_SOC_NOPM, 0, 0, NULL, 0,
+			max98357a_sdmode_event,
+			SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 };
 
 static const struct snd_soc_dapm_route max98357a_dapm_routes[] = {
-	{"Speaker", NULL, "HiFi Playback"},
+	{"SD_MODE", NULL, "HiFi Playback"},
+	{"Speaker", NULL, "SD_MODE"},
 };
 
-static int max98357a_codec_probe(struct snd_soc_codec *codec)
-{
-	struct max98357a_priv *max98357a = snd_soc_codec_get_drvdata(codec);
-
-	max98357a->sdmode = devm_gpiod_get_optional(codec->dev,
-						"sdmode", GPIOD_OUT_LOW);
-
-	if (IS_ERR(max98357a->sdmode))
-		return PTR_ERR(max98357a->sdmode);
-
-	snd_soc_codec_set_drvdata(codec, max98357a);
-
-	INIT_DELAYED_WORK(&max98357a->enable_sdmode_work,
-				max98357a_enable_sdmode_work);
-
-	return 0;
-}
-
-static int max98357a_codec_remove(struct snd_soc_codec *codec)
-{
-	struct max98357a_priv *max98357a = snd_soc_codec_get_drvdata(codec);
-
-	cancel_delayed_work_sync(&max98357a->enable_sdmode_work);
-
-	return 0;
-}
-
 static struct snd_soc_codec_driver max98357a_codec_driver = {
-	.probe			= max98357a_codec_probe,
-	.remove			= max98357a_codec_remove,
 	.dapm_widgets		= max98357a_dapm_widgets,
 	.num_dapm_widgets	= ARRAY_SIZE(max98357a_dapm_widgets),
 	.dapm_routes		= max98357a_dapm_routes,
@@ -115,7 +101,7 @@ static struct snd_soc_codec_driver max98357a_codec_driver = {
 };
 
 static const struct snd_soc_dai_ops max98357a_dai_ops = {
-	.trigger	= max98357a_daiops_trigger,
+	.trigger        = max98357a_daiops_trigger,
 };
 
 static struct snd_soc_dai_driver max98357a_dai_driver = {
@@ -127,7 +113,10 @@ static struct snd_soc_dai_driver max98357a_dai_driver = {
 					SNDRV_PCM_FMTBIT_S32,
 		.rates		= SNDRV_PCM_RATE_8000 |
 					SNDRV_PCM_RATE_16000 |
+					SNDRV_PCM_RATE_32000 |
+					SNDRV_PCM_RATE_44100 |
 					SNDRV_PCM_RATE_48000 |
+					SNDRV_PCM_RATE_88200 |
 					SNDRV_PCM_RATE_96000,
 		.rate_min	= 8000,
 		.rate_max	= 96000,
@@ -143,17 +132,21 @@ static int max98357a_platform_probe(struct platform_device *pdev)
 	int ret;
 
 	max98357a = devm_kzalloc(&pdev->dev, sizeof(*max98357a), GFP_KERNEL);
-
 	if (!max98357a)
 		return -ENOMEM;
 
-	ret = device_property_read_u32(&pdev->dev, "sdmode-delay",
-			&max98357a->sdmode_delay);
+	max98357a->sdmode = devm_gpiod_get_optional(&pdev->dev,
+				"sdmode", GPIOD_OUT_LOW);
+	if (IS_ERR(max98357a->sdmode))
+		return PTR_ERR(max98357a->sdmode);
 
+	ret = device_property_read_u32(&pdev->dev, "sdmode-delay",
+					&max98357a->sdmode_delay);
 	if (ret) {
 		max98357a->sdmode_delay = 0;
 		dev_dbg(&pdev->dev,
-			"no optional property 'sdmode-delay' found, default: no delay\n");
+			"no optional property 'sdmode-delay' found, "
+			"default: no delay\n");
 	}
 
 	dev_set_drvdata(&pdev->dev, max98357a);

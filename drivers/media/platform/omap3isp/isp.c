@@ -2270,9 +2270,9 @@ static int isp_fwnodes_parse(struct device *dev,
 		if (isp_fwnode_parse(dev, fwnode, isd))
 			goto error;
 
-		isd->asd.match.fwnode.fwnode =
+		isd->asd.match.fwnode =
 			fwnode_graph_get_remote_port_parent(fwnode);
-		if (!isd->asd.match.fwnode.fwnode) {
+		if (!isd->asd.match.fwnode) {
 			dev_warn(dev, "bad remote port parent\n");
 			goto error;
 		}
@@ -2368,6 +2368,7 @@ static int isp_probe(struct platform_device *pdev)
 
 	mutex_init(&isp->isp_mutex);
 	spin_lock_init(&isp->stat_lock);
+	v4l2_async_notifier_init(&isp->notifier);
 
 	isp->dev = &pdev->dev;
 	isp->ref_count = 0;
@@ -2398,8 +2399,10 @@ static int isp_probe(struct platform_device *pdev)
 		mem = platform_get_resource(pdev, IORESOURCE_MEM, i);
 		isp->mmio_base[map_idx] =
 			devm_ioremap_resource(isp->dev, mem);
-		if (IS_ERR(isp->mmio_base[map_idx]))
-			return PTR_ERR(isp->mmio_base[map_idx]);
+		if (IS_ERR(isp->mmio_base[map_idx])) {
+			ret = PTR_ERR(isp->mmio_base[map_idx]);
+			goto error;
+		}
 	}
 
 	ret = isp_get_clocks(isp);

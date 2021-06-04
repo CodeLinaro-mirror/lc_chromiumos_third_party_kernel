@@ -1263,7 +1263,7 @@ static int pxa168_rx_poll(struct napi_struct *napi, int budget)
 	}
 	work_done = rxq_process(dev, budget);
 	if (work_done < budget) {
-		napi_complete(napi);
+		napi_complete_done(napi, work_done);
 		wrl(pep, INT_MASK, ALL_INTS);
 	}
 
@@ -1577,8 +1577,8 @@ static int pxa168_eth_remove(struct platform_device *pdev)
 
 	mdiobus_unregister(pep->smi_bus);
 	mdiobus_free(pep->smi_bus);
-	unregister_netdev(dev);
 	cancel_work_sync(&pep->tx_timeout_task);
+	unregister_netdev(dev);
 	free_netdev(dev);
 	return 0;
 }

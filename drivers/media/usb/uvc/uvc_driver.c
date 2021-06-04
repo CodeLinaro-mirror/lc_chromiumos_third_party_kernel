@@ -869,7 +869,10 @@ static struct uvc_entity *uvc_alloc_entity(u16 type, u8 id,
 	unsigned int i;
 
 	extra_size = roundup(extra_size, sizeof(*entity->pads));
-	num_inputs = (type & UVC_TERM_OUTPUT) ? num_pads : num_pads - 1;
+	if (num_pads)
+		num_inputs = type & UVC_TERM_OUTPUT ? num_pads : num_pads - 1;
+	else
+		num_inputs = 0;
 	size = sizeof(*entity) + extra_size + sizeof(*entity->pads) * num_pads
 	     + num_inputs;
 	entity = kzalloc(size, GFP_KERNEL);
@@ -885,7 +888,7 @@ static struct uvc_entity *uvc_alloc_entity(u16 type, u8 id,
 
 	for (i = 0; i < num_inputs; ++i)
 		entity->pads[i].flags = MEDIA_PAD_FL_SINK;
-	if (!UVC_ENTITY_IS_OTERM(entity))
+	if (!UVC_ENTITY_IS_OTERM(entity) && num_pads)
 		entity->pads[num_pads-1].flags = MEDIA_PAD_FL_SOURCE;
 
 	entity->bNrInPins = num_inputs;
@@ -1787,8 +1790,9 @@ static int uvc_scan_device(struct uvc_device *dev)
  * already been canceled by the USB core. There is no need to kill the
  * interrupt URB manually.
  */
-static void uvc_delete(struct uvc_device *dev)
+static void uvc_delete(struct kref *kref)
 {
+	struct uvc_device *dev = container_of(kref, struct uvc_device, ref);
 	struct list_head *p, *n;
 
 	uvc_status_cleanup(dev);
@@ -1796,13 +1800,6 @@ static void uvc_delete(struct uvc_device *dev)
 
 	usb_put_intf(dev->intf);
 	usb_put_dev(dev->udev);
-
-	if (dev->vdev.dev)
-		v4l2_device_unregister(&dev->vdev);
-#ifdef CONFIG_MEDIA_CONTROLLER
-	if (media_devnode_is_registered(dev->mdev.devnode))
-		media_device_unregister(&dev->mdev);
-#endif
 
 	list_for_each_safe(p, n, &dev->chains) {
 		struct uvc_video_chain *chain;
@@ -1838,11 +1835,7 @@ static void uvc_release(struct video_device *vdev)
 	struct uvc_streaming *stream = video_get_drvdata(vdev);
 	struct uvc_device *dev = stream->dev;
 
-	/* Decrement the registered streams count and delete the device when it
-	 * reaches zero.
-	 */
-	if (atomic_dec_and_test(&dev->nstreams))
-		uvc_delete(dev);
+	kref_put(&dev->ref, uvc_delete);
 }
 
 /*
@@ -1852,27 +1845,34 @@ static void uvc_unregister_video(struct uvc_device *dev)
 {
 	struct uvc_streaming *stream;
 
-	/* Unregistering all video devices might result in uvc_delete() being
-	 * called from inside the loop if there's no open file handle. To avoid
-	 * that, increment the stream count before iterating over the streams
-	 * and decrement it when done.
-	 */
-	atomic_inc(&dev->nstreams);
+	mutex_lock(&dev->lock);
 
 	list_for_each_entry(stream, &dev->streams, list) {
 		if (!video_is_registered(&stream->vdev))
 			continue;
 
+		mutex_lock(&stream->mutex);
+		mutex_lock(&stream->queue.mutex);
+
 		video_unregister_device(&stream->vdev);
 
 		uvc_debugfs_cleanup_stream(stream);
+
+		vb2_queue_release(&stream->queue.queue);
+
+		mutex_unlock(&stream->queue.mutex);
+		mutex_unlock(&stream->mutex);
 	}
 
-	/* Decrement the stream count and call uvc_delete explicitly if there
-	 * are no stream left.
-	 */
-	if (atomic_dec_and_test(&dev->nstreams))
-		uvc_delete(dev);
+	uvc_status_unregister(dev);
+
+	if (dev->vdev.dev)
+		v4l2_device_unregister(&dev->vdev);
+#ifdef CONFIG_MEDIA_CONTROLLER
+	if (media_devnode_is_registered(dev->mdev.devnode))
+		media_device_unregister(&dev->mdev);
+#endif
+	mutex_unlock(&dev->lock);
 }
 
 static int uvc_register_video(struct uvc_device *dev,
@@ -1930,7 +1930,7 @@ static int uvc_register_video(struct uvc_device *dev,
 	else
 		stream->chain->caps |= V4L2_CAP_VIDEO_OUTPUT;
 
-	atomic_inc(&dev->nstreams);
+	kref_get(&dev->ref);
 	return 0;
 }
 
@@ -2015,7 +2015,7 @@ static int uvc_probe(struct usb_interface *intf,
 	INIT_LIST_HEAD(&dev->entities);
 	INIT_LIST_HEAD(&dev->chains);
 	INIT_LIST_HEAD(&dev->streams);
-	atomic_set(&dev->nstreams, 0);
+	kref_init(&dev->ref);
 	atomic_set(&dev->nmappings, 0);
 	mutex_init(&dev->lock);
 
@@ -2117,6 +2117,7 @@ static int uvc_probe(struct usb_interface *intf,
 
 error:
 	uvc_unregister_video(dev);
+	kref_put(&dev->ref, uvc_delete);
 	return -ENODEV;
 }
 
@@ -2134,6 +2135,7 @@ static void uvc_disconnect(struct usb_interface *intf)
 		return;
 
 	uvc_unregister_video(dev);
+	kref_put(&dev->ref, uvc_delete);
 }
 
 static int uvc_suspend(struct usb_interface *intf, pm_message_t message)

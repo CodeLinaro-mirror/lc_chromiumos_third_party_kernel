@@ -265,6 +265,8 @@ IIO
   devm_iio_triggered_buffer_cleanup()
   devm_iio_trigger_alloc()
   devm_iio_trigger_free()
+  devm_iio_trigger_register()
+  devm_iio_trigger_unregister()
 
 IO region
   devm_release_mem_region()

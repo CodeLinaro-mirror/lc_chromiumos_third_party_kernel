@@ -267,33 +267,6 @@ void v4l2_fwnode_put_link(struct v4l2_fwnode_link *link)
 }
 EXPORT_SYMBOL_GPL(v4l2_fwnode_put_link);
 
-static int v4l2_async_notifier_realloc(struct v4l2_async_notifier *notifier,
-				       unsigned int max_subdevs)
-{
-	struct v4l2_async_subdev **subdevs;
-
-	if (max_subdevs <= notifier->max_subdevs)
-		return 0;
-
-	subdevs = kvmalloc_array(
-		max_subdevs, sizeof(*notifier->subdevs),
-		GFP_KERNEL | __GFP_ZERO);
-	if (!subdevs)
-		return -ENOMEM;
-
-	if (notifier->subdevs) {
-		memcpy(subdevs, notifier->subdevs,
-		       sizeof(*subdevs) * notifier->num_subdevs);
-
-		kvfree(notifier->subdevs);
-	}
-
-	notifier->subdevs = subdevs;
-	notifier->max_subdevs = max_subdevs;
-
-	return 0;
-}
-
 static int v4l2_async_notifier_fwnode_parse_endpoint(
 	struct device *dev, struct v4l2_async_notifier *notifier,
 	struct fwnode_handle *endpoint, unsigned int asd_struct_size,
@@ -310,11 +283,11 @@ static int v4l2_async_notifier_fwnode_parse_endpoint(
 		return -ENOMEM;
 
 	asd->match_type = V4L2_ASYNC_MATCH_FWNODE;
-	asd->match.fwnode.fwnode =
+	asd->match.fwnode =
 		fwnode_graph_get_remote_port_parent(endpoint);
-	if (!asd->match.fwnode.fwnode) {
+	if (!asd->match.fwnode) {
 		dev_warn(dev, "bad remote port parent\n");
-		ret = -EINVAL;
+		ret = -ENOTCONN;
 		goto out_err;
 	}
 
@@ -338,13 +311,18 @@ static int v4l2_async_notifier_fwnode_parse_endpoint(
 	if (ret < 0)
 		goto out_err;
 
-	notifier->subdevs[notifier->num_subdevs] = asd;
-	notifier->num_subdevs++;
+	ret = v4l2_async_notifier_add_subdev(notifier, asd);
+	if (ret < 0) {
+		/* not an error if asd already exists */
+		if (ret == -EEXIST)
+			ret = 0;
+		goto out_err;
+	}
 
 	return 0;
 
 out_err:
-	fwnode_handle_put(asd->match.fwnode.fwnode);
+	fwnode_handle_put(asd->match.fwnode);
 	kfree(asd);
 
 	return ret == -ENOTCONN ? 0 : ret;
@@ -358,45 +336,10 @@ static int __v4l2_async_notifier_parse_fwnode_endpoints(
 			    struct v4l2_async_subdev *asd))
 {
 	struct fwnode_handle *fwnode = NULL;
-	unsigned int max_subdevs = notifier->max_subdevs;
-	int ret;
+	int ret = 0;
 
 	if (WARN_ON(asd_struct_size < sizeof(struct v4l2_async_subdev)))
 		return -EINVAL;
-
-	for (fwnode = NULL; (fwnode = fwnode_graph_get_next_endpoint(
-				     dev_fwnode(dev), fwnode)); ) {
-		struct fwnode_handle *dev_fwnode;
-		bool is_available;
-
-		dev_fwnode = fwnode_graph_get_port_parent(fwnode);
-		is_available = fwnode_device_is_available(dev_fwnode);
-		fwnode_handle_put(dev_fwnode);
-		if (!is_available)
-			continue;
-
-		if (has_port) {
-			struct fwnode_endpoint ep;
-
-			ret = fwnode_graph_parse_endpoint(fwnode, &ep);
-			if (ret) {
-				fwnode_handle_put(fwnode);
-				return ret;
-			}
-
-			if (ep.port != port)
-				continue;
-		}
-		max_subdevs++;
-	}
-
-	/* No subdevs to add? Return here. */
-	if (max_subdevs == notifier->max_subdevs)
-		return 0;
-
-	ret = v4l2_async_notifier_realloc(notifier, max_subdevs);
-	if (ret)
-		return ret;
 
 	for (fwnode = NULL; (fwnode = fwnode_graph_get_next_endpoint(
 				     dev_fwnode(dev), fwnode)); ) {
@@ -418,11 +361,6 @@ static int __v4l2_async_notifier_parse_fwnode_endpoints(
 
 			if (ep.port != port)
 				continue;
-		}
-
-		if (WARN_ON(notifier->num_subdevs >= notifier->max_subdevs)) {
-			ret = -EINVAL;
-			break;
 		}
 
 		ret = v4l2_async_notifier_fwnode_parse_endpoint(
@@ -495,31 +433,23 @@ static int v4l2_fwnode_reference_parse(
 	if (ret != -ENOENT && ret != -ENODATA)
 		return ret;
 
-	ret = v4l2_async_notifier_realloc(notifier,
-					  notifier->num_subdevs + index);
-	if (ret)
-		return ret;
-
 	for (index = 0; !fwnode_property_get_reference_args(
 		     dev_fwnode(dev), prop, NULL, 0, index, &args);
 	     index++) {
 		struct v4l2_async_subdev *asd;
 
-		if (WARN_ON(notifier->num_subdevs >= notifier->max_subdevs)) {
-			ret = -EINVAL;
+		asd = v4l2_async_notifier_add_fwnode_subdev(
+			notifier, args.fwnode, sizeof(*asd));
+		if (IS_ERR(asd)) {
+			ret = PTR_ERR(asd);
+			/* not an error if asd already exists */
+			if (ret == -EEXIST) {
+				fwnode_handle_put(args.fwnode);
+				continue;
+			}
+
 			goto error;
 		}
-
-		asd = kzalloc(sizeof(*asd), GFP_KERNEL);
-		if (!asd) {
-			ret = -ENOMEM;
-			goto error;
-		}
-
-		notifier->subdevs[notifier->num_subdevs] = asd;
-		asd->match.fwnode.fwnode = args.fwnode;
-		asd->match_type = V4L2_ASYNC_MATCH_FWNODE;
-		notifier->num_subdevs++;
 	}
 
 	return 0;
@@ -684,43 +614,43 @@ static int v4l2_fwnode_reference_parse_int_props(
 	unsigned int index;
 	int ret;
 
-	for (index = 0; !IS_ERR((fwnode = v4l2_fwnode_reference_get_int_prop(
-					 dev_fwnode(dev), prop, index, props,
-					 nprops))); index++)
+	index = 0;
+	do {
+		fwnode = v4l2_fwnode_reference_get_int_prop(dev_fwnode(dev),
+							    prop, index,
+							    props, nprops);
+		if (IS_ERR(fwnode)) {
+			/*
+			 * Note that right now both -ENODATA and -ENOENT may
+			 * signal out-of-bounds access. Return the error in
+			 * cases other than that.
+			 */
+			if (PTR_ERR(fwnode) != -ENOENT &&
+			    PTR_ERR(fwnode) != -ENODATA)
+				return PTR_ERR(fwnode);
+			break;
+		}
 		fwnode_handle_put(fwnode);
-
-	/*
-	 * Note that right now both -ENODATA and -ENOENT may signal
-	 * out-of-bounds access. Return the error in cases other than that.
-	 */
-	if (PTR_ERR(fwnode) != -ENOENT && PTR_ERR(fwnode) != -ENODATA)
-		return PTR_ERR(fwnode);
-
-	ret = v4l2_async_notifier_realloc(notifier,
-					  notifier->num_subdevs + index);
-	if (ret)
-		return -ENOMEM;
+		index++;
+	} while (1);
 
 	for (index = 0; !IS_ERR((fwnode = v4l2_fwnode_reference_get_int_prop(
 					 dev_fwnode(dev), prop, index, props,
 					 nprops))); index++) {
 		struct v4l2_async_subdev *asd;
 
-		if (WARN_ON(notifier->num_subdevs >= notifier->max_subdevs)) {
-			ret = -EINVAL;
+		asd = v4l2_async_notifier_add_fwnode_subdev(notifier, fwnode,
+							    sizeof(*asd));
+		if (IS_ERR(asd)) {
+			ret = PTR_ERR(asd);
+			/* not an error if asd already exists */
+			if (ret == -EEXIST) {
+				fwnode_handle_put(fwnode);
+				continue;
+			}
+
 			goto error;
 		}
-
-		asd = kzalloc(sizeof(struct v4l2_async_subdev), GFP_KERNEL);
-		if (!asd) {
-			ret = -ENOMEM;
-			goto error;
-		}
-
-		notifier->subdevs[notifier->num_subdevs] = asd;
-		asd->match.fwnode.fwnode = fwnode;
-		asd->match_type = V4L2_ASYNC_MATCH_FWNODE;
-		notifier->num_subdevs++;
 	}
 
 	return PTR_ERR(fwnode) == -ENOENT ? 0 : PTR_ERR(fwnode);
@@ -777,6 +707,8 @@ int v4l2_async_register_subdev_sensor_common(struct v4l2_subdev *sd)
 	if (!notifier)
 		return -ENOMEM;
 
+	v4l2_async_notifier_init(notifier);
+
 	ret = v4l2_async_notifier_parse_fwnode_sensor_common(sd->dev,
 							     notifier);
 	if (ret < 0)
@@ -804,6 +736,70 @@ out_cleanup:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(v4l2_async_register_subdev_sensor_common);
+
+int v4l2_async_register_fwnode_subdev(
+	struct v4l2_subdev *sd, size_t asd_struct_size,
+	unsigned int *ports, unsigned int num_ports,
+	int (*parse_endpoint)(struct device *dev,
+			      struct v4l2_fwnode_endpoint *vep,
+			      struct v4l2_async_subdev *asd))
+{
+	struct v4l2_async_notifier *notifier;
+	struct device *dev = sd->dev;
+	struct fwnode_handle *fwnode;
+	int ret;
+
+	if (WARN_ON(!dev))
+		return -ENODEV;
+
+	fwnode = dev_fwnode(dev);
+	if (!fwnode_device_is_available(fwnode))
+		return -ENODEV;
+
+	notifier = kzalloc(sizeof(*notifier), GFP_KERNEL);
+	if (!notifier)
+		return -ENOMEM;
+
+	v4l2_async_notifier_init(notifier);
+
+	if (!ports) {
+		ret = v4l2_async_notifier_parse_fwnode_endpoints(
+			dev, notifier, asd_struct_size, parse_endpoint);
+		if (ret < 0)
+			goto out_cleanup;
+	} else {
+		unsigned int i;
+
+		for (i = 0; i < num_ports; i++) {
+			ret = v4l2_async_notifier_parse_fwnode_endpoints_by_port(
+				dev, notifier, asd_struct_size,
+				ports[i], parse_endpoint);
+			if (ret < 0)
+				goto out_cleanup;
+		}
+	}
+
+	ret = v4l2_async_subdev_notifier_register(sd, notifier);
+	if (ret < 0)
+		goto out_cleanup;
+
+	ret = v4l2_async_register_subdev(sd);
+	if (ret < 0)
+		goto out_unregister;
+
+	sd->subdev_notifier = notifier;
+
+	return 0;
+
+out_unregister:
+	v4l2_async_notifier_unregister(notifier);
+out_cleanup:
+	v4l2_async_notifier_cleanup(notifier);
+	kfree(notifier);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(v4l2_async_register_fwnode_subdev);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sakari Ailus <sakari.ailus@linux.intel.com>");
