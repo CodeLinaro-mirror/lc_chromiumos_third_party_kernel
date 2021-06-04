@@ -1092,20 +1092,6 @@ const char * const vmstat_text[] = {
 	"nr_dirtied",
 	"nr_written",
 	"", /* nr_indirectly_reclaimable */
-#ifdef CONFIG_KSTALED
-	"kstaled_timeout",
-	"kstaled_aging_stalls",
-	"kstaled_reclaim_stalls",
-	"kstaled_background_aging",
-	"kstaled_background_hot",
-	"kstaled_vm_background_hot",
-	"kstaled_direct_aging",
-	"kstaled_direct_hot",
-	"kstaled_shared_aging",
-	"kstaled_shared_hot",
-	"kstaled_thp_aging",
-	"kstaled_thp_hot",
-#endif
 
 	/* enum writeback_stat_item counters */
 	"nr_dirty_threshold",

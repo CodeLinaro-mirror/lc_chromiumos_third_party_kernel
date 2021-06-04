@@ -15,7 +15,6 @@
 #include <linux/dax.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
-#include <linux/kstaled.h>
 
 /*
  *		Double CLOCK lists
@@ -236,9 +235,6 @@ void *workingset_eviction(struct address_space *mapping, struct page *page)
 	VM_BUG_ON_PAGE(page_count(page), page);
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
-	if (kstaled_is_enabled())
-		return NULL;
-
 	lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	eviction = atomic_long_inc_return(&lruvec->inactive_age);
 	return pack_shadow(memcgid, pgdat, eviction, PageWorkingset(page));
@@ -263,9 +259,6 @@ void workingset_refault(struct page *page, void *shadow)
 	unsigned long refault;
 	bool workingset;
 	int memcgid;
-
-	if (kstaled_is_enabled())
-		return;
 
 	unpack_shadow(shadow, &memcgid, &pgdat, &eviction, &workingset);
 
