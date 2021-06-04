@@ -998,7 +998,7 @@ start_over:
 			goto nextsi;
 		}
 		if (size == SWAPFILE_CLUSTER) {
-			if (!(si->flags & SWP_FILE))
+			if (si->flags & SWP_BLKDEV)
 				n_ret = swap_alloc_cluster(si, swp_entries);
 		} else
 			n_ret = scan_swap_map_slots(si, SWAP_HAS_CACHE,
@@ -1754,9 +1754,9 @@ unsigned int count_swap_pages(int type, int free)
 }
 #endif /* CONFIG_HIBERNATION */
 
-static inline int pte_same_as_swp(pte_t pte, swp_entry_t swp)
+static inline int pte_same_as_swp(pte_t pte, pte_t swp_pte)
 {
-	return is_swap_pte(pte) && swp_entry_same(pte_to_swp_entry(pte), swp);
+	return pte_same(pte_swp_clear_soft_dirty(pte), swp_pte);
 }
 
 /*
@@ -1785,7 +1785,7 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	}
 
 	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
-	if (unlikely(!pte_same_as_swp(*pte, entry))) {
+	if (unlikely(!pte_same_as_swp(*pte, swp_entry_to_pte(entry)))) {
 		mem_cgroup_cancel_charge(page, memcg, false);
 		ret = 0;
 		goto out;
@@ -1824,6 +1824,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 				unsigned long addr, unsigned long end,
 				swp_entry_t entry, struct page *page)
 {
+	pte_t swp_pte = swp_entry_to_pte(entry);
 	pte_t *pte;
 	int ret = 0;
 
@@ -1842,7 +1843,7 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		 * swapoff spends a _lot_ of time in this loop!
 		 * Test inline before going to call unuse_pte.
 		 */
-		if (unlikely(pte_same_as_swp(*pte, entry))) {
+		if (unlikely(pte_same_as_swp(*pte, swp_pte))) {
 			pte_unmap(pte);
 			ret = unuse_pte(vma, pmd, addr, entry, page);
 			if (ret)
@@ -2217,7 +2218,7 @@ int try_to_unuse(unsigned int type, bool frontswap,
 		 * delete, since it may not have been written out to swap yet.
 		 */
 		if (PageSwapCache(page) &&
-		    likely(swp_page_same(entry, page)) &&
+		    likely(page_private(page) == entry.val) &&
 		    (!PageTransCompound(page) ||
 		     !swap_page_trans_huge_swapped(si, entry)))
 			delete_from_swap_cache(compound_head(page));
@@ -2304,7 +2305,7 @@ sector_t map_swap_page(struct page *page, struct block_device **bdev)
 {
 	swp_entry_t entry;
 	entry.val = page_private(page);
-	return map_swap_entry(entry, bdev);
+	return map_swap_entry(entry, bdev) << (PAGE_SHIFT - 9);
 }
 
 /*
@@ -2748,10 +2749,10 @@ static void *swap_next(struct seq_file *swap, void *v, loff_t *pos)
 	else
 		type = si->type + 1;
 
+	++(*pos);
 	for (; (si = swap_type_to_swap_info(type)); type++) {
 		if (!(si->flags & SWP_USED) || !si->swap_map)
 			continue;
-		++*pos;
 		return si;
 	}
 
@@ -2835,6 +2836,7 @@ late_initcall(max_swapfiles_check);
 static struct swap_info_struct *alloc_swap_info(void)
 {
 	struct swap_info_struct *p;
+	struct swap_info_struct *defer = NULL;
 	unsigned int type;
 	int i;
 	int size = sizeof(*p) + nr_node_ids * sizeof(struct plist_node);
@@ -2864,7 +2866,7 @@ static struct swap_info_struct *alloc_swap_info(void)
 		smp_wmb();
 		WRITE_ONCE(nr_swapfiles, nr_swapfiles + 1);
 	} else {
-		kvfree(p);
+		defer = p;
 		p = swap_info[type];
 		/*
 		 * Do not memset this entry: a racing procfs swap_next()
@@ -2877,6 +2879,7 @@ static struct swap_info_struct *alloc_swap_info(void)
 		plist_node_init(&p->avail_lists[i], 0);
 	p->flags = SWP_USED;
 	spin_unlock(&swap_lock);
+	kvfree(defer);
 	spin_lock_init(&p->lock);
 	spin_lock_init(&p->cont_lock);
 

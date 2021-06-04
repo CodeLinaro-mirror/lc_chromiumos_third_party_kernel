@@ -21,7 +21,6 @@
 #include <linux/vmalloc.h>
 #include <linux/swap_slots.h>
 #include <linux/huge_mm.h>
-#include <linux/mm_metrics.h>
 
 #include <asm/pgtable.h>
 #include "internal.h"
@@ -229,7 +228,6 @@ int add_to_swap(struct page *page)
 	/*
 	 * Add it to the swap cache.
 	 */
-	mm_metrics_swapout(&entry);
 	err = add_to_swap_cache(page, entry,
 			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN);
 	/* -ENOMEM radix-tree allocation failure */
@@ -540,10 +538,11 @@ static unsigned long swapin_nr_pages(unsigned long offset)
 		return 1;
 
 	hits = atomic_xchg(&swapin_readahead_hits, 0);
-	pages = __swapin_nr_pages(prev_offset, offset, hits, max_pages,
+	pages = __swapin_nr_pages(READ_ONCE(prev_offset), offset, hits,
+				  max_pages,
 				  atomic_read(&last_readahead_pages));
 	if (!hits)
-		prev_offset = offset;
+		WRITE_ONCE(prev_offset, offset);
 	atomic_set(&last_readahead_pages, pages);
 
 	return pages;
