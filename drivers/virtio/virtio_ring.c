@@ -448,7 +448,12 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 		desc = alloc_indirect_split(_vq, total_sg, gfp);
 	else {
 		desc = NULL;
-		WARN_ON_ONCE(total_sg > vq->split.vring.num && !vq->indirect);
+		if (total_sg > vq->split.vring.num && !vq->indirect) {
+			pr_alert("XXX total_sg %d num %d\n", total_sg,
+			    vq->split.vring.num);
+			BUG();
+		}
+		BUG_ON(total_sg > vq->split.vring.num && !vq->indirect);
 	}
 
 	if (desc) {
