@@ -252,12 +252,15 @@ static const u8 mgmt_status_table[] = {
 	MGMT_STATUS_TIMEOUT,		/* Instant Passed */
 	MGMT_STATUS_NOT_SUPPORTED,	/* Pairing Not Supported */
 	MGMT_STATUS_FAILED,		/* Transaction Collision */
+	MGMT_STATUS_FAILED,		/* Reserved for future use */
 	MGMT_STATUS_INVALID_PARAMS,	/* Unacceptable Parameter */
 	MGMT_STATUS_REJECTED,		/* QoS Rejected */
 	MGMT_STATUS_NOT_SUPPORTED,	/* Classification Not Supported */
 	MGMT_STATUS_REJECTED,		/* Insufficient Security */
 	MGMT_STATUS_INVALID_PARAMS,	/* Parameter Out Of Range */
+	MGMT_STATUS_FAILED,		/* Reserved for future use */
 	MGMT_STATUS_BUSY,		/* Role Switch Pending */
+	MGMT_STATUS_FAILED,		/* Reserved for future use */
 	MGMT_STATUS_FAILED,		/* Slot Violation */
 	MGMT_STATUS_FAILED,		/* Role Switch Failed */
 	MGMT_STATUS_INVALID_PARAMS,	/* EIR Too Large */
@@ -268,7 +271,7 @@ static const u8 mgmt_status_table[] = {
 	MGMT_STATUS_INVALID_PARAMS,	/* Unsuitable Connection Interval */
 	MGMT_STATUS_TIMEOUT,		/* Directed Advertising Timeout */
 	MGMT_STATUS_AUTH_FAILED,	/* Terminated Due to MIC Failure */
-	MGMT_STATUS_CONNECT_FAILED,	/* Connection Establishment Failed */
+	MGMT_STATUS_CONNECT_NOT_ESTD,	/* Connection Establishment Failed */
 	MGMT_STATUS_CONNECT_FAILED,	/* MAC Connection Failed */
 };
 
@@ -4942,7 +4945,7 @@ static int start_discovery_internal(struct sock *sk, struct hci_dev *hdev,
 	cmd->cmd_complete = generic_cmd_complete;
 
 	hci_discovery_set_state(hdev, DISCOVERY_STARTING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->start_discov_update);
 	err = 0;
 
 failed:
@@ -5073,7 +5076,7 @@ static int start_service_discovery(struct sock *sk, struct hci_dev *hdev,
 	}
 
 	hci_discovery_set_state(hdev, DISCOVERY_STARTING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->start_discov_update);
 	err = 0;
 
 failed:
@@ -5138,7 +5141,7 @@ static int stop_discovery(struct sock *sk, struct hci_dev *hdev, void *data,
 	cmd->cmd_complete = generic_cmd_complete;
 
 	hci_discovery_set_state(hdev, DISCOVERY_STOPPING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->stop_discov_update);
 	err = 0;
 
 unlock:
@@ -8767,14 +8770,18 @@ void mgmt_new_conn_param(struct hci_dev *hdev, bdaddr_t *bdaddr,
 }
 
 void mgmt_device_connected(struct hci_dev *hdev, struct hci_conn *conn,
-			   u32 flags, u8 *name, u8 name_len)
+			   u8 *name, u8 name_len)
 {
 	char buf[512];
 	struct mgmt_ev_device_connected *ev = (void *) buf;
 	u16 eir_len = 0;
+	u32 flags = 0;
 
 	bacpy(&ev->addr.bdaddr, &conn->dst);
 	ev->addr.type = link_to_bdaddr(conn->type, conn->dst_type);
+
+	if (conn->out)
+		flags |= MGMT_DEV_FOUND_INITIATED_CONN;
 
 	ev->flags = __cpu_to_le32(flags);
 
