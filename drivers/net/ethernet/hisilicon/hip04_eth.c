@@ -558,7 +558,7 @@ static int hip04_rx_poll(struct napi_struct *napi, int budget)
 		priv->reg_inten |= RCV_INT;
 		writel_relaxed(priv->reg_inten, priv->base + PPE_INTEN);
 	}
-	napi_complete(napi);
+	napi_complete_done(napi, rx);
 done:
 	/* start a new timer if necessary */
 	if (rx < budget && tx_remaining)

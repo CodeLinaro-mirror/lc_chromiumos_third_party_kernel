@@ -29,8 +29,9 @@
 #include <linux/mfd/cros_ec.h>
 #include <linux/mfd/cros_ec_commands.h>
 #include <linux/module.h>
-#include <linux/slab.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
+
 
 /*
  * We only represent one entry for light or proximity.
@@ -62,10 +63,34 @@ static int cros_ec_light_prox_read(struct iio_dev *indio_dev,
 
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		if (cros_ec_sensors_read_cmd(indio_dev, 1 << idx,
-					(s16 *)&data) < 0)
-			ret = -EIO;
-		*val = data;
+		if (chan->type == IIO_PROXIMITY) {
+			if (cros_ec_sensors_read_cmd(indio_dev, 1 << idx,
+						     (s16 *)&data) < 0) {
+				ret = -EIO;
+				break;
+			}
+			*val = data;
+		} else {
+			ret = -EINVAL;
+		}
+		break;
+	case IIO_CHAN_INFO_PROCESSED:
+		if (chan->type == IIO_LIGHT) {
+			if (cros_ec_sensors_read_cmd(indio_dev, 1 << idx,
+						     (s16 *)&data) < 0) {
+				ret = -EIO;
+				break;
+			}
+			/*
+			 * The data coming from the light sensor is
+			 * pre-processed and represents the ambient light
+			 * illuminance reading expressed in lux.
+			 */
+			*val = data;
+			ret = IIO_VAL_INT;
+		} else {
+			ret = -EINVAL;
+		}
 		break;
 	case IIO_CHAN_INFO_CALIBBIAS:
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_OFFSET;
@@ -85,34 +110,30 @@ static int cros_ec_light_prox_read(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_CALIBSCALE:
 		/*
 		 * RANGE is used for calibration
-		 * scalse is a number x.y, where x is coded on 16bits,
+		 * scale is a number x.y, where x is coded on 16 bits,
 		 * y coded on 16 bits, between 0 and 9999.
 		 */
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
-		st->core.param.sensor_range.data =
-			EC_MOTION_SENSE_NO_VALUE;
+		st->core.param.sensor_range.data = EC_MOTION_SENSE_NO_VALUE;
 
 		if (cros_ec_motion_send_host_cmd(&st->core, 0)) {
 			ret = -EIO;
 			break;
 		}
+
 		val64 = st->core.resp->sensor_range.ret;
 		*val = val64 >> 16;
 		*val2 = (val64 & 0xffff) * 100;
 		ret = IIO_VAL_INT_PLUS_MICRO;
 		break;
-	case IIO_CHAN_INFO_SCALE:
-		/* Light: Result in Lux, using calibration multiplier */
-		/* Prox: Result in cm. */
-		*val = 1;
-		ret = IIO_VAL_INT;
-		break;
 	default:
-		ret = cros_ec_sensors_core_read(
-				&st->core, chan, val, val2, mask);
+		ret = cros_ec_sensors_core_read(&st->core, chan, val, val2,
+						mask);
 		break;
 	}
+
 	mutex_unlock(&st->core.cmd_lock);
+
 	return ret;
 }
 
@@ -130,15 +151,13 @@ static int cros_ec_light_prox_write(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_CALIBBIAS:
 		st->core.calib[idx].offset = val;
 		/* Send to EC for each axis, even if not complete */
-
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_OFFSET;
 		st->core.param.sensor_offset.flags =
 			MOTION_SENSE_SET_OFFSET;
 		st->core.param.sensor_offset.offset[0] =
 			st->core.calib[0].offset;
 		st->core.param.sensor_offset.temp =
-			EC_MOTION_SENSE_INVALID_CALIB_TEMP;
-
+					EC_MOTION_SENSE_INVALID_CALIB_TEMP;
 		if (cros_ec_motion_send_host_cmd(&st->core, 0))
 			ret = -EIO;
 		break;
@@ -152,12 +171,13 @@ static int cros_ec_light_prox_write(struct iio_dev *indio_dev,
 			st->core.range_updated = true;
 		break;
 	default:
-		ret = cros_ec_sensors_core_write(
-				&st->core, chan, val, val2, mask);
+		ret = cros_ec_sensors_core_write(&st->core, chan, val, val2,
+						 mask);
 		break;
 	}
 
 	mutex_unlock(&st->core.cmd_lock);
+
 	return ret;
 }
 
@@ -193,13 +213,9 @@ static int cros_ec_light_prox_probe(struct platform_device *pdev)
 	state->core.type = state->core.resp->info.type;
 	state->core.loc = state->core.resp->info.location;
 	channel = state->channels;
-	/* common part */
-	channel->info_mask_separate =
-		BIT(IIO_CHAN_INFO_RAW) |
-		BIT(IIO_CHAN_INFO_CALIBBIAS) |
-		BIT(IIO_CHAN_INFO_CALIBSCALE);
+
+	/* Common part */
 	channel->info_mask_shared_by_all =
-		BIT(IIO_CHAN_INFO_SCALE) |
 		BIT(IIO_CHAN_INFO_SAMP_FREQ);
 	channel->info_mask_shared_by_all_available =
 		BIT(IIO_CHAN_INFO_SAMP_FREQ);
@@ -212,16 +228,24 @@ static int cros_ec_light_prox_probe(struct platform_device *pdev)
 
 	state->core.calib[0].offset = 0;
 
-	/* sensor specific */
+	/* Sensor specific */
 	switch (state->core.type) {
 	case MOTIONSENSE_TYPE_LIGHT:
 		channel->type = IIO_LIGHT;
+		channel->info_mask_separate =
+			BIT(IIO_CHAN_INFO_PROCESSED) |
+			BIT(IIO_CHAN_INFO_CALIBBIAS) |
+			BIT(IIO_CHAN_INFO_CALIBSCALE);
 		break;
 	case MOTIONSENSE_TYPE_PROX:
 		channel->type = IIO_PROXIMITY;
+		channel->info_mask_separate =
+			BIT(IIO_CHAN_INFO_RAW) |
+			BIT(IIO_CHAN_INFO_CALIBBIAS) |
+			BIT(IIO_CHAN_INFO_CALIBSCALE);
 		break;
 	default:
-		dev_warn(dev, "unknown\n");
+		dev_warn(dev, "Unknown motion sensor\n");
 		return -EINVAL;
 	}
 

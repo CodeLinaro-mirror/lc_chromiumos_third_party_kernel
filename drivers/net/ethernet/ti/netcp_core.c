@@ -905,7 +905,7 @@ static int netcp_rx_poll(struct napi_struct *napi, int budget)
 
 	netcp_rxpool_refill(netcp);
 	if (packets < budget) {
-		napi_complete(&netcp->rx_napi);
+		napi_complete_done(&netcp->rx_napi, packets);
 		knav_queue_enable_notify(netcp->rx_queue);
 	}
 
@@ -1284,9 +1284,9 @@ int netcp_txpipe_open(struct netcp_tx_pipe *tx_pipe)
 	tx_pipe->dma_queue = knav_queue_open(name, tx_pipe->dma_queue_id,
 					     KNAV_QUEUE_SHARED);
 	if (IS_ERR(tx_pipe->dma_queue)) {
+		ret = PTR_ERR(tx_pipe->dma_queue);
 		dev_err(dev, "Could not open DMA queue for channel \"%s\": %d\n",
 			name, ret);
-		ret = PTR_ERR(tx_pipe->dma_queue);
 		goto err;
 	}
 

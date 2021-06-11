@@ -24,6 +24,7 @@
 #include <linux/module.h>
 #include <linux/firmware.h>
 #include <linux/regmap.h>
+#include <asm/unaligned.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
@@ -382,33 +383,6 @@ int btintel_read_version(struct hci_dev *hdev, struct intel_version *ver)
 }
 EXPORT_SYMBOL_GPL(btintel_read_version);
 
-void btintel_retry_fw_download(struct hci_dev *hdev)
-{
-	/* Send Intel Reset command. This will result in
-	 * re-enumeration of BT controller.
-	 */
-	static const u8 reset_param[] = { 0x00, 0x01, 0x00, 0x00,
-					0x00, 0x00, 0x00, 0x00 };
-	struct sk_buff *skb;
-
-	skb = __hci_cmd_sync(hdev, 0xfc01, sizeof(reset_param),
-				reset_param, HCI_INIT_TIMEOUT);
-	if (IS_ERR(skb)) {
-		bt_dev_err(hdev, "Sending Intel Reset failed (%ld)",
-				PTR_ERR(skb));
-		return;
-	}
-	bt_dev_info(hdev, "Intel reset sent to retry FW download");
-	kfree_skb(skb);
-	/* Current Intel BT controllers(ThP/JfP) hold the USB reset
-	 * lines for 2ms when it receives Intel Reset in bootloader mode.
-	 * Whereas, the upcoming Intel BT controllers will hold USB reset
-	 * for 150ms. To keep the delay generic, 150ms is chosen here.
-	 */
-	msleep(150);
-}
-EXPORT_SYMBOL_GPL(btintel_retry_fw_download);
-
 /* ------- REGMAP IBT SUPPORT ------- */
 
 #define IBT_REG_MODE_8BIT  0x00
@@ -724,8 +698,7 @@ int btintel_download_firmware(struct hci_dev *hdev, const struct firmware *fw,
 			/* The boot parameter is the first 32-bit value
 			 * and rest of 3 octets are reserved.
 			 */
-			*boot_param = __get_unaligned_cpu32(fw_ptr + sizeof(*cmd));
-
+			*boot_param = get_unaligned_le32(fw_ptr + sizeof(*cmd));
 
 			bt_dev_dbg(hdev, "boot_param=0x%x", *boot_param);
 		}

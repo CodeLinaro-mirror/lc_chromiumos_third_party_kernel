@@ -158,6 +158,7 @@ struct spi_device {
 	void			*controller_state;
 	void			*controller_data;
 	char			modalias[SPI_NAME_SIZE];
+	const char		*driver_override;
 	int			cs_gpio;	/* chip select gpio */
 
 	/* the statistics */
@@ -442,6 +443,9 @@ struct spi_master {
 	/* I/O mutex */
 	struct mutex		io_mutex;
 
+	/* flag indicating this is a non-devres managed controller */
+	bool			devm_allocated;
+
 	/* lock and mutex for SPI bus locking */
 	spinlock_t		bus_lock_spinlock;
 	struct mutex		bus_lock_mutex;
@@ -588,6 +592,8 @@ extern void spi_finalize_current_transfer(struct spi_master *master);
 /* the spi driver core manages memory for the spi_master classdev */
 extern struct spi_master *
 spi_alloc_master(struct device *host, unsigned size);
+extern struct spi_master *
+devm_spi_alloc_master(struct device *dev, unsigned int size);
 
 extern int spi_register_master(struct spi_master *master);
 extern int devm_spi_register_master(struct device *dev,

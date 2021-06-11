@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 Red Hat
- * Copyright (c) 2015 - 2017 DisplayLink (UK) Ltd.
+ * Copyright (c) 2015 - 2020 DisplayLink (UK) Ltd.
  *
  * Based on parts on udlfb.c:
  * Copyright (C) 2009 its respective authors
@@ -114,6 +114,7 @@ static const struct drm_connector_funcs evdi_connector_funcs = {
 int evdi_connector_init(struct drm_device *dev, struct drm_encoder *encoder)
 {
 	struct drm_connector *connector;
+	struct evdi_device *evdi = dev->dev_private;
 
 	connector = kzalloc(sizeof(struct drm_connector), GFP_KERNEL);
 	if (!connector)
@@ -126,6 +127,7 @@ int evdi_connector_init(struct drm_device *dev, struct drm_encoder *encoder)
 	connector->polled = DRM_CONNECTOR_POLL_HPD;
 
 	drm_connector_register(connector);
+	evdi->conn = connector;
 	drm_mode_connector_attach_encoder(connector, encoder);
 
 	drm_object_attach_property(&connector->base,

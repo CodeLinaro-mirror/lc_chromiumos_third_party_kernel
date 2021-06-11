@@ -128,10 +128,10 @@ static int evdi_crtc_cursor_set(struct drm_crtc *crtc,
 			format, stride);
 	drm_gem_object_unreference_unlocked(obj);
 
-	if (evdi_enable_cursor_blending)
-		evdi_crtc_mark_full_screen_dirty(evdi, crtc);
-	else
+	if (evdi->cursor_events_enabled)
 		evdi_painter_send_cursor_set(evdi->painter, evdi->cursor);
+	else
+		evdi_crtc_mark_full_screen_dirty(evdi, crtc);
 	return 0;
 }
 
@@ -142,10 +142,11 @@ static int evdi_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
 
 	evdi_cursor_move(evdi->cursor, x, y);
 
-	if (evdi_enable_cursor_blending)
-		evdi_crtc_mark_full_screen_dirty(evdi, crtc);
-	else
+	if (evdi->cursor_events_enabled)
 		evdi_painter_send_cursor_move(evdi->painter, evdi->cursor);
+	else
+		evdi_crtc_mark_full_screen_dirty(evdi, crtc);
+
 	return 0;
 }
 
@@ -249,7 +250,7 @@ static void evdi_cursor_atomic_update(struct drm_plane *plane,
 
 		mutex_unlock(&plane->dev->struct_mutex);
 
-		if (evdi_enable_cursor_blending) {
+		if (!evdi->cursor_events_enabled) {
 			evdi_cursor_atomic_get_rect(&old_rect, old_state);
 			evdi_cursor_atomic_get_rect(&rect, state);
 

@@ -2155,12 +2155,8 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		goto out_unlock;
 	}
 
-	/*
-	 * We know this subsystem has not yet been bound.  Users in a non-init
-	 * user namespace may only mount hierarchies with no bound subsystems,
-	 * i.e. 'none,name=user1'
-	 */
-	if (!opts.none && !capable(CAP_SYS_ADMIN)) {
+	/* Hierarchies may only be created in the initial cgroup namespace. */
+	if (ns != &init_cgroup_ns) {
 		ret = -EPERM;
 		goto out_unlock;
 	}
@@ -2886,6 +2882,7 @@ int cgroup_attach_task_all(struct task_struct *from, struct task_struct *tsk)
 	int retval = 0;
 
 	mutex_lock(&cgroup_mutex);
+	percpu_down_write(&cgroup_threadgroup_rwsem);
 	for_each_root(root) {
 		struct cgroup *from_cgrp;
 
@@ -2900,6 +2897,7 @@ int cgroup_attach_task_all(struct task_struct *from, struct task_struct *tsk)
 		if (retval)
 			break;
 	}
+	percpu_up_write(&cgroup_threadgroup_rwsem);
 	mutex_unlock(&cgroup_mutex);
 
 	return retval;
@@ -3144,9 +3142,28 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 	 * Except for the root, subtree_control must be zero for a cgroup
 	 * with tasks so that child cgroups don't compete against tasks.
 	 */
-	if (enable && cgroup_parent(cgrp) && !list_empty(&cgrp->cset_links)) {
-		ret = -EBUSY;
-		goto out_unlock;
+	if (enable && cgroup_parent(cgrp)) {
+		struct cgrp_cset_link *link;
+
+		/*
+		 * Because namespaces pin csets too, @cgrp->cset_links
+		 * might not be empty even when @cgrp is empty.  Walk and
+		 * verify each cset.
+		 */
+		spin_lock_irq(&css_set_lock);
+
+		ret = 0;
+		list_for_each_entry(link, &cgrp->cset_links, cset_link) {
+			if (css_set_populated(link->cset)) {
+				ret = -EBUSY;
+				break;
+			}
+		}
+
+		spin_unlock_irq(&css_set_lock);
+
+		if (ret)
+			goto out_unlock;
 	}
 
 	/*
@@ -3726,7 +3743,9 @@ void cgroup_file_notify(struct cgroup_file *cfile)
  * cgroup_task_count - count the number of tasks in a cgroup.
  * @cgrp: the cgroup in question
  *
- * Return the number of tasks in the cgroup.
+ * Return the number of tasks in the cgroup.  The returned number can be
+ * higher than the actual number of tasks due to css_set references from
+ * namespace roots and temporary usages.
  */
 static int cgroup_task_count(const struct cgroup *cgrp)
 {
@@ -4159,6 +4178,8 @@ int cgroup_transfer_tasks(struct cgroup *to, struct cgroup *from)
 
 	mutex_lock(&cgroup_mutex);
 
+	percpu_down_write(&cgroup_threadgroup_rwsem);
+
 	/* all tasks in @from are being moved, all csets are source */
 	spin_lock_irq(&css_set_lock);
 	list_for_each_entry(link, &from->cset_links, cset_link)
@@ -4191,6 +4212,7 @@ int cgroup_transfer_tasks(struct cgroup *to, struct cgroup *from)
 	} while (task && !ret);
 out_err:
 	cgroup_migrate_finish(&preloaded_csets);
+	percpu_up_write(&cgroup_threadgroup_rwsem);
 	mutex_unlock(&cgroup_mutex);
 	return ret;
 }

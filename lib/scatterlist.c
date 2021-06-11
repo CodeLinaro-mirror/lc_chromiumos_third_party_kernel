@@ -400,6 +400,9 @@ int sg_alloc_table_from_pages(struct sg_table *sgt,
 	int ret;
 	struct scatterlist *s;
 
+	if (n_pages == 0)
+		return -EINVAL;
+
 	/* compute number of contiguous chunks */
 	chunks = 1;
 	for (i = 1; i < n_pages; ++i)

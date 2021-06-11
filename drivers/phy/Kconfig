@@ -15,6 +15,14 @@ config GENERIC_PHY
 	  phy users can obtain reference to the PHY. All the users of this
 	  framework should select this config.
 
+config GENERIC_PHY_MIPI_DPHY
+	bool
+	help
+	  Generic MIPI D-PHY support.
+
+	  Provides a number of helpers a core functions for MIPI D-PHY
+	  drivers to us.
+
 config PHY_BERLIN_USB
 	tristate "Marvell Berlin USB PHY Driver"
 	depends on ARCH_BERLIN && RESET_CONTROLLER && HAS_IOMEM && OF
@@ -428,5 +436,7 @@ config PHY_CYGNUS_PCIE
 	help
 	  Enable this to support the Broadcom Cygnus PCIe PHY.
 	  If unsure, say N.
+
+source "drivers/phy/rockchip/Kconfig"
 
 endmenu

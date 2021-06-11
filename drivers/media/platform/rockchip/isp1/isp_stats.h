@@ -35,7 +35,7 @@
 #ifndef _RKISP1_ISP_STATS_H
 #define _RKISP1_ISP_STATS_H
 
-#include <linux/rkisp1-config.h>
+#include <linux/rkisp1-config-legacy.h>
 #include "common.h"
 
 struct rkisp1_isp_stats_vdev;

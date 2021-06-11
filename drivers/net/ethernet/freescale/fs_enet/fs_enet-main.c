@@ -206,7 +206,7 @@ static int fs_enet_rx_napi(struct napi_struct *napi, int budget)
 
 	if (received < budget) {
 		/* done */
-		napi_complete(napi);
+		napi_complete_done(napi,received);
 		(*fep->ops->napi_enable_rx)(dev);
 	}
 	return received;

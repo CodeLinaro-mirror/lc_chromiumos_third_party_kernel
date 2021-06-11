@@ -180,7 +180,7 @@ static int nps_enet_poll(struct napi_struct *napi, int budget)
 	if (work_done < budget) {
 		struct nps_enet_buf_int_enable buf_int_enable;
 
-		napi_complete(napi);
+		napi_complete_done(napi,work_done);
 		buf_int_enable.rx_rdy = NPS_ENET_ENABLE;
 		buf_int_enable.tx_done = NPS_ENET_ENABLE;
 		nps_enet_reg_set(priv, NPS_ENET_REG_BUF_INT_ENABLE,

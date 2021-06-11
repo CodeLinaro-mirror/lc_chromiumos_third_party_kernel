@@ -109,6 +109,9 @@ static void *vb2_dma_sg_alloc(void *alloc_ctx, unsigned long size,
 	int num_pages;
 	DEFINE_DMA_ATTRS(attrs);
 
+	if (WARN_ON(!size))
+		return NULL;
+
 	dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 
 	if (WARN_ON(alloc_ctx == NULL))
