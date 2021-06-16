@@ -2241,7 +2241,6 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 	struct sk_buff_head frame_list;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
 	struct ethhdr ethhdr;
-	const u8 *check_da = ethhdr.h_dest, *check_sa = ethhdr.h_source;
 
 	if (unlikely(!ieee80211_is_data(fc)))
 		return RX_CONTINUE;
@@ -2265,23 +2264,6 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 		default:
 			return RX_DROP_UNUSABLE;
 		}
-		check_da = NULL;
-		check_sa = NULL;
-	} else switch (rx->sdata->vif.type) {
-		case NL80211_IFTYPE_AP:
-		case NL80211_IFTYPE_AP_VLAN:
-			check_da = NULL;
-			break;
-		case NL80211_IFTYPE_STATION:
-			if (!rx->sta ||
-			    !test_sta_flag(rx->sta, WLAN_STA_TDLS_PEER))
-				check_sa = NULL;
-			break;
-		case NL80211_IFTYPE_MESH_POINT:
-			check_sa = NULL;
-			break;
-		default:
-			break;
 	}
 
 	if (is_multicast_ether_addr(hdr->addr1))
@@ -2297,12 +2279,7 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 
 	ieee80211_amsdu_to_8023s(skb, &frame_list, dev->dev_addr,
 				 rx->sdata->vif.type,
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 				 rx->local->hw.extra_tx_headroom);
-=======
-				 rx->local->hw.extra_tx_headroom,
-				 check_da, check_sa);
->>>>>>> CHANGE (0be463 BACKPORT: mac80211: validate DA/SA during A-MSDU decapsulati)
 
 	while (!skb_queue_empty(&frame_list)) {
 		rx->skb = __skb_dequeue(&frame_list);
