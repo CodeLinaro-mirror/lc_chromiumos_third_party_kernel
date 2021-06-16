@@ -2189,17 +2189,26 @@ ieee80211_deliver_skb(struct ieee80211_rx_data *rx)
 }
 
 static ieee80211_rx_result debug_noinline
-__ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx, u8 data_offset)
+ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 {
 	struct net_device *dev = rx->sdata->dev;
 	struct sk_buff *skb = rx->skb;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
 	__le16 fc = hdr->frame_control;
 	struct sk_buff_head frame_list;
+	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
 	struct ethhdr ethhdr;
 
+	if (unlikely(!ieee80211_is_data(fc)))
+		return RX_CONTINUE;
+
+	if (unlikely(!ieee80211_is_data_present(fc)))
+		return RX_DROP_MONITOR;
+
+	if (!(status->rx_flags & IEEE80211_RX_AMSDU))
+		return RX_CONTINUE;
+
 	if (unlikely(ieee80211_has_a4(hdr->frame_control))) {
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		switch (rx->sdata->vif.type) {
 		case NL80211_IFTYPE_AP_VLAN:
 			if (!rx->sdata->u.vlan.sta)
@@ -2212,34 +2221,17 @@ __ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx, u8 data_offset)
 		default:
 			return RX_DROP_UNUSABLE;
 		}
-=======
-		check_da = NULL;
-		check_sa = NULL;
-	} else switch (rx->sdata->vif.type) {
-		case NL80211_IFTYPE_AP:
-		case NL80211_IFTYPE_AP_VLAN:
-			check_da = NULL;
-			break;
-		case NL80211_IFTYPE_STATION:
-			if (!rx->sta ||
-			    !test_sta_flag(rx->sta, WLAN_STA_TDLS_PEER))
-				check_sa = NULL;
-			break;
-		case NL80211_IFTYPE_MESH_POINT:
-			check_sa = NULL;
-			break;
-		default:
-			break;
->>>>>>> CHANGE (e9c873 BACKPORT: mac80211: support A-MSDU in fast-rx)
 	}
+
+	if (is_multicast_ether_addr(hdr->addr1))
+		return RX_DROP_UNUSABLE;
 
 	skb->dev = dev;
 	__skb_queue_head_init(&frame_list);
 
 	if (ieee80211_data_to_8023_exthdr(skb, &ethhdr,
 					  rx->sdata->vif.addr,
-					  rx->sdata->vif.type,
-					  data_offset))
+					  rx->sdata->vif.type))
 		return RX_DROP_UNUSABLE;
 
 	ieee80211_amsdu_to_8023s(skb, &frame_list, dev->dev_addr,
@@ -2261,7 +2253,6 @@ __ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx, u8 data_offset)
 	return RX_QUEUED;
 }
 
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 =======
 static ieee80211_rx_result debug_noinline
@@ -2320,46 +2311,6 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 }
 
 >>>>>>> CHANGE (5d6130 CHROMIUM: mac80211: drop A-MSDUs on old ciphers)
-=======
-static ieee80211_rx_result debug_noinline
-ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
-{
-	struct sk_buff *skb = rx->skb;
-	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
-	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
-	__le16 fc = hdr->frame_control;
-
-	if (!(status->rx_flags & IEEE80211_RX_AMSDU))
-		return RX_CONTINUE;
-
-	if (unlikely(!ieee80211_is_data(fc)))
-		return RX_CONTINUE;
-
-	if (unlikely(!ieee80211_is_data_present(fc)))
-		return RX_DROP_MONITOR;
-
-	if (unlikely(ieee80211_has_a4(hdr->frame_control))) {
-		switch (rx->sdata->vif.type) {
-		case NL80211_IFTYPE_AP_VLAN:
-			if (!rx->sdata->u.vlan.sta)
-				return RX_DROP_UNUSABLE;
-			break;
-		case NL80211_IFTYPE_STATION:
-			if (!rx->sdata->u.mgd.use_4addr)
-				return RX_DROP_UNUSABLE;
-			break;
-		default:
-			return RX_DROP_UNUSABLE;
-		}
-	}
-
-	if (is_multicast_ether_addr(hdr->addr1))
-		return RX_DROP_UNUSABLE;
-
-	return __ieee80211_rx_h_amsdu(rx, 0);
-}
-
->>>>>>> CHANGE (e9c873 BACKPORT: mac80211: support A-MSDU in fast-rx)
 #ifdef CONFIG_MAC80211_MESH
 static ieee80211_rx_result
 ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
