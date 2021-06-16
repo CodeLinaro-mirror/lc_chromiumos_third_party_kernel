@@ -72,15 +72,11 @@ static void wl1271_rx_status(struct wl1271 *wl,
 
 	/* 11n support */
 	if (desc->rate <= wl->hw_min_ht_rate)
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		status->flag |= RX_FLAG_HT;
 =======
 		status->encoding = RX_ENC_HT;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		status->enc_flags |= RX_ENC_FLAG_HT;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 
 	status->signal = desc->rssi;
 

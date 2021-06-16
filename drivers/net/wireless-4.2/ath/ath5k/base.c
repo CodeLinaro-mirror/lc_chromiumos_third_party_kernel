@@ -1414,26 +1414,18 @@ ath5k_receive_frame(struct ath5k_hw *ah, struct sk_buff *skb,
 	rxs->flag |= ath5k_rx_decrypted(ah, skb, rs);
 	switch (ah->ah_bwmode) {
 	case AR5K_BWMODE_5MHZ:
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		rxs->flag |= RX_FLAG_5MHZ;
 =======
 		rxs->bw = RATE_INFO_BW_5;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		rxs->enc_flags |= RX_ENC_FLAG_5MHZ;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		break;
 	case AR5K_BWMODE_10MHZ:
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		rxs->flag |= RX_FLAG_10MHZ;
 =======
 		rxs->bw = RATE_INFO_BW_10;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		rxs->enc_flags |= RX_ENC_FLAG_10MHZ;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		break;
 	default:
 		break;
@@ -1441,7 +1433,7 @@ ath5k_receive_frame(struct ath5k_hw *ah, struct sk_buff *skb,
 
 	if (rs->rs_rate ==
 	    ah->sbands[ah->curchan->band].bitrates[rxs->rate_idx].hw_value_short)
-		rxs->enc_flags |= RX_ENC_FLAG_SHORTPRE;
+		rxs->flag |= RX_FLAG_SHORTPRE;
 
 	trace_ath5k_rx(ah, skb);
 

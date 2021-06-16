@@ -473,26 +473,18 @@ void sta_set_rate_info_rx(struct sta_info *sta, struct rate_info *rinfo)
 {
 	rinfo->flags = 0;
 
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (sta->last_rx_rate_flag & RX_FLAG_HT) {
 =======
 	if (sta->last_rx_rate_flag & RX_ENC_HT) {
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-	if (sta->last_rx_rate_flag & RX_ENC_FLAG_HT) {
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		rinfo->flags |= RATE_INFO_FLAGS_MCS;
 		rinfo->mcs = sta->last_rx_rate_idx;
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	} else if (sta->last_rx_rate_flag & RX_FLAG_VHT) {
 =======
 	} else if (sta->last_rx_rate_flag & RX_ENC_VHT) {
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-	} else if (sta->last_rx_rate_flag & RX_ENC_FLAG_VHT) {
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		rinfo->flags |= RATE_INFO_FLAGS_VHT_MCS;
 		rinfo->nss = sta->last_rx_rate_vht_nss;
 		rinfo->mcs = sta->last_rx_rate_idx;
@@ -507,58 +499,38 @@ void sta_set_rate_info_rx(struct sta_info *sta, struct rate_info *rinfo)
 		rinfo->legacy = DIV_ROUND_UP(brate, 1 << shift);
 	}
 
-	if (sta->last_rx_rate_flag & RX_ENC_FLAG_SHORT_GI)
+	if (sta->last_rx_rate_flag & RX_FLAG_SHORT_GI)
 		rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
 
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (sta->last_rx_rate_flag & RX_FLAG_5MHZ)
 =======
 	if (sta->last_rx_rate_flag & RATE_INFO_BW_5)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-	if (sta->last_rx_rate_flag & RX_ENC_FLAG_5MHZ)
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		rinfo->bw = RATE_INFO_BW_5;
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	else if (sta->last_rx_rate_flag & RX_FLAG_10MHZ)
 =======
 	else if (sta->last_rx_rate_flag & RATE_INFO_BW_10)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-	else if (sta->last_rx_rate_flag & RX_ENC_FLAG_10MHZ)
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		rinfo->bw = RATE_INFO_BW_10;
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	else if (sta->last_rx_rate_flag & RX_FLAG_40MHZ)
 =======
 	else if (sta->last_rx_rate_flag & RATE_INFO_BW_40)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-	else if (sta->last_rx_rate_flag & RX_ENC_FLAG_40MHZ)
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		rinfo->bw = RATE_INFO_BW_40;
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	else if (sta->last_rx_rate_vht_flag & RX_VHT_FLAG_80MHZ)
 =======
 	else if (sta->last_rx_rate_vht_flag & RATE_INFO_BW_80)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-	else if (sta->last_rx_rate_vht_flag & RX_ENC_FLAG_80MHZ)
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		rinfo->bw = RATE_INFO_BW_80;
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	else if (sta->last_rx_rate_vht_flag & RX_VHT_FLAG_160MHZ)
 =======
 	else if (sta->last_rx_rate_vht_flag & RATE_INFO_BW_160)
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-	else if (sta->last_rx_rate_vht_flag & RX_ENC_FLAG_160MHZ)
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		rinfo->bw = RATE_INFO_BW_160;
 	else
 		rinfo->bw = RATE_INFO_BW_20;

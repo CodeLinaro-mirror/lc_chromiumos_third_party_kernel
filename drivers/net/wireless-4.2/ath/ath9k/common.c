@@ -181,29 +181,20 @@ int ath9k_cmn_process_rate(struct ath_common *common,
 	sband = hw->wiphy->bands[band];
 
 	if (IS_CHAN_QUARTER_RATE(ah->curchan))
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		rxs->flag |= RX_FLAG_5MHZ;
 =======
 		rxs->bw = RATE_INFO_BW_5;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		rxs->enc_flags |= RX_ENC_FLAG_5MHZ;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 	else if (IS_CHAN_HALF_RATE(ah->curchan))
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		rxs->flag |= RX_FLAG_10MHZ;
 =======
 		rxs->bw = RATE_INFO_BW_10;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		rxs->enc_flags |= RX_ENC_FLAG_10MHZ;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 
 	if (rx_stats->rs_rate & 0x80) {
 		/* HT rate */
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		rxs->flag |= RX_FLAG_HT;
 		rxs->flag |= rx_stats->flag;
@@ -212,9 +203,6 @@ int ath9k_cmn_process_rate(struct ath_common *common,
 		rxs->enc_flags |= rx_stats->enc_flags;
 		rxs->bw = rx_stats->bw;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		rxs->enc_flags |= RX_ENC_FLAG_HT | rx_stats->enc_flags;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		rxs->rate_idx = rx_stats->rs_rate & 0x7f;
 		return 0;
 	}
@@ -225,7 +213,7 @@ int ath9k_cmn_process_rate(struct ath_common *common,
 			return 0;
 		}
 		if (sband->bitrates[i].hw_value_short == rx_stats->rs_rate) {
-			rxs->enc_flags |= RX_ENC_FLAG_SHORTPRE;
+			rxs->flag |= RX_FLAG_SHORTPRE;
 			rxs->rate_idx = i;
 			return 0;
 		}

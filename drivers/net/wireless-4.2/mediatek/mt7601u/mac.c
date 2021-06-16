@@ -397,7 +397,7 @@ mt76_mac_process_rate(struct ieee80211_rx_status *status, u16 rate)
 	case MT_PHY_TYPE_CCK:
 		if (idx >= 8) {
 			idx -= 8;
-			status->enc_flags |= RX_ENC_FLAG_SHORTPRE;
+			status->flag |= RX_FLAG_SHORTPRE;
 		}
 
 		if (WARN_ON(idx >= 4))
@@ -406,18 +406,14 @@ mt76_mac_process_rate(struct ieee80211_rx_status *status, u16 rate)
 		status->rate_idx = idx;
 		return;
 	case MT_PHY_TYPE_HT_GF:
-		status->enc_flags |= RX_ENC_FLAG_HT_GF;
+		status->flag |= RX_FLAG_HT_GF;
 		/* fall through */
 	case MT_PHY_TYPE_HT:
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		status->flag |= RX_FLAG_HT;
 =======
 		status->encoding = RX_ENC_HT;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		status->enc_flags |= RX_ENC_FLAG_HT;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		status->rate_idx = idx;
 		break;
 	default:
@@ -426,21 +422,17 @@ mt76_mac_process_rate(struct ieee80211_rx_status *status, u16 rate)
 	}
 
 	if (rate & MT_RXWI_RATE_SGI)
-		status->enc_flags |= RX_ENC_FLAG_SHORT_GI;
+		status->flag |= RX_FLAG_SHORT_GI;
 
 	if (rate & MT_RXWI_RATE_STBC)
-		status->enc_flags |= 1 << RX_ENC_FLAG_STBC_SHIFT;
+		status->flag |= 1 << RX_FLAG_STBC_SHIFT;
 
 	if (rate & MT_RXWI_RATE_BW)
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		status->flag |= RX_FLAG_40MHZ;
 =======
 		status->bw = RATE_INFO_BW_40;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		status->enc_flags |= RX_ENC_FLAG_40MHZ;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 }
 
 static void

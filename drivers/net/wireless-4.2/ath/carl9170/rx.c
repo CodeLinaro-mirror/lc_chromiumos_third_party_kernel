@@ -358,7 +358,7 @@ static int carl9170_rx_mac_status(struct ar9170 *ar,
 	switch (mac->status & AR9170_RX_STATUS_MODULATION) {
 	case AR9170_RX_STATUS_MODULATION_CCK:
 		if (mac->status & AR9170_RX_STATUS_SHORT_PREAMBLE)
-			status->enc_flags |= RX_ENC_FLAG_SHORTPRE;
+			status->flag |= RX_FLAG_SHORTPRE;
 		switch (head->plcp[0]) {
 		case AR9170_RX_PHY_RATE_CCK_1M:
 			status->rate_idx = 0;
@@ -423,28 +423,20 @@ static int carl9170_rx_mac_status(struct ar9170 *ar,
 
 	case AR9170_RX_STATUS_MODULATION_HT:
 		if (head->plcp[3] & 0x80)
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 			status->flag |= RX_FLAG_40MHZ;
 =======
 			status->bw = RATE_INFO_BW_40;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-			status->enc_flags |= RX_ENC_FLAG_40MHZ;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		if (head->plcp[6] & 0x80)
-			status->enc_flags |= RX_ENC_FLAG_SHORT_GI;
+			status->flag |= RX_FLAG_SHORT_GI;
 
 		status->rate_idx = clamp(0, 75, head->plcp[3] & 0x7f);
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		status->flag |= RX_FLAG_HT;
 =======
 		status->encoding = RX_ENC_HT;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
-=======
-		status->enc_flags |= RX_ENC_FLAG_HT;
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		break;
 
 	default:

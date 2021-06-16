@@ -1526,11 +1526,7 @@ ieee80211_have_rx_timestamp(struct ieee80211_rx_status *status)
 		return true;
 	/* can't handle non-legacy preamble yet */
 	if (status->flag & RX_FLAG_MACTIME_PLCP_START &&
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 	    status->encoding != RX_ENC_LEGACY)
-=======
-	    !(status->enc_flags & (RX_ENC_FLAG_HT | RX_ENC_FLAG_VHT)))
->>>>>>> CHANGE (1a7f75 BACKPORT: mac80211: clean up rate encoding bits in RX status)
 		return true;
 	return false;
 >>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
