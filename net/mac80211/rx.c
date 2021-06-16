@@ -2035,15 +2035,11 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 			 * next fragment has a sequential PN value.
 			 */
 			entry->check_sequential_pn = true;
-<<<<<<< HEAD   (144fb2 CHROMIUM: ath10k: Add struct for high latency PN replay prot)
 <<<<<<< HEAD   (55763f CHROMIUM: ath10k: Set aggr/non-aggr SW retry threshold to 50)
 =======
 			entry->is_protected = true;
 			entry->key_color = rx->key->color;
 >>>>>>> CHANGE (8b19ba CHROMIUM: mac80211: prevent attacks on TKIP/WEP as well)
-=======
-			entry->key_color = rx->key->color;
->>>>>>> CHANGE (5b9e58 CHROMIUM: mac80211: prevent mixed key and fragment cache att)
 			memcpy(entry->last_pn,
 			       rx->key->u.ccmp.rx_pn[queue],
 			       IEEE80211_CCMP_PN_LEN);
@@ -2085,11 +2081,6 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 
 		if (!requires_sequential_pn(rx, fc))
 			return RX_DROP_UNUSABLE;
-
-		/* Prevent mixed key and fragment cache attacks */
-		if (entry->key_color != rx->key->color)
-			return RX_DROP_UNUSABLE;
-
 		memcpy(pn, entry->last_pn, IEEE80211_CCMP_PN_LEN);
 		for (i = IEEE80211_CCMP_PN_LEN - 1; i >= 0; i--) {
 			pn[i]++;
