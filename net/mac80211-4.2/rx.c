@@ -1853,14 +1853,10 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 			 * fragment has a sequential PN value. */
 <<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 			entry->ccmp = 1;
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 =======
 			entry->check_sequential_pn = true;
 			entry->key_color = rx->key->color;
 >>>>>>> CHANGE (b54ea7 CHROMIUM: mac80211: add fragment cache to sta_info)
-=======
-			entry->key_color = rx->key->color;
->>>>>>> CHANGE (ec508c CHROMIUM: mac80211: prevent mixed key and fragment cache att)
 			memcpy(entry->last_pn,
 			       rx->key->u.ccmp.rx_pn[queue],
 			       IEEE80211_CCMP_PN_LEN);
@@ -1886,11 +1882,6 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 
 		if (!requires_sequential_pn(rx, fc))
 			return RX_DROP_UNUSABLE;
-
-		/* Prevent mixed key and fragment cache attacks */
-		if (entry->key_color != rx->key->color)
-			return RX_DROP_UNUSABLE;
-
 		memcpy(pn, entry->last_pn, IEEE80211_CCMP_PN_LEN);
 		for (i = IEEE80211_CCMP_PN_LEN - 1; i >= 0; i--) {
 			pn[i]++;
