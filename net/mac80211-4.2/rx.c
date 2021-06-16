@@ -2307,12 +2307,7 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 
 	if (ieee80211_data_to_8023_exthdr(skb, &ethhdr,
 					  rx->sdata->vif.addr,
-<<<<<<< HEAD   (1a8d71 BACKPORT: mac80211: separate encoding/bandwidth from flags)
 					  rx->sdata->vif.type))
-=======
-					  rx->sdata->vif.type,
-					  data_offset, true))
->>>>>>> CHANGE (96ae66 CHROMIUM: mac80211: properly handle A-MSDUs that start with )
 		return RX_DROP_UNUSABLE;
 
 	ieee80211_amsdu_to_8023s(skb, &frame_list, dev->dev_addr,
