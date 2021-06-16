@@ -1856,7 +1856,6 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 <<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 =======
 			entry->check_sequential_pn = true;
-			entry->is_protected = true;
 			entry->key_color = rx->key->color;
 >>>>>>> CHANGE (b54ea7 CHROMIUM: mac80211: add fragment cache to sta_info)
 =======
@@ -1865,9 +1864,6 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 			memcpy(entry->last_pn,
 			       rx->key->u.ccmp.rx_pn[queue],
 			       IEEE80211_CCMP_PN_LEN);
-		} else if (rx->key && ieee80211_has_protected(fc)) {
-			entry->is_protected = true;
-			entry->key_color = rx->key->color;
 		}
 		return RX_QUEUED;
 	}
@@ -1906,14 +1902,6 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 		if (memcmp(pn, rpn, IEEE80211_CCMP_PN_LEN))
 			return RX_DROP_UNUSABLE;
 		memcpy(entry->last_pn, pn, IEEE80211_CCMP_PN_LEN);
-	} else if (entry->is_protected &&
-		   (!rx->key || !ieee80211_has_protected(fc) ||
-		    rx->key->color != entry->key_color)) {
-		/* Drop this as a mixed key or fragment cache attack, even
-		 * if for TKIP Michael MIC should protect us, and WEP is a
-		 * lost cause anyway.
-		 */
-		return RX_DROP_UNUSABLE;
 	}
 
 	skb_pull(rx->skb, ieee80211_hdrlen(fc));
