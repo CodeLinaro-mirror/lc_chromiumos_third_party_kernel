@@ -77,17 +77,9 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 		signal = (rx_status->signal * 100) / local->hw.max_signal;
 
 	scan_width = NL80211_BSS_CHAN_WIDTH_20;
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (rx_status->flag & RX_FLAG_5MHZ)
-=======
-	if (rx_status->bw == RATE_INFO_BW_5)
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		scan_width = NL80211_BSS_CHAN_WIDTH_5;
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	if (rx_status->flag & RX_FLAG_10MHZ)
-=======
-	else if (rx_status->bw == RATE_INFO_BW_10)
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		scan_width = NL80211_BSS_CHAN_WIDTH_10;
 
 	cbss = cfg80211_inform_bss_width_frame(local->hw.wiphy, channel,
@@ -166,13 +158,8 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 	if (beacon) {
 		struct ieee80211_supported_band *sband =
 			local->hw.wiphy->bands[rx_status->band];
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		if (!(rx_status->flag & RX_FLAG_HT) &&
 		    !(rx_status->flag & RX_FLAG_VHT))
-=======
-		if (!(rx_status->encoding == RX_ENC_HT) &&
-		    !(rx_status->encoding == RX_ENC_VHT))
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			bss->beacon_rate =
 				&sband->bitrates[rx_status->rate_idx];
 	}

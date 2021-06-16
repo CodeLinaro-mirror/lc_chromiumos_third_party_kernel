@@ -757,11 +757,7 @@ void rt2x00lib_rxdone(struct queue_entry *entry, gfp_t gfp)
 	rate_idx = rt2x00lib_rxdone_read_signal(rt2x00dev, &rxdesc);
 	if (rxdesc.rate_mode == RATE_MODE_HT_MIX ||
 	    rxdesc.rate_mode == RATE_MODE_HT_GREENFIELD)
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		rxdesc.flags |= RX_FLAG_HT;
-=======
-		rxdesc.flags |= RX_ENC_HT;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 
 	/*
 	 * Check if this is a beacon, and more frames have been

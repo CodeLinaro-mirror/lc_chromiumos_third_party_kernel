@@ -423,20 +423,12 @@ static int carl9170_rx_mac_status(struct ar9170 *ar,
 
 	case AR9170_RX_STATUS_MODULATION_HT:
 		if (head->plcp[3] & 0x80)
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 			status->flag |= RX_FLAG_40MHZ;
-=======
-			status->bw = RATE_INFO_BW_40;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		if (head->plcp[6] & 0x80)
 			status->flag |= RX_FLAG_SHORT_GI;
 
 		status->rate_idx = clamp(0, 75, head->plcp[3] & 0x7f);
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		status->flag |= RX_FLAG_HT;
-=======
-		status->encoding = RX_ENC_HT;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		break;
 
 	default:

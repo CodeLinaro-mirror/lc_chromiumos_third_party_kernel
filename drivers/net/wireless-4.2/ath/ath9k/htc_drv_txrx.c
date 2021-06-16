@@ -929,18 +929,9 @@ void ath9k_host_rx_init(struct ath9k_htc_priv *priv)
 static inline void convert_htc_flag(struct ath_rx_status *rx_stats,
 				   struct ath_htc_rx_status *rxstatus)
 {
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	rx_stats->flag = 0;
-=======
-	rx_stats->enc_flags = 0;
-	rx_stats->bw = RATE_INFO_BW_20;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 	if (rxstatus->rs_flags & ATH9K_RX_2040)
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 		rx_stats->flag |= RX_FLAG_40MHZ;
-=======
-		rx_stats->bw = RATE_INFO_BW_40;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 	if (rxstatus->rs_flags & ATH9K_RX_GI)
 		rx_stats->flag |= RX_FLAG_SHORT_GI;
 }
