@@ -65,7 +65,6 @@
 			enable-method = "psci";
 			performance-domains = <&performance 0>;
 			clock-frequency = <1701000000>;
-			cpu-idle-states = <&cpuoff_l &clusteroff_l>;
 			next-level-cache = <&l2_0>;
 			capacity-dmips-mhz = <530>;
 			#cooling-cells = <2>;
@@ -78,7 +77,6 @@
 			enable-method = "psci";
 			performance-domains = <&performance 0>;
 			clock-frequency = <1701000000>;
-			cpu-idle-states = <&cpuoff_l &clusteroff_l>;
 			next-level-cache = <&l2_0>;
 			capacity-dmips-mhz = <530>;
 			#cooling-cells = <2>;
@@ -91,7 +89,6 @@
 			enable-method = "psci";
 			performance-domains = <&performance 0>;
 			clock-frequency = <1701000000>;
-			cpu-idle-states = <&cpuoff_l &clusteroff_l>;
 			next-level-cache = <&l2_0>;
 			capacity-dmips-mhz = <530>;
 			#cooling-cells = <2>;
@@ -104,7 +101,6 @@
 			enable-method = "psci";
 			performance-domains = <&performance 0>;
 			clock-frequency = <1701000000>;
-			cpu-idle-states = <&cpuoff_l &clusteroff_l>;
 			next-level-cache = <&l2_0>;
 			capacity-dmips-mhz = <530>;
 			#cooling-cells = <2>;
@@ -117,7 +113,6 @@
 			enable-method = "psci";
 			performance-domains = <&performance 1>;
 			clock-frequency = <2171000000>;
-			cpu-idle-states = <&cpuoff_b &clusteroff_b>;
 			next-level-cache = <&l2_1>;
 			capacity-dmips-mhz = <1024>;
 			#cooling-cells = <2>;
@@ -130,7 +125,6 @@
 			enable-method = "psci";
 			performance-domains = <&performance 1>;
 			clock-frequency = <2171000000>;
-			cpu-idle-states = <&cpuoff_b &clusteroff_b>;
 			next-level-cache = <&l2_1>;
 			capacity-dmips-mhz = <1024>;
 			#cooling-cells = <2>;
@@ -143,7 +137,6 @@
 			enable-method = "psci";
 			performance-domains = <&performance 1>;
 			clock-frequency = <2171000000>;
-			cpu-idle-states = <&cpuoff_b &clusteroff_b>;
 			next-level-cache = <&l2_1>;
 			capacity-dmips-mhz = <1024>;
 			#cooling-cells = <2>;
@@ -156,7 +149,6 @@
 			enable-method = "psci";
 			performance-domains = <&performance 1>;
 			clock-frequency = <2171000000>;
-			cpu-idle-states = <&cpuoff_b &clusteroff_b>;
 			next-level-cache = <&l2_1>;
 			capacity-dmips-mhz = <1024>;
 			#cooling-cells = <2>;
@@ -206,42 +198,6 @@
 
 		l3_0: l3-cache {
 			compatible = "cache";
-		};
-
-		idle-states {
-			entry-method = "arm,psci";
-			cpuoff_l: cpuoff_l {
-				compatible = "arm,idle-state";
-				arm,psci-suspend-param = <0x00010001>;
-				local-timer-stop;
-				entry-latency-us = <55>;
-				exit-latency-us = <140>;
-				min-residency-us = <780>;
-			};
-			cpuoff_b: cpuoff_b {
-				compatible = "arm,idle-state";
-				arm,psci-suspend-param = <0x00010001>;
-				local-timer-stop;
-				entry-latency-us = <35>;
-				exit-latency-us = <145>;
-				min-residency-us = <720>;
-			};
-			clusteroff_l: clusteroff_l {
-				compatible = "arm,idle-state";
-				arm,psci-suspend-param = <0x01010002>;
-				local-timer-stop;
-				entry-latency-us = <60>;
-				exit-latency-us = <155>;
-				min-residency-us = <860>;
-			};
-			clusteroff_b: clusteroff_b {
-				compatible = "arm,idle-state";
-				arm,psci-suspend-param = <0x01010002>;
-				local-timer-stop;
-				entry-latency-us = <40>;
-				exit-latency-us = <155>;
-				min-residency-us = <780>;
-			};
 		};
 	};
 
