@@ -1508,13 +1508,7 @@ ieee80211_have_rx_timestamp(struct ieee80211_rx_status *status)
 {
 	WARN_ON_ONCE(status->flag & RX_FLAG_MACTIME_START &&
 		     status->flag & RX_FLAG_MACTIME_END);
-	if (status->flag & (RX_FLAG_MACTIME_START | RX_FLAG_MACTIME_END))
-		return true;
-	/* can't handle HT/VHT preamble yet */
-	if (status->flag & RX_FLAG_MACTIME_PLCP_START &&
-	    !(status->flag & (RX_FLAG_HT | RX_FLAG_VHT)))
-		return true;
-	return false;
+	return status->flag & (RX_FLAG_MACTIME_START | RX_FLAG_MACTIME_END);
 }
 
 u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
