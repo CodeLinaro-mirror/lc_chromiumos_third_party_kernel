@@ -1,8 +1,6 @@
 /*
  * Copyright 2002-2005, Devicescape Software, Inc.
  * Copyright 2013-2014  Intel Mobile Communications GmbH
- * Copyright(c) 2015-2017 Intel Deutschland GmbH
- * Copyright(c) 2020-2021 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -357,33 +355,6 @@ struct rx_rate_limit {
 	u32 rate;
 };
 
-/*
- * IEEE 802.11-2016 (10.6 "Defragmentation") recommends support for "concurrent
- * reception of at least one MSDU per access category per associated STA"
- * on APs, or "at least one MSDU per access category" on other interface types.
- *
- * This limit can be increased by changing this define, at the cost of slower
- * frame reassembly and increased memory use while fragments are pending.
- */
-#define IEEE80211_FRAGMENT_MAX 4
-
-struct ieee80211_fragment_entry {
-	struct sk_buff_head skb_list;
-	unsigned long first_frag_time;
-	u16 seq;
-	u16 extra_len;
-	u16 last_frag;
-	u8 rx_queue;
-	bool check_sequential_pn; /* needed for CCMP/GCMP */
-	u8 last_pn[6]; /* PN of the last fragment if CCMP was used */
-	unsigned int key_color;
-};
-
-struct ieee80211_fragment_cache {
-	struct ieee80211_fragment_entry	entries[IEEE80211_FRAGMENT_MAX];
-	unsigned int next;
-};
-
 /**
  * struct sta_info - STA information
  *
@@ -472,7 +443,6 @@ struct ieee80211_fragment_cache {
  * @rx_msdu: MSDUs received from this station, using IEEE80211_NUM_TID
  *	entry for non-QoS frames
  * @fast_tx: TX fastpath information
- * @frags: fragment cache
  */
 struct sta_info {
 	/* General information, mostly static */
@@ -604,13 +574,7 @@ struct sta_info {
 
 	struct cfg80211_chan_def tdls_chandef;
 
-<<<<<<< HEAD   (64ade1 Revert "CHROMIUM: mesh: Update mesh metric calculation to up)
 	struct ewma ave_data_rssi;
-=======
-	struct ewma avg_ack_signal;
-	struct ieee80211_fragment_cache frags;
-
->>>>>>> CHANGE (b54ea7 CHROMIUM: mac80211: add fragment cache to sta_info)
 	/* keep last! */
 	struct ieee80211_sta sta;
 };
