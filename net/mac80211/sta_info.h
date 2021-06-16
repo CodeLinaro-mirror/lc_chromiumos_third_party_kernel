@@ -436,37 +436,6 @@ struct ieee80211_sta_rx_stats {
 	u64 msdu[IEEE80211_NUM_TIDS + 1];
 };
 
-<<<<<<< HEAD   (55763f CHROMIUM: ath10k: Set aggr/non-aggr SW retry threshold to 50)
-=======
-/*
- * IEEE 802.11-2016 (10.6 "Defragmentation") recommends support for "concurrent
- * reception of at least one MSDU per access category per associated STA"
- * on APs, or "at least one MSDU per access category" on other interface types.
- *
- * This limit can be increased by changing this define, at the cost of slower
- * frame reassembly and increased memory use while fragments are pending.
- */
-#define IEEE80211_FRAGMENT_MAX 4
-
-struct ieee80211_fragment_entry {
-	struct sk_buff_head skb_list;
-	unsigned long first_frag_time;
-	u16 seq;
-	u16 extra_len;
-	u16 last_frag;
-	u8 rx_queue;
-	u8 check_sequential_pn:1, /* needed for CCMP/GCMP */
-	   is_protected:1;
-	u8 last_pn[6]; /* PN of the last fragment if CCMP was used */
-	unsigned int key_color;
-};
-
-struct ieee80211_fragment_cache {
-	struct ieee80211_fragment_entry	entries[IEEE80211_FRAGMENT_MAX];
-	unsigned int next;
-};
-
->>>>>>> CHANGE (8b19ba CHROMIUM: mac80211: prevent attacks on TKIP/WEP as well)
 /**
  * The bandwidth threshold below which the per-station CoDel parameters will be
  * scaled to be more lenient (to prevent starvation of slow stations). This
