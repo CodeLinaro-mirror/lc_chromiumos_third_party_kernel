@@ -1006,7 +1006,7 @@ ieee80211_tx_info_clear_status(struct ieee80211_tx_info *info)
  * @RX_FLAG_DECRYPTED: This frame was decrypted in hardware.
  * @RX_FLAG_MMIC_STRIPPED: the Michael MIC is stripped off this frame,
  *	verification has been done by the hardware.
- * @RX_FLAG_IV_STRIPPED: The IV and ICV are stripped from this frame.
+ * @RX_FLAG_IV_STRIPPED: The IV/ICV are stripped from this frame.
  *	If this flag is set, the stack cannot do any replay detection
  *	hence the driver or hardware will have to do that.
  * @RX_FLAG_PN_VALIDATED: Currently only valid for CCMP/GCMP frames, this
@@ -1072,14 +1072,6 @@ ieee80211_tx_info_clear_status(struct ieee80211_tx_info *info)
  * @RX_FLAG_RADIOTAP_VENDOR_DATA: This frame contains vendor-specific
  *	radiotap data in the skb->data (before the frame) as described by
  *	the &struct ieee80211_vendor_radiotap.
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
-=======
- * @RX_FLAG_ALLOW_SAME_PN: Allow the same PN as same packet before.
- *	This is used for AMSDU subframes which can have the same PN as
- *	the first subframe.
- * @RX_FLAG_ICV_STRIPPED: The ICV is stripped from this frame. CRC checking must
- * 	be done in the hardware.
->>>>>>> CHANGE (eea3a9 BACKPORT: mac80211: Add RX flag to indicate ICV stripped)
  */
 enum mac80211_rx_flags {
 	RX_FLAG_MMIC_ERROR		= BIT(0),
@@ -1113,13 +1105,7 @@ enum mac80211_rx_flags {
 	RX_FLAG_5MHZ			= BIT(29),
 	RX_FLAG_AMSDU_MORE		= BIT(30),
 	RX_FLAG_RADIOTAP_VENDOR_DATA	= BIT(31),
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 	RX_FLAG_MIC_STRIPPED            = BIT_ULL(32),
-=======
-	RX_FLAG_MIC_STRIPPED		= BIT_ULL(32),
-	RX_FLAG_ALLOW_SAME_PN		= BIT_ULL(33),
-	RX_FLAG_ICV_STRIPPED            = BIT_ULL(34),
->>>>>>> CHANGE (eea3a9 BACKPORT: mac80211: Add RX flag to indicate ICV stripped)
 };
 
 #define RX_FLAG_STBC_SHIFT		26
