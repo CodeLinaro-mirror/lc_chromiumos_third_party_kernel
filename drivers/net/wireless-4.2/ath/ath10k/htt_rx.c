@@ -703,19 +703,11 @@ static void ath10k_htt_rx_h_rates(struct ath10k *ar,
 		sgi = (info3 >> 7) & 1;
 
 		status->rate_idx = mcs;
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		status->flag |= RX_FLAG_HT;
-=======
-		status->encoding = RX_ENC_HT;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		if (sgi)
 			status->flag |= RX_FLAG_SHORT_GI;
 		if (bw)
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 			status->flag |= RX_FLAG_40MHZ;
-=======
-			status->bw = RATE_INFO_BW_40;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		break;
 	case HTT_RX_VHT:
 	case HTT_RX_VHT_WITH_TXBF:
@@ -778,26 +770,14 @@ static void ath10k_htt_rx_h_rates(struct ath10k *ar,
 			break;
 		/* 40MHZ */
 		case 1:
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 			status->flag |= RX_FLAG_40MHZ;
-=======
-			status->bw = RATE_INFO_BW_40;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 			break;
 		/* 80MHZ */
 		case 2:
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 			status->vht_flag |= RX_VHT_FLAG_80MHZ;
-=======
-			status->bw = RATE_INFO_BW_80;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		}
 
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		status->flag |= RX_FLAG_VHT;
-=======
-		status->encoding = RX_ENC_VHT;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		break;
 	default:
 		break;
@@ -961,18 +941,12 @@ static void ath10k_htt_rx_h_ppdu(struct ath10k *ar,
 		status->freq = 0;
 		status->rate_idx = 0;
 		status->vht_nss = 0;
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		status->vht_flag &= ~RX_VHT_FLAG_80MHZ;
 		status->flag &= ~(RX_FLAG_HT |
 				  RX_FLAG_VHT |
 				  RX_FLAG_SHORT_GI |
 				  RX_FLAG_40MHZ |
 				  RX_FLAG_MACTIME_END);
-=======
-		status->encoding = RX_ENC_LEGACY;
-		status->bw = RATE_INFO_BW_20;
-		status->flag &= ~RX_FLAG_MACTIME_END;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		status->flag |= RX_FLAG_NO_SIGNAL_VAL;
 
 		ath10k_htt_rx_h_signal(ar, status, rxd);
@@ -1033,21 +1007,12 @@ static void ath10k_process_rx(struct ath10k *ar,
 		   is_multicast_ether_addr(ieee80211_get_DA(hdr)) ?
 							"mcast" : "ucast",
 		   (__le16_to_cpu(hdr->seq_ctrl) & IEEE80211_SCTL_SEQ) >> 4,
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		   status->flag == 0 ? "legacy" : "",
 		   status->flag & RX_FLAG_HT ? "ht" : "",
 		   status->flag & RX_FLAG_VHT ? "vht" : "",
 		   status->flag & RX_FLAG_40MHZ ? "40" : "",
 		   status->vht_flag & RX_VHT_FLAG_80MHZ ? "80" : "",
 		   status->flag & RX_FLAG_SHORT_GI ? "sgi " : "",
-=======
-		   (status->encoding == RX_ENC_LEGACY) ? "legacy" : "",
-		   (status->encoding == RX_ENC_HT) ? "ht" : "",
-		   (status->encoding == RX_ENC_VHT) ? "vht" : "",
-		   (status->bw == RATE_INFO_BW_40) ? "40" : "",
-		   (status->bw == RATE_INFO_BW_80) ? "80" : "",
-		   status->enc_flags & RX_ENC_FLAG_SHORT_GI ? "sgi " : "",
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		   status->rate_idx,
 		   status->vht_nss,
 		   status->freq,

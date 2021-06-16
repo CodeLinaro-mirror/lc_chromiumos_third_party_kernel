@@ -409,11 +409,7 @@ mt76_mac_process_rate(struct ieee80211_rx_status *status, u16 rate)
 		status->flag |= RX_FLAG_HT_GF;
 		/* fall through */
 	case MT_PHY_TYPE_HT:
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		status->flag |= RX_FLAG_HT;
-=======
-		status->encoding = RX_ENC_HT;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 		status->rate_idx = idx;
 		break;
 	default:
@@ -428,11 +424,7 @@ mt76_mac_process_rate(struct ieee80211_rx_status *status, u16 rate)
 		status->flag |= 1 << RX_FLAG_STBC_SHIFT;
 
 	if (rate & MT_RXWI_RATE_BW)
-<<<<<<< HEAD   (0ac978 BACKPORT: mac80211: add RX_FLAG_MACTIME_PLCP_START)
 		status->flag |= RX_FLAG_40MHZ;
-=======
-		status->bw = RATE_INFO_BW_40;
->>>>>>> CHANGE (c82c1e BACKPORT: mac80211: separate encoding/bandwidth from flags)
 }
 
 static void
