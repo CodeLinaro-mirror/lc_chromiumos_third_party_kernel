@@ -239,15 +239,9 @@ struct ieee80211_rx_data {
 	 * frames and 0 on non-QoS frames.
 	 */
 	int security_idx;
-	union {
-		struct {
-			u32 iv32;
-			u16 iv16;
-		} tkip;
-		struct {
-			u8 pn[IEEE80211_CCMP_PN_LEN];
-		} ccm_gcm;
-	};
+
+	u32 tkip_iv32;
+	u16 tkip_iv16;
 };
 
 struct ieee80211_csa_settings {
