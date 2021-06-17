@@ -2008,7 +2008,6 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 	unsigned int frag, seq;
 	struct ieee80211_fragment_entry *entry;
 	struct sk_buff *skb;
-	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
 
 	hdr = (struct ieee80211_hdr *)rx->skb->data;
 	fc = hdr->frame_control;
@@ -2066,14 +2065,6 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 				     sizeof(rx->key->u.gcmp.rx_pn[queue]));
 			BUILD_BUG_ON(IEEE80211_CCMP_PN_LEN !=
 				     IEEE80211_GCMP_PN_LEN);
-<<<<<<< HEAD   (c0baa9 CHROMIUM: ath10k: Set aggr/non-aggr SW retry threshold to 50)
-=======
-		} else if (rx->key &&
-			   (ieee80211_has_protected(fc) ||
-			    (status->flag & RX_FLAG_DECRYPTED))) {
-			entry->is_protected = true;
-			entry->key_color = rx->key->color;
->>>>>>> CHANGE (4e82e3 CHROMIUM: mac80211: extend protection against mixed key and )
 		}
 		return RX_QUEUED;
 	}
@@ -2116,23 +2107,6 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 		if (memcmp(pn, rpn, IEEE80211_CCMP_PN_LEN))
 			return RX_DROP_UNUSABLE;
 		memcpy(entry->last_pn, pn, IEEE80211_CCMP_PN_LEN);
-<<<<<<< HEAD   (c0baa9 CHROMIUM: ath10k: Set aggr/non-aggr SW retry threshold to 50)
-=======
-	} else if (entry->is_protected &&
-		   (!rx->key ||
-		    (!ieee80211_has_protected(fc) &&
-		     !(status->flag & RX_FLAG_DECRYPTED)) ||
-		    rx->key->color != entry->key_color)) {
-		/* Drop this as a mixed key or fragment cache attack, even
-		 * if for TKIP Michael MIC should protect us, and WEP is a
-		 * lost cause anyway.
-		 */
-		return RX_DROP_UNUSABLE;
-	} else if (entry->is_protected && rx->key &&
-		   entry->key_color != rx->key->color &&
-		   (status->flag & RX_FLAG_DECRYPTED)) {
-		return RX_DROP_UNUSABLE;
->>>>>>> CHANGE (4e82e3 CHROMIUM: mac80211: extend protection against mixed key and )
 	}
 
 	skb_pull(rx->skb, ieee80211_hdrlen(fc));
