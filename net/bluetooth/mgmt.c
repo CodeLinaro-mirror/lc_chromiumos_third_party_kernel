@@ -252,12 +252,15 @@ static const u8 mgmt_status_table[] = {
 	MGMT_STATUS_TIMEOUT,		/* Instant Passed */
 	MGMT_STATUS_NOT_SUPPORTED,	/* Pairing Not Supported */
 	MGMT_STATUS_FAILED,		/* Transaction Collision */
+	MGMT_STATUS_FAILED,		/* Reserved for future use */
 	MGMT_STATUS_INVALID_PARAMS,	/* Unacceptable Parameter */
 	MGMT_STATUS_REJECTED,		/* QoS Rejected */
 	MGMT_STATUS_NOT_SUPPORTED,	/* Classification Not Supported */
 	MGMT_STATUS_REJECTED,		/* Insufficient Security */
 	MGMT_STATUS_INVALID_PARAMS,	/* Parameter Out Of Range */
+	MGMT_STATUS_FAILED,		/* Reserved for future use */
 	MGMT_STATUS_BUSY,		/* Role Switch Pending */
+	MGMT_STATUS_FAILED,		/* Reserved for future use */
 	MGMT_STATUS_FAILED,		/* Slot Violation */
 	MGMT_STATUS_FAILED,		/* Role Switch Failed */
 	MGMT_STATUS_INVALID_PARAMS,	/* EIR Too Large */
@@ -268,7 +271,7 @@ static const u8 mgmt_status_table[] = {
 	MGMT_STATUS_INVALID_PARAMS,	/* Unsuitable Connection Interval */
 	MGMT_STATUS_TIMEOUT,		/* Directed Advertising Timeout */
 	MGMT_STATUS_AUTH_FAILED,	/* Terminated Due to MIC Failure */
-	MGMT_STATUS_CONNECT_FAILED,	/* Connection Establishment Failed */
+	MGMT_STATUS_CONNECT_NOT_ESTD,	/* Connection Establishment Failed */
 	MGMT_STATUS_CONNECT_FAILED,	/* MAC Connection Failed */
 };
 
@@ -2956,7 +2959,7 @@ static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 		/* When pairing a new device, it is expected to remember
 		 * this device for future connections. Adding the connection
 		 * parameter information ahead of time allows tracking
-		 * of the slave preferred values and will speed up any
+		 * of the peripheral preferred values and will speed up any
 		 * further connection establishment.
 		 *
 		 * If connection parameters already exist, then they
@@ -3788,6 +3791,14 @@ static const u8 debug_uuid[16] = {
 };
 #endif
 
+#ifdef CONFIG_BT_FEATURE_QUALITY_REPORT
+/* 330859bc-7506-492d-9370-9a6f0614037f */
+static const u8 quality_report_uuid[16] = {
+	0x7f, 0x03, 0x14, 0x06, 0x6f, 0x9a, 0x70, 0x93,
+	0x2d, 0x49, 0x06, 0x75, 0xbc, 0x59, 0x08, 0x33,
+};
+#endif
+
 /* 671b10b5-42c0-4696-9227-eb28d1b049d6 */
 static const u8 simult_central_periph_uuid[16] = {
 	0xd6, 0x49, 0xb0, 0xd1, 0x28, 0xeb, 0x27, 0x92,
@@ -3803,7 +3814,7 @@ static const u8 rpa_resolution_uuid[16] = {
 static int read_exp_features_info(struct sock *sk, struct hci_dev *hdev,
 				  void *data, u16 data_len)
 {
-	char buf[62];	/* Enough space for 3 features */
+	char buf[82];   /* Enough space for 4 features: 2 + 20 * 4 */
 	struct mgmt_rp_read_exp_features_info *rp = (void *)buf;
 	u16 idx = 0;
 	u32 flags;
@@ -3847,6 +3858,26 @@ static int read_exp_features_info(struct sock *sk, struct hci_dev *hdev,
 		idx++;
 	}
 
+#ifdef CONFIG_BT_FEATURE_QUALITY_REPORT
+	if (hdev) {
+		if (hdev->set_quality_report) {
+			/* BIT(0): indicating if set_quality_report is
+			 * supported by controller.
+			 */
+			flags = BIT(0);
+
+			/* BIT(1): indicating if the feature is enabled. */
+			if (hci_dev_test_flag(hdev, HCI_QUALITY_REPORT))
+				flags |= BIT(1);
+		} else {
+			flags = 0;
+		}
+		memcpy(rp->features[idx].uuid, quality_report_uuid, 16);
+		rp->features[idx].flags = cpu_to_le32(flags);
+		idx++;
+	}
+#endif
+
 	rp->feature_count = cpu_to_le16(idx);
 
 	/* After reading the experimental features information, enable
@@ -3881,6 +3912,23 @@ static int exp_debug_feature_changed(bool enabled, struct sock *skip)
 
 	memset(&ev, 0, sizeof(ev));
 	memcpy(ev.uuid, debug_uuid, 16);
+	ev.flags = cpu_to_le32(enabled ? BIT(0) : 0);
+
+	return mgmt_limited_event(MGMT_EV_EXP_FEATURE_CHANGED, NULL,
+				  &ev, sizeof(ev),
+				  HCI_MGMT_EXP_FEATURE_EVENTS, skip);
+}
+#endif
+
+#ifdef CONFIG_BT_FEATURE_QUALITY_REPORT
+static int exp_quality_report_feature_changed(bool enabled, struct sock *skip)
+{
+	struct mgmt_ev_exp_feature_changed ev;
+
+	BT_INFO("enabled %d", enabled);
+
+	memset(&ev, 0, sizeof(ev));
+	memcpy(ev.uuid, quality_report_uuid, 16);
 	ev.flags = cpu_to_le32(enabled ? BIT(0) : 0);
 
 	return mgmt_limited_event(MGMT_EV_EXP_FEATURE_CHANGED, NULL,
@@ -4035,6 +4083,77 @@ static int set_exp_feature(struct sock *sk, struct hci_dev *hdev,
 		return err;
 	}
 
+#ifdef CONFIG_BT_FEATURE_QUALITY_REPORT
+	if (!memcmp(cp->uuid, quality_report_uuid, 16)) {
+		bool val, changed;
+		int err;
+
+		/* Command requires to use a valid controller index */
+		if (!hdev)
+			return mgmt_cmd_status(sk, MGMT_INDEX_NONE,
+					       MGMT_OP_SET_EXP_FEATURE,
+					       MGMT_STATUS_INVALID_INDEX);
+
+		/* Parameters are limited to a single octet */
+		if (data_len != MGMT_SET_EXP_FEATURE_SIZE + 1)
+			return mgmt_cmd_status(sk, hdev->id,
+					       MGMT_OP_SET_EXP_FEATURE,
+					       MGMT_STATUS_INVALID_PARAMS);
+
+		/* Only boolean on/off is supported */
+		if (cp->param[0] != 0x00 && cp->param[0] != 0x01)
+			return mgmt_cmd_status(sk, hdev->id,
+					       MGMT_OP_SET_EXP_FEATURE,
+					       MGMT_STATUS_INVALID_PARAMS);
+
+		hci_req_sync_lock(hdev);
+
+		val = !!cp->param[0];
+		changed = (val != hci_dev_test_flag(hdev, HCI_QUALITY_REPORT));
+
+		if (!hdev->set_quality_report) {
+			BT_INFO("quality report not supported");
+			err = mgmt_cmd_status(sk, hdev->id,
+					      MGMT_OP_SET_EXP_FEATURE,
+					      MGMT_STATUS_NOT_SUPPORTED);
+			goto unlock_quality_report;
+		}
+
+		if (changed) {
+			err = hdev->set_quality_report(hdev, val);
+			if (err) {
+				BT_ERR("set_quality_report value %d err %d",
+				       val, err);
+				err = mgmt_cmd_status(sk, hdev->id,
+						      MGMT_OP_SET_EXP_FEATURE,
+						      MGMT_STATUS_FAILED);
+				goto unlock_quality_report;
+			}
+			if (val)
+				hci_dev_set_flag(hdev, HCI_QUALITY_REPORT);
+			else
+				hci_dev_clear_flag(hdev, HCI_QUALITY_REPORT);
+		}
+
+		BT_INFO("quality report enable %d changed %d",
+			val, changed);
+
+		memcpy(rp.uuid, quality_report_uuid, 16);
+		rp.flags = cpu_to_le32(val ? BIT(0) : 0);
+		hci_sock_set_flag(sk, HCI_MGMT_EXP_FEATURE_EVENTS);
+		err = mgmt_cmd_complete(sk, hdev->id,
+					MGMT_OP_SET_EXP_FEATURE, 0,
+					&rp, sizeof(rp));
+
+		if (changed)
+			exp_quality_report_feature_changed(val, sk);
+
+unlock_quality_report:
+		hci_req_sync_unlock(hdev);
+		return err;
+	}
+#endif
+
 	return mgmt_cmd_status(sk, hdev ? hdev->id : MGMT_INDEX_NONE,
 			       MGMT_OP_SET_EXP_FEATURE,
 			       MGMT_STATUS_NOT_SUPPORTED);
@@ -4059,7 +4178,7 @@ static int get_device_flags(struct sock *sk, struct hci_dev *hdev, void *data,
 	hci_dev_lock(hdev);
 
 	if (cp->addr.type == BDADDR_BREDR) {
-		br_params = hci_bdaddr_list_lookup_with_flags(&hdev->whitelist,
+		br_params = hci_bdaddr_list_lookup_with_flags(&hdev->accept_list,
 							      &cp->addr.bdaddr,
 							      cp->addr.type);
 		if (!br_params)
@@ -4127,7 +4246,7 @@ static int set_device_flags(struct sock *sk, struct hci_dev *hdev, void *data,
 	hci_dev_lock(hdev);
 
 	if (cp->addr.type == BDADDR_BREDR) {
-		br_params = hci_bdaddr_list_lookup_with_flags(&hdev->whitelist,
+		br_params = hci_bdaddr_list_lookup_with_flags(&hdev->accept_list,
 							      &cp->addr.bdaddr,
 							      cp->addr.type);
 
@@ -4942,7 +5061,7 @@ static int start_discovery_internal(struct sock *sk, struct hci_dev *hdev,
 	cmd->cmd_complete = generic_cmd_complete;
 
 	hci_discovery_set_state(hdev, DISCOVERY_STARTING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->start_discov_update);
 	err = 0;
 
 failed:
@@ -5073,7 +5192,7 @@ static int start_service_discovery(struct sock *sk, struct hci_dev *hdev,
 	}
 
 	hci_discovery_set_state(hdev, DISCOVERY_STARTING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->start_discov_update);
 	err = 0;
 
 failed:
@@ -5138,7 +5257,7 @@ static int stop_discovery(struct sock *sk, struct hci_dev *hdev, void *data,
 	cmd->cmd_complete = generic_cmd_complete;
 
 	hci_discovery_set_state(hdev, DISCOVERY_STOPPING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->stop_discov_update);
 	err = 0;
 
 unlock:
@@ -5204,7 +5323,7 @@ static int block_device(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	hci_dev_lock(hdev);
 
-	err = hci_bdaddr_list_add(&hdev->blacklist, &cp->addr.bdaddr,
+	err = hci_bdaddr_list_add(&hdev->reject_list, &cp->addr.bdaddr,
 				  cp->addr.type);
 	if (err < 0) {
 		status = MGMT_STATUS_FAILED;
@@ -5240,7 +5359,7 @@ static int unblock_device(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	hci_dev_lock(hdev);
 
-	err = hci_bdaddr_list_del(&hdev->blacklist, &cp->addr.bdaddr,
+	err = hci_bdaddr_list_del(&hdev->reject_list, &cp->addr.bdaddr,
 				  cp->addr.type);
 	if (err < 0) {
 		status = MGMT_STATUS_INVALID_PARAMS;
@@ -6164,7 +6283,7 @@ static int load_irks(struct sock *sk, struct hci_dev *hdev, void *cp_data,
 
 static bool ltk_is_valid(struct mgmt_ltk_info *key)
 {
-	if (key->master != 0x00 && key->master != 0x01)
+	if (key->initiator != 0x00 && key->initiator != 0x01)
 		return false;
 
 	switch (key->addr.type) {
@@ -6242,11 +6361,11 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 		switch (key->type) {
 		case MGMT_LTK_UNAUTHENTICATED:
 			authenticated = 0x00;
-			type = key->master ? SMP_LTK : SMP_LTK_SLAVE;
+			type = key->initiator ? SMP_LTK : SMP_LTK_RESPONDER;
 			break;
 		case MGMT_LTK_AUTHENTICATED:
 			authenticated = 0x01;
-			type = key->master ? SMP_LTK : SMP_LTK_SLAVE;
+			type = key->initiator ? SMP_LTK : SMP_LTK_RESPONDER;
 			break;
 		case MGMT_LTK_P256_UNAUTH:
 			authenticated = 0x00;
@@ -6731,7 +6850,7 @@ static int add_device(struct sock *sk, struct hci_dev *hdev,
 			goto unlock;
 		}
 
-		err = hci_bdaddr_list_add_with_flags(&hdev->whitelist,
+		err = hci_bdaddr_list_add_with_flags(&hdev->accept_list,
 						     &cp->addr.bdaddr,
 						     cp->addr.type, 0);
 		if (err)
@@ -6829,7 +6948,7 @@ static int remove_device(struct sock *sk, struct hci_dev *hdev,
 		}
 
 		if (cp->addr.type == BDADDR_BREDR) {
-			err = hci_bdaddr_list_del(&hdev->whitelist,
+			err = hci_bdaddr_list_del(&hdev->accept_list,
 						  &cp->addr.bdaddr,
 						  cp->addr.type);
 			if (err) {
@@ -6900,7 +7019,7 @@ static int remove_device(struct sock *sk, struct hci_dev *hdev,
 			goto unlock;
 		}
 
-		list_for_each_entry_safe(b, btmp, &hdev->whitelist, list) {
+		list_for_each_entry_safe(b, btmp, &hdev->accept_list, list) {
 			device_removed(sk, hdev, &b->bdaddr, b->bdaddr_type);
 			list_del(&b->list);
 			kfree(b);
@@ -8641,7 +8760,7 @@ static u8 mgmt_ltk_type(struct smp_ltk *ltk)
 {
 	switch (ltk->type) {
 	case SMP_LTK:
-	case SMP_LTK_SLAVE:
+	case SMP_LTK_RESPONDER:
 		if (ltk->authenticated)
 			return MGMT_LTK_AUTHENTICATED;
 		return MGMT_LTK_UNAUTHENTICATED;
@@ -8687,7 +8806,7 @@ void mgmt_new_ltk(struct hci_dev *hdev, struct smp_ltk *key, bool persistent)
 	ev.key.rand = key->rand;
 
 	if (key->type == SMP_LTK)
-		ev.key.master = 1;
+		ev.key.initiator = 1;
 
 	/* Make sure we copy only the significant bytes based on the
 	 * encryption key size, and set the rest of the value to zeroes.
@@ -8767,14 +8886,18 @@ void mgmt_new_conn_param(struct hci_dev *hdev, bdaddr_t *bdaddr,
 }
 
 void mgmt_device_connected(struct hci_dev *hdev, struct hci_conn *conn,
-			   u32 flags, u8 *name, u8 name_len)
+			   u8 *name, u8 name_len)
 {
 	char buf[512];
 	struct mgmt_ev_device_connected *ev = (void *) buf;
 	u16 eir_len = 0;
+	u32 flags = 0;
 
 	bacpy(&ev->addr.bdaddr, &conn->dst);
 	ev->addr.type = link_to_bdaddr(conn->type, conn->dst_type);
+
+	if (conn->out)
+		flags |= MGMT_DEV_FOUND_INITIATED_CONN;
 
 	ev->flags = __cpu_to_le32(flags);
 

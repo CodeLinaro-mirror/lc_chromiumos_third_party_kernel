@@ -122,7 +122,7 @@ struct hci_conn_hash {
 	unsigned int     amp_num;
 	unsigned int     sco_num;
 	unsigned int     le_num;
-	unsigned int     le_num_slave;
+	unsigned int     le_num_peripheral;
 };
 
 struct bdaddr_list {
@@ -194,6 +194,7 @@ struct smp_irk {
 	struct list_head list;
 	struct rcu_head rcu;
 	bdaddr_t rpa;
+	__u32 rpa_timestamp;
 	bdaddr_t bdaddr;
 	u8 addr_type;
 	u8 val[16];
@@ -320,6 +321,7 @@ struct hci_dev {
 	__u8		dev_name[HCI_MAX_NAME_LENGTH];
 	__u8		short_name[HCI_MAX_SHORT_NAME_LENGTH];
 	__u8		eir[HCI_MAX_EIR_LENGTH];
+	__u16		eir_max_name_len;
 	__u16		appearance;
 	__u8		dev_class[3];
 	__u8		major_class;
@@ -327,7 +329,7 @@ struct hci_dev {
 	__u8		max_page;
 	__u8		features[HCI_MAX_PAGES][8];
 	__u8		le_features[8];
-	__u8		le_white_list_size;
+	__u8		le_accept_list_size;
 	__u8		le_resolv_list_size;
 	__u8		le_num_of_adv_sets;
 	__u8		le_states[8];
@@ -444,6 +446,7 @@ struct hci_dev {
 	unsigned int	acl_pkts;
 	unsigned int	sco_pkts;
 	unsigned int	le_pkts;
+	unsigned int	wbs_pkt_len;
 
 	__u16		block_len;
 	__u16		block_mtu;
@@ -475,7 +478,8 @@ struct hci_dev {
 	struct work_struct	cmd_work;
 	struct work_struct	tx_work;
 
-	struct work_struct	discov_update;
+	struct work_struct	start_discov_update;
+	struct work_struct	stop_discov_update;
 	struct work_struct	bg_scan_update;
 	struct work_struct	scan_update;
 	struct work_struct	connectable_update;
@@ -521,14 +525,14 @@ struct hci_dev {
 	struct hci_conn_hash	conn_hash;
 
 	struct list_head	mgmt_pending;
-	struct list_head	blacklist;
-	struct list_head	whitelist;
+	struct list_head	reject_list;
+	struct list_head	accept_list;
 	struct list_head	uuids;
 	struct list_head	link_keys;
 	struct list_head	long_term_keys;
 	struct list_head	identity_resolving_keys;
 	struct list_head	remote_oob_data;
-	struct list_head	le_white_list;
+	struct list_head	le_accept_list;
 	struct list_head	le_resolv_list;
 	struct list_head	le_conn_params;
 	struct list_head	pend_le_conns;
@@ -560,6 +564,8 @@ struct hci_dev {
 	__u8			cur_adv_instance;
 	__u16			adv_instance_timeout;
 	struct delayed_work	adv_instance_expire;
+	/* We can have a single directed advertisement using adv handle 0 */
+	bool			ext_directed_advertising;
 
 	struct idr		adv_monitors_idr;
 	unsigned int		adv_monitors_cnt;
@@ -604,6 +610,9 @@ struct hci_dev {
 	int (*set_bdaddr)(struct hci_dev *hdev, const bdaddr_t *bdaddr);
 	void (*cmd_timeout)(struct hci_dev *hdev);
 	bool (*prevent_wake)(struct hci_dev *hdev);
+#ifdef CONFIG_BT_FEATURE_QUALITY_REPORT
+	int (*set_quality_report)(struct hci_dev *hdev, bool enable);
+#endif
 };
 
 #define HCI_PHY_HANDLE(handle)	(handle & 0xff)
@@ -751,12 +760,19 @@ extern struct mutex hci_cb_list_lock;
 #define hci_dev_test_and_clear_flag(hdev, nr)  test_and_clear_bit((nr), (hdev)->dev_flags)
 #define hci_dev_test_and_change_flag(hdev, nr) test_and_change_bit((nr), (hdev)->dev_flags)
 
-#define hci_dev_clear_volatile_flags(hdev)			\
-	do {							\
-		hci_dev_clear_flag(hdev, HCI_LE_SCAN);		\
-		hci_dev_clear_flag(hdev, HCI_LE_ADV);		\
-		hci_dev_clear_flag(hdev, HCI_LL_RPA_RESOLUTION);\
-		hci_dev_clear_flag(hdev, HCI_PERIODIC_INQ);	\
+#ifdef CONFIG_BT_FEATURE_QUALITY_REPORT
+#define hci_dev_clear_flag_quality_report(x) { hci_dev_clear_flag(hdev, x); }
+#else
+#define hci_dev_clear_flag_quality_report(x) {}
+#endif
+
+#define hci_dev_clear_volatile_flags(hdev)				\
+	do {								\
+		hci_dev_clear_flag(hdev, HCI_LE_SCAN);			\
+		hci_dev_clear_flag(hdev, HCI_LE_ADV);			\
+		hci_dev_clear_flag(hdev, HCI_LL_RPA_RESOLUTION);	\
+		hci_dev_clear_flag(hdev, HCI_PERIODIC_INQ);		\
+		hci_dev_clear_flag_quality_report(HCI_QUALITY_REPORT)	\
 	} while (0)
 
 /* ----- HCI interface to upper protocols ----- */
@@ -893,7 +909,7 @@ static inline void hci_conn_hash_add(struct hci_dev *hdev, struct hci_conn *c)
 	case LE_LINK:
 		h->le_num++;
 		if (c->role == HCI_ROLE_SLAVE)
-			h->le_num_slave++;
+			h->le_num_peripheral++;
 		break;
 	case SCO_LINK:
 	case ESCO_LINK:
@@ -919,7 +935,7 @@ static inline void hci_conn_hash_del(struct hci_dev *hdev, struct hci_conn *c)
 	case LE_LINK:
 		h->le_num--;
 		if (c->role == HCI_ROLE_SLAVE)
-			h->le_num_slave--;
+			h->le_num_peripheral--;
 		break;
 	case SCO_LINK:
 	case ESCO_LINK:
@@ -1393,8 +1409,8 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
 #define lmp_edr_5slot_capable(dev) ((dev)->features[0][5] & LMP_EDR_5SLOT)
 
 /* ----- Extended LMP capabilities ----- */
-#define lmp_csb_master_capable(dev) ((dev)->features[2][0] & LMP_CSB_MASTER)
-#define lmp_csb_slave_capable(dev)  ((dev)->features[2][0] & LMP_CSB_SLAVE)
+#define lmp_cpb_central_capable(dev) ((dev)->features[2][0] & LMP_CPB_CENTRAL)
+#define lmp_cpb_peripheral_capable(dev) ((dev)->features[2][0] & LMP_CPB_PERIPHERAL)
 #define lmp_sync_train_capable(dev) ((dev)->features[2][0] & LMP_SYNC_TRAIN)
 #define lmp_sync_scan_capable(dev)  ((dev)->features[2][0] & LMP_SYNC_SCAN)
 #define lmp_sc_capable(dev)         ((dev)->features[2][1] & LMP_SC)
@@ -1659,6 +1675,36 @@ static inline struct smp_irk *hci_get_irk(struct hci_dev *hdev,
 	return hci_find_irk_by_rpa(hdev, bdaddr);
 }
 
+/* Erratum 5412 which has been fixed in 4.2 changed the validation of
+ * connection parameters.  For backwards compatibility reasons, the old
+ * calculation must be tolerated.
+ * For further details :
+ * https://www.bluetooth.org/errata/errata_view.cfm?errata_id=5419
+ */
+static inline int hci_check_conn_params_legacy(u16 min, u16 max, u16 latency,
+					u16 to_multiplier)
+{
+	u16 max_latency;
+
+	if (min > max || min < 6 || max > 3200)
+		return -EINVAL;
+
+	if (to_multiplier < 10 || to_multiplier > 3200)
+		return -EINVAL;
+
+	if (max >= to_multiplier * 8)
+		return -EINVAL;
+
+	max_latency = (to_multiplier * 8 / max) - 1;
+	if (latency > 499 || latency > max_latency)
+		return -EINVAL;
+
+	return 0;
+}
+
+/* Connection Parameter Validation Helper.
+ * See Vol 6, Part B, section 4.5.1.
+ */
 static inline int hci_check_conn_params(u16 min, u16 max, u16 latency,
 					u16 to_multiplier)
 {
@@ -1768,7 +1814,7 @@ void __mgmt_power_off(struct hci_dev *hdev);
 void mgmt_new_link_key(struct hci_dev *hdev, struct link_key *key,
 		       bool persistent);
 void mgmt_device_connected(struct hci_dev *hdev, struct hci_conn *conn,
-			   u32 flags, u8 *name, u8 name_len);
+			   u8 *name, u8 name_len);
 void mgmt_device_disconnected(struct hci_dev *hdev, bdaddr_t *bdaddr,
 			      u8 link_type, u8 addr_type, u8 reason,
 			      bool mgmt_connected);
