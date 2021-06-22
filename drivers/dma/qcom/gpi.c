@@ -2149,6 +2149,7 @@ static int gpi_probe(struct platform_device *pdev)
 	struct gpi_dev *gpi_dev;
 	unsigned int i;
 	int ret;
+	u32 gpi_ee_offset;
 
 	gpi_dev = devm_kzalloc(&pdev->dev, sizeof(*gpi_dev), GFP_KERNEL);
 	if (!gpi_dev)
@@ -2174,6 +2175,14 @@ static int gpi_probe(struct platform_device *pdev)
 		dev_err(gpi_dev->dev, "missing 'gpii-mask' DT node\n");
 		return ret;
 	}
+
+	ret = of_property_read_u32(gpi_dev->dev->of_node,
+						"qcom,gpi-ee-offset", &gpi_ee_offset);
+	if (ret)
+		dev_err(gpi_dev->dev, "No variable ee offset present\n");
+	else
+		gpi_dev->ee_base =
+				(void *)((u64)gpi_dev->ee_base - gpi_ee_offset);
 
 	gpi_dev->ev_factor = EV_FACTOR;
 
@@ -2283,6 +2292,7 @@ static const struct of_device_id gpi_of_match[] = {
 	{ .compatible = "qcom,sdm845-gpi-dma" },
 	{ .compatible = "qcom,sm8150-gpi-dma" },
 	{ .compatible = "qcom,sm8250-gpi-dma" },
+	{ .compatible = "qcom,sc7280-gpi-dma" },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, gpi_of_match);
