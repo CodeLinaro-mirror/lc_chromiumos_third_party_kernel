@@ -104,6 +104,9 @@ static int fsource_remove(struct platform_device *pdev)
 
 	sysfs_remove_group(&pdev->dev.kobj, &attr_group);
 
+	if (!buck || !regulator_is_enabled(buck))
+		return 0;
+
 	ret = regulator_disable(buck);
 	if (ret)
 		pr_notice("%s: fail to disable vfsource power: %d\n", __func__, ret);
@@ -116,6 +119,9 @@ static void fsource_shutdown(struct platform_device *pdev)
 	int ret = -EINVAL;
 
 	sysfs_remove_group(&pdev->dev.kobj, &attr_group);
+
+	if (!buck || !regulator_is_enabled(buck))
+		return;
 
 	ret = regulator_disable(buck);
 	if (ret)
