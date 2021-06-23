@@ -84,7 +84,7 @@
 			output-low;
 			bias-disable;
 			power-source = <0>;
-			drive-strength = <3>;
+			qcom,drive-strength = <3>;
 		};
 	};
 };
@@ -114,7 +114,7 @@
 	backlight: backlight {
 		compatible = "pwm-backlight";
 
-		pwms = <&pm8350c_pwm4 0>;
+		pwms = <&pm8350c_pwm 3 65535>;
 		power-supply = <&vph_vdd_wled>;
 
 		pinctrl-names = "default";
