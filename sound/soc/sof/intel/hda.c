@@ -392,28 +392,21 @@ void hda_dsp_dump(struct snd_sof_dev *sdev, u32 flags)
 	struct sof_ipc_dsp_oops_xtensa xoops;
 	struct sof_ipc_panic_info panic_info;
 	u32 stack[HDA_DSP_STACK_DUMP_SIZE];
-	u32 status, panic;
 
-	/* try APL specific status message types first */
+	/* print ROM/FW status */
 	hda_dsp_get_status(sdev);
 
-	/* now try generic SOF status messages */
-	status = snd_sof_dsp_read(sdev, HDA_DSP_BAR,
-				  HDA_DSP_SRAM_REG_FW_STATUS);
-	panic = snd_sof_dsp_read(sdev, HDA_DSP_BAR, HDA_DSP_SRAM_REG_FW_TRACEP);
-
+	/* print panic info if FW boot is complete. Otherwise, print the extended ROM status */
 	if (sdev->fw_state == SOF_FW_BOOT_COMPLETE) {
+		u32 status = snd_sof_dsp_read(sdev, HDA_DSP_BAR, HDA_DSP_SRAM_REG_FW_STATUS);
+		u32 panic = snd_sof_dsp_read(sdev, HDA_DSP_BAR, HDA_DSP_SRAM_REG_FW_TRACEP);
+
 		hda_dsp_get_registers(sdev, &xoops, &panic_info, stack,
 				      HDA_DSP_STACK_DUMP_SIZE);
 		snd_sof_get_status(sdev, status, panic, &xoops, &panic_info,
 				   stack, HDA_DSP_STACK_DUMP_SIZE);
 	} else {
-		sof_dev_dbg_or_err(sdev->dev, flags & SOF_DBG_DUMP_FORCE_ERR_LEVEL,
-				   "status = 0x%8.8x panic = 0x%8.8x\n",
-				   status, panic);
-
 		hda_dsp_dump_ext_rom_status(sdev, flags);
-		hda_dsp_get_status(sdev);
 	}
 }
 
@@ -1069,7 +1062,7 @@ static bool link_slaves_found(struct snd_sof_dev *sdev,
 
 			/* find out how many identical parts are expected */
 			for (k = 0; k < link->num_adr; k++) {
-				u64 adr2 = link->adr_d[i].adr;
+				u64 adr2 = link->adr_d[k].adr;
 				unsigned int part_id2, link_id2, mfg_id2;
 
 				mfg_id2 = SDW_MFG_ID(adr2);
