@@ -155,6 +155,9 @@ struct prctl_mm_map {
 #define PR_SET_PTRACER 0x59616d61
 # define PR_SET_PTRACER_ANY ((unsigned long)-1)
 
+#define PR_ALT_SYSCALL 0x43724f53
+# define PR_ALT_SYSCALL_SET_SYSCALL_TABLE 1
+
 #define PR_SET_CHILD_SUBREAPER	36
 #define PR_GET_CHILD_SUBREAPER	37
 
@@ -258,5 +261,13 @@ struct prctl_mm_map {
 /* Set/get enabled arm64 pointer authentication keys */
 #define PR_PAC_SET_ENABLED_KEYS		60
 #define PR_PAC_GET_ENABLED_KEYS		61
+
+/* Request the scheduler to share a core */
+#define PR_SCHED_CORE			62
+# define PR_SCHED_CORE_GET		0
+# define PR_SCHED_CORE_CREATE		1 /* create unique core_sched cookie */
+# define PR_SCHED_CORE_SHARE_TO		2 /* push core_sched cookie to pid */
+# define PR_SCHED_CORE_SHARE_FROM	3 /* pull core_sched cookie to pid */
+# define PR_SCHED_CORE_MAX		4
 
 #endif /* _LINUX_PRCTL_H */

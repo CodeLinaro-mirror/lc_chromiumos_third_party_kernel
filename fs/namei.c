@@ -2460,6 +2460,9 @@ int filename_lookup(int dfd, struct filename *name, unsigned flags,
 	if (likely(!retval))
 		audit_inode(name, path->dentry,
 			    flags & LOOKUP_MOUNTPOINT ? AUDIT_INODE_NOEVAL : 0);
+#ifdef CONFIG_SECURITY_CHROMIUMOS_NO_SYMLINK_MOUNT
+	path->link_count = nd.total_link_count | PATH_LINK_COUNT_VALID;
+#endif /* CONFIG_SECURITY_CHROMIUMOS_NO_SYMLINK_MOUNT */
 	restore_nameidata();
 	putname(name);
 	return retval;
@@ -2505,6 +2508,9 @@ static struct filename *filename_parentat(int dfd, struct filename *name,
 		putname(name);
 		name = ERR_PTR(retval);
 	}
+#ifdef CONFIG_SECURITY_CHROMIUMOS_NO_SYMLINK_MOUNT
+	parent->link_count = nd.total_link_count | PATH_LINK_COUNT_VALID;
+#endif /* CONFIG_SECURITY_CHROMIUMOS_NO_SYMLINK_MOUNT */
 	restore_nameidata();
 	return name;
 }
