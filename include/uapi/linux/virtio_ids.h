@@ -59,4 +59,8 @@
 #define VIRTIO_ID_VIDEO_DEC		31 /* virtio video decoder */
 #define VIRTIO_ID_BT			40 /* virtio bluetooth */
 
+/* Chrome OS-specific devices */
+#define VIRTIO_ID_WL           63 /* virtio wayland */
+#define VIRTIO_ID_TPM          62 /* virtio tpm */
+
 #endif /* _LINUX_VIRTIO_IDS_H */
