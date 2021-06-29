@@ -2432,15 +2432,14 @@ static void dcn10_update_dpp(struct dpp *dpp, struct dc_plane_state *plane_state
 
 void dcn10_update_visual_confirm_color(struct dc *dc, struct pipe_ctx *pipe_ctx, struct tg_color *color, int mpcc_id)
 {
-	struct dce_hwseq *hws = dc->hwseq;
 	struct mpc *mpc = dc->res_pool->mpc;
 
 	if (dc->debug.visual_confirm == VISUAL_CONFIRM_HDR)
-		hws->funcs.get_hdr_visual_confirm_color(pipe_ctx, color);
+		get_hdr_visual_confirm_color(pipe_ctx, color);
 	else if (dc->debug.visual_confirm == VISUAL_CONFIRM_SURFACE)
-		hws->funcs.get_surface_visual_confirm_color(pipe_ctx, color);
+		get_surface_visual_confirm_color(pipe_ctx, color);
 	else if (dc->debug.visual_confirm == VISUAL_CONFIRM_SWIZZLE)
-		hws->funcs.get_surface_tile_visual_confirm_color(pipe_ctx, color);
+		get_surface_tile_visual_confirm_color(pipe_ctx, color);
 	else
 		color_space_to_black_color(
 				dc, pipe_ctx->stream->output_color_space, color);

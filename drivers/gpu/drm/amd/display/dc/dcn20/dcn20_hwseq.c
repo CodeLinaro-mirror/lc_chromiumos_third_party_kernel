@@ -2281,18 +2281,17 @@ void dcn20_reset_hw_ctx_wrap(
 
 void dcn20_update_visual_confirm_color(struct dc *dc, struct pipe_ctx *pipe_ctx, struct tg_color *color, int mpcc_id)
 {
-	struct dce_hwseq *hws = dc->hwseq;
 	struct mpc *mpc = dc->res_pool->mpc;
 
 	/* input to MPCC is always RGB, by default leave black_color at 0 */
 	if (dc->debug.visual_confirm == VISUAL_CONFIRM_HDR)
-		hws->funcs.get_hdr_visual_confirm_color(pipe_ctx, color);
+		get_hdr_visual_confirm_color(pipe_ctx, color);
 	else if (dc->debug.visual_confirm == VISUAL_CONFIRM_SURFACE)
-		hws->funcs.get_surface_visual_confirm_color(pipe_ctx, color);
+		get_surface_visual_confirm_color(pipe_ctx, color);
 	else if (dc->debug.visual_confirm == VISUAL_CONFIRM_MPCTREE)
-		dcn20_get_mpctree_visual_confirm_color(pipe_ctx, color);
+		get_mpctree_visual_confirm_color(pipe_ctx, color);
 	else if (dc->debug.visual_confirm == VISUAL_CONFIRM_SWIZZLE)
-		hws->funcs.get_surface_tile_visual_confirm_color(pipe_ctx, color);
+		get_surface_tile_visual_confirm_color(pipe_ctx, color);
 
 	if (mpc->funcs->set_bg_color)
 		mpc->funcs->set_bg_color(mpc, color, mpcc_id);
