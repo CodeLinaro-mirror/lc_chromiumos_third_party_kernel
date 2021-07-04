@@ -98,6 +98,10 @@
 #define PCIE_ATR_TLP_TYPE_MEM		PCIE_ATR_TLP_TYPE(0)
 #define PCIE_ATR_TLP_TYPE_IO		PCIE_ATR_TLP_TYPE(2)
 
+#define PCIE_PEXTP_SIFSLV_DIG_GLB	0x11f40000
+#define PCIE_PEXTP_DIG_GLB_MISC		0x28
+#define PCIE_RG_XTP_FRC_MAC_CLKREQ_N	BIT(6)
+
 /**
  * struct mtk_pcie_msi - MSI information for each set
  * @base: IO mapped register base
@@ -960,8 +964,17 @@ static int __maybe_unused mtk_pcie_turn_off_link(struct mtk_pcie_port *port)
 static int __maybe_unused mtk_pcie_suspend_noirq(struct device *dev)
 {
 	struct mtk_pcie_port *port = dev_get_drvdata(dev);
+	void __iomem *phy_dig;
+	u32 phy_pextp_dig_glb;
 	int err;
 	u32 val;
+
+	/* Force phy mask mac CLKREQ signal */
+	phy_dig = ioremap(PCIE_PEXTP_SIFSLV_DIG_GLB, 0x100);
+	phy_pextp_dig_glb = readl(phy_dig + PCIE_PEXTP_DIG_GLB_MISC);
+	writel(PCIE_RG_XTP_FRC_MAC_CLKREQ_N | phy_pextp_dig_glb,
+	       phy_dig + PCIE_PEXTP_DIG_GLB_MISC);
+	readl(phy_dig + PCIE_PEXTP_DIG_GLB_MISC);
 
 	/* Trigger link to L2 state */
 	err = mtk_pcie_turn_off_link(port);
@@ -975,14 +988,16 @@ static int __maybe_unused mtk_pcie_suspend_noirq(struct device *dev)
 	val |= PCIE_PE_RSTB;
 	writel_relaxed(val, port->base + PCIE_RST_CTRL_REG);
 
+	writel(phy_pextp_dig_glb, phy_dig + PCIE_PEXTP_DIG_GLB_MISC);
+	readl(phy_dig + PCIE_PEXTP_DIG_GLB_MISC);
+
 	dev_dbg(port->dev, "enter L2 state success");
 
 	clk_bulk_disable_unprepare(port->num_clks, port->clks);
 
-	reset_control_assert(port->mac_reset);
-
 	phy_power_off(port->phy);
 	reset_control_assert(port->phy_reset);
+	reset_control_assert(port->mac_reset);
 
 	return 0;
 }
@@ -992,10 +1007,9 @@ static int __maybe_unused mtk_pcie_resume_noirq(struct device *dev)
 	struct mtk_pcie_port *port = dev_get_drvdata(dev);
 	int err;
 
+	reset_control_deassert(port->mac_reset);
 	reset_control_deassert(port->phy_reset);
 	phy_power_on(port->phy);
-
-	reset_control_deassert(port->mac_reset);
 
 	err = clk_bulk_prepare_enable(port->num_clks, port->clks);
 	if (err) {
