@@ -27,6 +27,28 @@
 	vddio-supply = <&vreg_l18b_1p8>;
 };
 
+&mdss_dsi {
+        panel@0 {
+                vdda-supply = <&vreg_l12c_1p8>;
+                vdispp-supply = <&disp_bias>;
+                vdispn-supply = <&disp_bias>;
+
+                backlight = <&backlight>;
+        };
+};
+
+&mdss_dsi_phy {
+        status = "okay";
+};
+
+&mdss_edp_phy {
+        status = "disabled";
+};
+
+&mdss_edp {
+        status = "disabled";
+};
+
 &nvme_pwren {
 	pins = "gpio51";
 };
@@ -38,3 +60,65 @@
 &pm8350c_pwm {
 	status = "okay";
 };
+
+&tlmm {
+	disp_bias_drv_default: disp-bias-drv-default {
+		pinmux {
+			pins = "gpio81";
+			function = "gpio";
+		};
+
+		pinconf {
+			pins = "gpio81";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+};
+
+&pm8350c_gpios {
+	wled_pwm_default: wled-pwm-default {
+		pinconf {
+			pins = "gpio8";
+			function = "func1";
+			output-low;
+			bias-disable;
+			power-source = <0>;
+			drive-strength = <3>;
+		};
+	};
+};
+
+/ {
+	vph_vdd_wled: vph-vdd-wled-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vph_vdd_wled";
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	disp_bias: disp-bias-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "disp_bias";
+
+		regulator-min-microvolt = <5500000>;
+		regulator-max-microvolt = <5500000>;
+
+		gpio = <&tlmm 81 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&disp_bias_drv_default>;
+	};
+
+	backlight: backlight {
+		compatible = "pwm-backlight";
+
+		pwms = <&pm8350c_pwm4 0>;
+		power-supply = <&vph_vdd_wled>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&wled_pwm_default>;
+	};
+};
+
