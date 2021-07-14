@@ -88,6 +88,18 @@
 	gpio = <&tlmm 19 GPIO_ACTIVE_HIGH>;
 };
 
+&pm7325_gpios {
+        vbus_default: vbus-default {
+                pins = "gpio8";
+                function = "normal";
+                output-high;
+
+                bias-pull-up;
+                power-source = <0>;
+                qcom,drive-strength = <3>;
+        };
+};
+
 &pmk8350_vadc {
 	pmr735a_die_temp {
 		reg = <PMR735A_ADC7_DIE_TEMP>;
@@ -110,4 +122,13 @@
 	vdda-pll-supply = <&vreg_l10c_0p8>;
 	vdda33-supply = <&vreg_l2b_3p0>;
 	vdda18-supply = <&vreg_l1c_1p8>;
+};
+
+/ {
+vbus: vbus {
+	compatible = "regulator-fixed";
+	regulator-name = "vbus_usb";
+	pinctrl-names = "default";
+	pinctrl-0 = <&vbus_default>;
+	};
 };
