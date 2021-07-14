@@ -136,7 +136,7 @@ static inline void lru_gen_update_size(struct page *page, struct lruvec *lruvec,
 	enum lru_list lru = type * LRU_FILE;
 	struct lrugen *lrugen = &lruvec->evictable;
 
-	lockdep_assert_held(&lruvec_pgdat(lruvec)->lru_lock);
+	lockdep_assert_held(&lruvec->lru_lock);
 	VM_BUG_ON(old_gen != -1 && old_gen >= MAX_NR_GENS);
 	VM_BUG_ON(new_gen != -1 && new_gen >= MAX_NR_GENS);
 	VM_BUG_ON(old_gen == -1 && new_gen == -1);

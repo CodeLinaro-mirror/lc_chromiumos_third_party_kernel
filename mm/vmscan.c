@@ -2485,10 +2485,10 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 	/*
 	 * Determine the scan balance between anon and file LRUs.
 	 */
-	spin_lock_irq(&pgdat->lru_lock);
+	spin_lock_irq(&target_lruvec->lru_lock);
 	sc->anon_cost = target_lruvec->anon_cost;
 	sc->file_cost = target_lruvec->file_cost;
-	spin_unlock_irq(&pgdat->lru_lock);
+	spin_unlock_irq(&target_lruvec->lru_lock);
 
 	/*
 	 * Target desirable inactive:active list ratios for the anon
@@ -2856,7 +2856,7 @@ static int get_nr_gens(struct lruvec *lruvec, int type)
 
 static bool __maybe_unused seq_is_valid(struct lruvec *lruvec)
 {
-	lockdep_assert_held(&lruvec_pgdat(lruvec)->lru_lock);
+	lockdep_assert_held(&lruvec->lru_lock);
 
 	return get_nr_gens(lruvec, 0) >= MIN_NR_GENS &&
 	       get_nr_gens(lruvec, 0) <= MAX_NR_GENS &&
@@ -3299,7 +3299,7 @@ static void reset_batch_size(struct lruvec *lruvec, struct mm_walk_args *args)
 
 	args->batch_size = 0;
 
-	spin_lock_irq(&pgdat->lru_lock);
+	spin_lock_irq(&lruvec->lru_lock);
 
 	for_each_gen_type_zone(gen, type, zone) {
 		enum lru_list lru = type * LRU_FILE;
@@ -3317,7 +3317,7 @@ static void reset_batch_size(struct lruvec *lruvec, struct mm_walk_args *args)
 		update_lru_size(lruvec, lru, zone, total);
 	}
 
-	spin_unlock_irq(&pgdat->lru_lock);
+	spin_unlock_irq(&lruvec->lru_lock);
 }
 
 static int page_update_gen(struct page *page, int new_gen)
@@ -3962,7 +3962,7 @@ static void inc_max_seq(struct lruvec *lruvec, unsigned long max_seq)
 	struct lrugen *lrugen = &lruvec->evictable;
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
-	spin_lock_irq(&pgdat->lru_lock);
+	spin_lock_irq(&lruvec->lru_lock);
 
 	VM_BUG_ON(!seq_is_valid(lruvec));
 
@@ -3974,9 +3974,9 @@ static void inc_max_seq(struct lruvec *lruvec, unsigned long max_seq)
 			continue;
 
 		while (!inc_min_seq(lruvec, type)) {
-			spin_unlock_irq(&pgdat->lru_lock);
+			spin_unlock_irq(&lruvec->lru_lock);
 			cond_resched();
-			spin_lock_irq(&pgdat->lru_lock);
+			spin_lock_irq(&lruvec->lru_lock);
 		}
 	}
 
@@ -4007,7 +4007,7 @@ static void inc_max_seq(struct lruvec *lruvec, unsigned long max_seq)
 	/* make sure all preceding modifications appear first */
 	smp_store_release(&lrugen->max_seq, lrugen->max_seq + 1);
 unlock:
-	spin_unlock_irq(&pgdat->lru_lock);
+	spin_unlock_irq(&lruvec->lru_lock);
 }
 
 /* Main function used by the foreground, the background and the user-triggered aging. */
@@ -4107,9 +4107,9 @@ void lru_gen_scan_around(struct page_vma_mapped_walk *pvmw)
 	arch_enter_lazy_mmu_mode();
 
 	memcg = lock_page_memcg(pvmw->page);
-	spin_lock_irq(&pgdat->lru_lock);
-
 	lruvec = mem_cgroup_lruvec(memcg, pgdat);
+
+	spin_lock_irq(&lruvec->lru_lock);
 	new_gen = lru_gen_from_seq(lruvec->evictable.max_seq);
 
 	for (i = 0, addr = start; addr != end; i++, addr += PAGE_SIZE) {
@@ -4149,7 +4149,7 @@ void lru_gen_scan_around(struct page_vma_mapped_walk *pvmw)
 			lru_gen_update_size(page, lruvec, old_gen, new_gen);
 	}
 
-	spin_unlock_irq(&pgdat->lru_lock);
+	spin_unlock_irq(&lruvec->lru_lock);
 	unlock_page_memcg(pvmw->page);
 
 	arch_leave_lazy_mmu_mode();
@@ -4440,7 +4440,7 @@ static bool evict_pages(struct lruvec *lruvec, struct scan_control *sc, int swap
 	struct reclaim_stat stat;
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
-	spin_lock_irq(&pgdat->lru_lock);
+	spin_lock_irq(&lruvec->lru_lock);
 
 	isolated = isolate_pages(lruvec, sc, swappiness, nr_to_scan, &type, &list);
 	VM_BUG_ON(list_empty(&list) == !!isolated);
@@ -4448,7 +4448,7 @@ static bool evict_pages(struct lruvec *lruvec, struct scan_control *sc, int swap
 	if (isolated)
 		__mod_node_page_state(pgdat, NR_ISOLATED_ANON + type, isolated);
 
-	spin_unlock_irq(&pgdat->lru_lock);
+	spin_unlock_irq(&lruvec->lru_lock);
 
 	if (!isolated)
 		goto done;
@@ -4473,7 +4473,7 @@ static bool evict_pages(struct lruvec *lruvec, struct scan_control *sc, int swap
 		ClearPageReferenced(page);
 	}
 
-	spin_lock_irq(&pgdat->lru_lock);
+	spin_lock_irq(&lruvec->lru_lock);
 
 	move_pages_to_lru(lruvec, &list);
 
@@ -4485,7 +4485,7 @@ static bool evict_pages(struct lruvec *lruvec, struct scan_control *sc, int swap
 	__count_memcg_events(lruvec_memcg(lruvec), item, reclaimed);
 	__count_vm_events(PGSTEAL_ANON + type, reclaimed);
 
-	spin_unlock_irq(&pgdat->lru_lock);
+	spin_unlock_irq(&lruvec->lru_lock);
 
 	mem_cgroup_uncharge_list(&list);
 	free_unref_page_list(&list);
@@ -4791,7 +4791,7 @@ void lru_gen_set_state(bool enable, bool main, bool swap)
 			struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
 			struct lrugen *lrugen = &lruvec->evictable;
 
-			spin_lock_irq(&pgdat->lru_lock);
+			spin_lock_irq(&lruvec->lru_lock);
 
 			VM_BUG_ON(!seq_is_valid(lruvec));
 			VM_BUG_ON(!state_is_valid(lruvec));
@@ -4801,12 +4801,12 @@ void lru_gen_set_state(bool enable, bool main, bool swap)
 
 			while (!(enable ? fill_lru_gen_lists(lruvec) :
 					  drain_lru_gen_lists(lruvec))) {
-				spin_unlock_irq(&pgdat->lru_lock);
+				spin_unlock_irq(&lruvec->lru_lock);
 				cond_resched();
-				spin_lock_irq(&pgdat->lru_lock);
+				spin_lock_irq(&lruvec->lru_lock);
 			}
 
-			spin_unlock_irq(&pgdat->lru_lock);
+			spin_unlock_irq(&lruvec->lru_lock);
 		}
 
 		cond_resched();

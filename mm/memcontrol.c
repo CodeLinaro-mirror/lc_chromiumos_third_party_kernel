@@ -1997,7 +1997,7 @@ void mem_cgroup_print_oom_group(struct mem_cgroup *memcg)
  * It ensures lifetime of the locked memcg. Caller is responsible
  * for the lifetime of the page.
  */
-void lock_page_memcg(struct page *page)
+struct mem_cgroup *lock_page_memcg(struct page *page)
 {
 	struct page *head = compound_head(page); /* rmap on tail pages */
 	struct mem_cgroup *memcg;
@@ -2011,11 +2011,11 @@ void lock_page_memcg(struct page *page)
 	rcu_read_lock();
 
 	if (mem_cgroup_disabled())
-		return;
+		return NULL
 again:
 	memcg = page_memcg(head);
 	if (unlikely(!memcg))
-		return;
+		return NULL;
 
 #ifdef CONFIG_PROVE_LOCKING
 	local_irq_save(flags);
@@ -2024,7 +2024,7 @@ again:
 #endif
 
 	if (atomic_read(&memcg->moving_account) <= 0)
-		return;
+		return memcg;
 
 	spin_lock_irqsave(&memcg->move_lock, flags);
 	if (memcg != page_memcg(head)) {
@@ -2040,6 +2040,8 @@ again:
 	 */
 	memcg->move_lock_task = current;
 	memcg->move_lock_flags = flags;
+
+	return memcg;
 }
 EXPORT_SYMBOL(lock_page_memcg);
 
