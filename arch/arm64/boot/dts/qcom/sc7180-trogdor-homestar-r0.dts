@@ -18,6 +18,11 @@
 	vdd-supply = <&pp3300_ts>;
 };
 
+&panel {
+	/delete-property/hpd-gpios;
+	no-hpd;
+};
+
 &sdhc_2 {
 	status = "okay";
 };
