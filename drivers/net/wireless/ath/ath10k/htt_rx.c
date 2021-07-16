@@ -1681,12 +1681,7 @@ static void ath10k_htt_rx_h_mpdu(struct ath10k *ar,
 			status->flag |= RX_FLAG_IV_STRIPPED;
 	}
 
-	skb_queue_walk(amsdu, msdu) {
-		if (temp) {
-			dev_kfree_skb_any(temp);
-			temp = NULL;
-		}
-
+	skb_queue_walk_safe(amsdu, msdu, temp) {
 		if (frag && !fill_crypt_header && is_decrypted &&
 			(enctype == HTT_RX_MPDU_ENCRYPT_TKIP_WITHOUT_MIC ||
 			 enctype == HTT_RX_MPDU_ENCRYPT_TKIP_WPA ||
@@ -1703,9 +1698,10 @@ static void ath10k_htt_rx_h_mpdu(struct ath10k *ar,
 										0);
 
 		if (!frag_pn_check || !broad_cast_check) {
-			temp = msdu->next;
 			__skb_unlink(msdu, amsdu);
-			msdu->next = temp;
+			dev_kfree_skb_any(msdu);
+			frag_pn_check = true;
+			broad_cast_check =  true;
 			continue;
 		}
 
@@ -1727,11 +1723,6 @@ static void ath10k_htt_rx_h_mpdu(struct ath10k *ar,
 
 		hdr = (void *)msdu->data;
 		hdr->frame_control &= ~__cpu_to_le16(IEEE80211_FCTL_PROTECTED);
-	}
-
-	if (temp) {
-		dev_kfree_skb_any(temp);
-		temp = NULL;
 	}
 }
 
