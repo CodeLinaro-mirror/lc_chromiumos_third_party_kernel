@@ -371,17 +371,12 @@ static int hci_req_sync(struct hci_dev *hdev,
 {
 	int ret;
 
+	if (!test_bit(HCI_UP, &hdev->flags))
+		return -ENETDOWN;
+
 	/* Serialize all requests */
 	hci_req_lock(hdev);
-	/* check the state after obtaing the lock to protect the HCI_UP
-	 * against any races from hci_dev_do_close when the controller
-	 * gets removed.
-	 */
-	if (test_bit(HCI_UP, &hdev->flags))
-		ret = __hci_req_sync(hdev, req, opt, timeout);
-	else
-		ret = -ENETDOWN;
-
+	ret = __hci_req_sync(hdev, req, opt, timeout);
 	hci_req_unlock(hdev);
 
 	return ret;
