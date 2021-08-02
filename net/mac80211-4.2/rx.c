@@ -1475,6 +1475,40 @@ ieee80211_rx_h_sta_process(struct ieee80211_rx_data *rx)
 	return RX_CONTINUE;
 } /* ieee80211_rx_h_sta_process */
 
+static bool ieee80211_rx_filter_packet(struct ieee80211_rx_data *rx)
+{
+        struct sk_buff *skb = rx->skb;
+        struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
+        struct ieee80211s_hdr *mesh_hdr __maybe_unused;
+        u32 snap_offset = 0;
+        u16 sc;
+        unsigned int frag;
+
+        sc = le16_to_cpu(hdr->seq_ctrl);
+        frag = sc & IEEE80211_SCTL_FRAG;
+
+        /* Fragments do not have snap headers, so bypassing the
+         * snap header sanity check filter.
+         */
+        if (frag) {
+                return false;
+                //TODO Handle corrupted fragments
+        }
+
+        snap_offset = ieee80211_hdrlen(hdr->frame_control) +
+                        ieee80211_crypto_hdrlen(rx->key->conf.cipher);
+
+        if (ieee80211_vif_is_mesh(&rx->sdata->vif)) {
+                mesh_hdr = (struct ieee80211s_hdr *) (skb->data + snap_offset);
+                snap_offset += ieee80211_get_mesh_hdrlen(mesh_hdr);
+        }
+
+        if (likely(memcmp(skb->data + snap_offset, rfc1042_header, 3) == 0))
+                return false;
+
+        return true;
+}
+
 static ieee80211_rx_result debug_noinline
 ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 {
@@ -1659,6 +1693,12 @@ ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 	} else {
 		return RX_DROP_MONITOR;
 	}
+
+	if (unlikely(ieee80211_is_data(hdr->frame_control) &&
+                     status->flag & RX_FLAG_DECRYPTED &&
+                     !(status->flag & RX_FLAG_MMIC_ERROR) &&
+                     ieee80211_rx_filter_packet(rx)))
+		return RX_DROP_UNUSABLE;
 
 	switch (rx->key->conf.cipher) {
 	case WLAN_CIPHER_SUITE_WEP40:

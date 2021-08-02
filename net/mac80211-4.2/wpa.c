@@ -1260,3 +1260,30 @@ ieee80211_crypto_hw_decrypt(struct ieee80211_rx_data *rx)
 
 	return RX_DROP_UNUSABLE;
 }
+
+int ieee80211_crypto_hdrlen(u32 cipher)
+{
+        switch (cipher) {
+        case WLAN_CIPHER_SUITE_WEP40:
+        case WLAN_CIPHER_SUITE_WEP104:
+                return IEEE80211_WEP_IV_LEN;
+        case WLAN_CIPHER_SUITE_TKIP:
+                return IEEE80211_TKIP_IV_LEN;
+        case WLAN_CIPHER_SUITE_CCMP:
+                return IEEE80211_CCMP_HDR_LEN;
+        case WLAN_CIPHER_SUITE_CCMP_256:
+                return IEEE80211_CCMP_256_HDR_LEN;
+        case WLAN_CIPHER_SUITE_GCMP:
+        case WLAN_CIPHER_SUITE_GCMP_256:
+                return IEEE80211_GCMP_HDR_LEN;
+        case WLAN_CIPHER_SUITE_AES_CMAC:
+        case WLAN_CIPHER_SUITE_BIP_CMAC_256:
+        case WLAN_CIPHER_SUITE_BIP_GMAC_128:
+        case WLAN_CIPHER_SUITE_BIP_GMAC_256:
+                return 0;
+        default:
+                WARN_ONCE(1, "unsupported crypto cipher %x\n", cipher);
+        }
+
+        return 0;
+}

@@ -51,5 +51,6 @@ ieee80211_tx_result
 ieee80211_crypto_gcmp_encrypt(struct ieee80211_tx_data *tx);
 ieee80211_rx_result
 ieee80211_crypto_gcmp_decrypt(struct ieee80211_rx_data *rx);
+int ieee80211_crypto_hdrlen(u32 cipher);
 
 #endif /* WPA_H */
