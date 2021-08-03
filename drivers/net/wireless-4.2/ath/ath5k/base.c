@@ -1414,10 +1414,10 @@ ath5k_receive_frame(struct ath5k_hw *ah, struct sk_buff *skb,
 	rxs->flag |= ath5k_rx_decrypted(ah, skb, rs);
 	switch (ah->ah_bwmode) {
 	case AR5K_BWMODE_5MHZ:
-		rxs->bw = RATE_INFO_BW_5;
+		rxs->enc_flags |= RX_ENC_FLAG_5MHZ;
 		break;
 	case AR5K_BWMODE_10MHZ:
-		rxs->bw = RATE_INFO_BW_10;
+		rxs->enc_flags |= RX_ENC_FLAG_10MHZ;
 		break;
 	default:
 		break;

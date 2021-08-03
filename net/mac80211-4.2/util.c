@@ -2624,39 +2624,42 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 	memset(&ri, 0, sizeof(ri));
 
 	/* Fill cfg80211 rate info */
-	switch (status->encoding) {
-	case RX_ENC_HT:
+	if (status->enc_flags & RX_ENC_FLAG_HT) {
 		ri.mcs = status->rate_idx;
 		ri.flags |= RATE_INFO_FLAGS_MCS;
-		ri.bw = status->bw;
+		if (status->enc_flags & RX_ENC_FLAG_40MHZ)
+			ri.bw = RATE_INFO_BW_40;
+		else
+			ri.bw = RATE_INFO_BW_20;
 		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
 			ri.flags |= RATE_INFO_FLAGS_SHORT_GI;
-		break;
-	case RX_ENC_VHT:
+	} else if (status->enc_flags & RX_ENC_FLAG_VHT) {
 		ri.flags |= RATE_INFO_FLAGS_VHT_MCS;
 		ri.mcs = status->rate_idx;
 		ri.nss = status->vht_nss;
-		ri.bw = status->bw;
+		if (status->enc_flags & RX_ENC_FLAG_40MHZ)
+			ri.bw = RATE_INFO_BW_40;
+		else if (status->enc_flags & RX_ENC_FLAG_80MHZ)
+			ri.bw = RATE_INFO_BW_80;
+		else if (status->enc_flags & RX_ENC_FLAG_160MHZ)
+			ri.bw = RATE_INFO_BW_160;
+		else
+			ri.bw = RATE_INFO_BW_20;
 		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
 			ri.flags |= RATE_INFO_FLAGS_SHORT_GI;
-		break;
-	default:
-		WARN_ON(1);
-		/* fall through */
-	case RX_ENC_LEGACY: {
+	} else {
 		struct ieee80211_supported_band *sband;
 		int shift = 0;
 		int bitrate;
 
-		ri.bw = status->bw;
-
-		switch (status->bw) {
-		case RATE_INFO_BW_10:
+		if (status->enc_flags & RX_ENC_FLAG_10MHZ) {
 			shift = 1;
-			break;
-		case RATE_INFO_BW_5:
+			ri.bw = RATE_INFO_BW_10;
+		} else if (status->enc_flags & RX_ENC_FLAG_5MHZ) {
 			shift = 2;
-			break;
+			ri.bw = RATE_INFO_BW_5;
+		} else {
+			ri.bw = RATE_INFO_BW_20;
 		}
 
 		sband = local->hw.wiphy->bands[status->band];
@@ -2673,8 +2676,6 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 			} else {
 				ts += 192;
 			}
-		}
-		break;
 		}
 	}
 

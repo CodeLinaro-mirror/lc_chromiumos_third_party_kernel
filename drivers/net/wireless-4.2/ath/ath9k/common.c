@@ -181,15 +181,13 @@ int ath9k_cmn_process_rate(struct ath_common *common,
 	sband = hw->wiphy->bands[band];
 
 	if (IS_CHAN_QUARTER_RATE(ah->curchan))
-		rxs->bw = RATE_INFO_BW_5;
+		rxs->enc_flags |= RX_ENC_FLAG_5MHZ;
 	else if (IS_CHAN_HALF_RATE(ah->curchan))
-		rxs->bw = RATE_INFO_BW_10;
+		rxs->enc_flags |= RX_ENC_FLAG_10MHZ;
 
 	if (rx_stats->rs_rate & 0x80) {
 		/* HT rate */
-		rxs->encoding = RX_ENC_HT;
-		rxs->enc_flags |= rx_stats->enc_flags;
-		rxs->bw = rx_stats->bw;
+		rxs->enc_flags |= RX_ENC_FLAG_HT | rx_stats->enc_flags;
 		rxs->rate_idx = rx_stats->rs_rate & 0x7f;
 		return 0;
 	}
