@@ -480,6 +480,14 @@
 	};
 };
 
+&gpi_dma0 {
+	status = "okay";
+};
+
+&gpi_dma1 {
+	status = "okay";
+};
+
 pm8008_bus: &i2c1 {
 	status = "okay";
 };
