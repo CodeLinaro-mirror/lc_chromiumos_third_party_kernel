@@ -25,6 +25,7 @@
  */
 
 #include <linux/bits.h>
+#include <linux/dmi.h>
 #include <linux/module.h>
 #include <linux/input.h>
 #include <linux/interrupt.h>
@@ -1405,9 +1406,14 @@ static int elants_i2c_probe(struct i2c_client *client,
 	/*
 	 * Platform code (ACPI, DTS) should normally set up interrupt
 	 * for us, but in case it did not let's fall back to using falling
-	 * edge to be compatible with older Chromebooks.
+	 * edge.
+	 * However, use low level interrupts for Chromebooks as it resolves
+	 * an issue with the touchscreen stopping working after resume.
 	 */
 	irqflags = irq_get_trigger_type(client->irq);
+	if ((!irqflags || irqflags == IRQF_TRIGGER_FALLING) &&
+	    dmi_check_system(irqflags_low_level_override))
+		irqflags = IRQF_TRIGGER_LOW;
 	if (!irqflags)
 		irqflags = IRQF_TRIGGER_FALLING;
 
