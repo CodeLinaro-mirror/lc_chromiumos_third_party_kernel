@@ -15,6 +15,15 @@ static inline bool kvm_check_and_clear_guest_paused(void)
 }
 #endif /* CONFIG_KVM_GUEST */
 
+#ifdef CONFIG_KVM_VIRT_SUSPEND_TIMING_GUEST
+u64 kvm_get_suspend_time(void);
+#else
+static inline u64 kvm_get_suspend_time(void)
+{
+	return 0;
+}
+#endif /* CONFIG_KVM_VIRT_SUSPEND_TIMING_GUEST */
+
 #define KVM_HYPERCALL \
         ALTERNATIVE(".byte 0x0f,0x01,0xc1", ".byte 0x0f,0x01,0xd9", X86_FEATURE_VMMCALL)
 

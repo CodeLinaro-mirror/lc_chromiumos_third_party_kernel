@@ -4,4 +4,6 @@
 
 extern struct clocksource kvm_clock;
 
+void virtual_suspend_time_vector(void);
+
 #endif /* _ASM_X86_KVM_CLOCK_H */
