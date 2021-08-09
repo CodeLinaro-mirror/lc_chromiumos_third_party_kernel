@@ -401,18 +401,13 @@ static void setup_sch_info(struct xhci_ep_ctx *ep_ctx,
 static u32 get_max_bw(struct mu3h_sch_bw_info *sch_bw,
 	struct mu3h_sch_ep_info *sch_ep, u32 offset)
 {
-	u32 num_esit;
-	u32 max_bw = 0;
-	u32 bw;
-	int i;
-	int j;
+	u32 bw, max_bw = 0;
+	int i, j, idx;
 
-	num_esit = XHCI_MTK_MAX_ESIT / sch_ep->esit;
-	for (i = 0; i < num_esit; i++) {
-		u32 base = offset + i * sch_ep->esit;
-
+	for (i = 0; i < XHCI_MTK_MAX_ESIT; i += sch_ep->esit) {
 		for (j = 0; j < sch_ep->num_budget_microframes; j++) {
-			bw = sch_bw->bus_bw[base + j] +
+			idx = XHCI_MTK_BW_IDX(i + offset + j);
+			bw = sch_bw->bus_bw[idx] +
 					sch_ep->bw_budget_table[j];
 			if (bw > max_bw)
 				max_bw = bw;
@@ -424,20 +419,16 @@ static u32 get_max_bw(struct mu3h_sch_bw_info *sch_bw,
 static void update_bus_bw(struct mu3h_sch_bw_info *sch_bw,
 	struct mu3h_sch_ep_info *sch_ep, bool used)
 {
-	u32 num_esit;
-	u32 base;
-	int i;
-	int j;
+	int i, j, idx;
 
-	num_esit = XHCI_MTK_MAX_ESIT / sch_ep->esit;
-	for (i = 0; i < num_esit; i++) {
-		base = sch_ep->offset + i * sch_ep->esit;
+	for (i = 0; i < XHCI_MTK_MAX_ESIT; i += sch_ep->esit) {
 		for (j = 0; j < sch_ep->num_budget_microframes; j++) {
+			idx = XHCI_MTK_BW_IDX(i + sch_ep->offset + j);
 			if (used)
-				sch_bw->bus_bw[base + j] +=
+				sch_bw->bus_bw[idx] +=
 					sch_ep->bw_budget_table[j];
 			else
-				sch_bw->bus_bw[base + j] -=
+				sch_bw->bus_bw[idx] -=
 					sch_ep->bw_budget_table[j];
 		}
 	}
@@ -446,10 +437,17 @@ static void update_bus_bw(struct mu3h_sch_bw_info *sch_bw,
 static int check_fs_bus_bw(struct mu3h_sch_ep_info *sch_ep, int offset)
 {
 	struct mu3h_sch_tt *tt = sch_ep->sch_tt;
+<<<<<<< HEAD   (e5e835 CHROMIUM: pkglist: Use pr_debug instead of pr_info)
 	u32 num_esit, tmp;
 	int base;
 	int i, j;
+=======
+	u32 bw;
+	int i, j, idx;
+	u8 uframes = DIV_ROUND_UP(sch_ep->maxpkt, FS_PAYLOAD_MAX);
+>>>>>>> CHANGE (7ab6b8 FROMLIST: usb: xhci-mtk: handle bandwidth table rollover)
 
+<<<<<<< HEAD   (e5e835 CHROMIUM: pkglist: Use pr_debug instead of pr_info)
 	num_esit = XHCI_MTK_MAX_ESIT / sch_ep->esit;
 	for (i = 0; i < num_esit; i++) {
 		base = offset + i * sch_ep->esit;
@@ -461,6 +459,16 @@ static int check_fs_bus_bw(struct mu3h_sch_ep_info *sch_ep, int offset)
 		for (j = 0; j < sch_ep->cs_count; j++) {
 			tmp = tt->fs_bus_bw[base + j] + sch_ep->bw_cost_per_microframe;
 			if (tmp > FS_PAYLOAD_MAX)
+=======
+	if (sch_ep->ep_type == INT_IN_EP || sch_ep->ep_type == ISOC_IN_EP)
+		offset++;
+
+	for (i = 0; i < XHCI_MTK_MAX_ESIT; i += sch_ep->esit) {
+		for (j = 0; j < uframes; j++) {
+			idx = XHCI_MTK_BW_IDX(i + offset + j);
+			bw = tt->fs_bus_bw[idx] + sch_ep->bw_cost_per_microframe;
+			if (bw > FS_PAYLOAD_MAX)
+>>>>>>> CHANGE (7ab6b8 FROMLIST: usb: xhci-mtk: handle bandwidth table rollover)
 				return -ESCH_BW_OVERFLOW;
 		}
 	}
@@ -533,22 +541,36 @@ static int check_sch_tt(struct mu3h_sch_ep_info *sch_ep, u32 offset)
 static void update_sch_tt(struct mu3h_sch_ep_info *sch_ep, bool used)
 {
 	struct mu3h_sch_tt *tt = sch_ep->sch_tt;
-	u32 base, num_esit;
 	int bw_updated;
+<<<<<<< HEAD   (e5e835 CHROMIUM: pkglist: Use pr_debug instead of pr_info)
 	int i, j;
-
-	num_esit = XHCI_MTK_MAX_ESIT / sch_ep->esit;
+=======
+	int i, j, idx;
+	int offset = sch_ep->offset;
+	u8 uframes = DIV_ROUND_UP(sch_ep->maxpkt, FS_PAYLOAD_MAX);
+>>>>>>> CHANGE (7ab6b8 FROMLIST: usb: xhci-mtk: handle bandwidth table rollover)
 
 	if (used)
 		bw_updated = sch_ep->bw_cost_per_microframe;
 	else
 		bw_updated = -sch_ep->bw_cost_per_microframe;
 
+<<<<<<< HEAD   (e5e835 CHROMIUM: pkglist: Use pr_debug instead of pr_info)
 	for (i = 0; i < num_esit; i++) {
 		base = sch_ep->offset + i * sch_ep->esit;
 
 		for (j = 0; j < sch_ep->cs_count; j++)
 			tt->fs_bus_bw[base + j] += bw_updated;
+=======
+	if (sch_ep->ep_type == INT_IN_EP || sch_ep->ep_type == ISOC_IN_EP)
+		offset++;
+
+	for (i = 0; i < XHCI_MTK_MAX_ESIT; i += sch_ep->esit) {
+		for (j = 0; j < uframes; j++) {
+			idx = XHCI_MTK_BW_IDX(i + offset + j);
+			tt->fs_bus_bw[idx] += bw_updated;
+		}
+>>>>>>> CHANGE (7ab6b8 FROMLIST: usb: xhci-mtk: handle bandwidth table rollover)
 	}
 
 	if (used)
@@ -570,6 +592,7 @@ static int load_ep_bw(struct mu3h_sch_bw_info *sch_bw,
 	return 0;
 }
 
+<<<<<<< HEAD   (e5e835 CHROMIUM: pkglist: Use pr_debug instead of pr_info)
 static u32 get_esit_boundary(struct mu3h_sch_ep_info *sch_ep)
 {
 	u32 boundary = sch_ep->esit;
@@ -587,8 +610,15 @@ static u32 get_esit_boundary(struct mu3h_sch_ep_info *sch_ep)
 
 static int check_sch_bw(struct mu3h_sch_bw_info *sch_bw,
 			struct mu3h_sch_ep_info *sch_ep)
+=======
+static int check_sch_bw(struct mu3h_sch_ep_info *sch_ep)
+>>>>>>> CHANGE (7ab6b8 FROMLIST: usb: xhci-mtk: handle bandwidth table rollover)
 {
+<<<<<<< HEAD   (e5e835 CHROMIUM: pkglist: Use pr_debug instead of pr_info)
 	const u32 esit_boundary = get_esit_boundary(sch_ep);
+=======
+	struct mu3h_sch_bw_info *sch_bw = sch_ep->bw_info;
+>>>>>>> CHANGE (7ab6b8 FROMLIST: usb: xhci-mtk: handle bandwidth table rollover)
 	const u32 bw_boundary = get_bw_boundary(sch_ep->speed);
 	u32 offset;
 	u32 worst_bw;
@@ -604,9 +634,6 @@ static int check_sch_bw(struct mu3h_sch_bw_info *sch_bw,
 		ret = check_sch_tt(sch_ep, offset);
 		if (ret)
 			continue;
-
-		if ((offset + sch_ep->num_budget_microframes) > esit_boundary)
-			break;
 
 		worst_bw = get_max_bw(sch_bw, sch_ep, offset);
 		if (worst_bw > bw_boundary)
