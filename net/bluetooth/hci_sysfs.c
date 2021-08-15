@@ -82,13 +82,6 @@ void hci_conn_del_sysfs(struct hci_conn *conn)
 	hci_dev_put(hdev);
 }
 
-static void bt_host_release(struct device *dev)
-{
-	struct hci_dev *hdev = to_hci_dev(dev);
-	kfree(hdev);
-	module_put(THIS_MODULE);
-}
-
 static ssize_t identity_show(struct device *dev,
 			     struct device_attribute *attr,
 			     char *buf)
@@ -104,6 +97,16 @@ static struct attribute *bt_host_attrs[] = {
 	NULL,
 };
 ATTRIBUTE_GROUPS(bt_host);
+
+static void bt_host_release(struct device *dev)
+{
+	struct hci_dev *hdev = to_hci_dev(dev);
+
+	if (hci_dev_test_flag(hdev, HCI_UNREGISTER))
+		hci_cleanup_dev(hdev);
+	kfree(hdev);
+	module_put(THIS_MODULE);
+}
 
 static const struct device_type bt_host = {
 	.name    = "host",
