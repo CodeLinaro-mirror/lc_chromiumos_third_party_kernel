@@ -497,8 +497,6 @@ static bool lpass_cpu_regmap_readable(struct device *dev, unsigned int reg)
 			return true;
 
 	for (i = 0; i < v->irq_ports; ++i) {
-		if (reg == LPAIF_IRQCLEAR_REG(v, i))
-			return true;
 		if (reg == LPAIF_IRQEN_REG(v, i))
 			return true;
 		if (reg == LPAIF_IRQSTAT_REG(v, i))
@@ -540,12 +538,9 @@ static bool lpass_cpu_regmap_volatile(struct device *dev, unsigned int reg)
 	struct lpass_variant *v = drvdata->variant;
 	int i;
 
-	for (i = 0; i < v->irq_ports; ++i) {
-		if (reg == LPAIF_IRQCLEAR_REG(v, i))
-			return true;
+	for (i = 0; i < v->irq_ports; ++i)
 		if (reg == LPAIF_IRQSTAT_REG(v, i))
 			return true;
-	}
 
 	for (i = 0; i < v->rdma_channels; ++i)
 		if (reg == LPAIF_RDMACURR_REG(v, i))
