@@ -3303,7 +3303,6 @@ static void reset_batch_size(struct lruvec *lruvec, struct mm_walk_args *args)
 {
 	int gen, type, zone;
 	struct lrugen *lrugen = &lruvec->evictable;
-	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
 	if (!args->batch_size)
 		return;
@@ -3971,7 +3970,6 @@ static void inc_max_seq(struct lruvec *lruvec, unsigned long max_seq)
 {
 	int gen, type, zone;
 	struct lrugen *lrugen = &lruvec->evictable;
-	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
 	spin_lock_irq(&lruvec->lru_lock);
 
