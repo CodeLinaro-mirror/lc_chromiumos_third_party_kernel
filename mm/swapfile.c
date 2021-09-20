@@ -2926,7 +2926,7 @@ static int claim_swapfile(struct swap_info_struct *p, struct inode *inode)
 		}
 		bdevname(p->bdev, name);
 		if (strncmp(name, "zram", strlen("zram"))) {
-			bdput(p->bdev);
+			iput(p->bdev->bd_inode);
 			p->bdev = NULL;
 			return -EINVAL;
 		}
