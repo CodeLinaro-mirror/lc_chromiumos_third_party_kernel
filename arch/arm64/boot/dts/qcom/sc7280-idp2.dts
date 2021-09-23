@@ -75,6 +75,24 @@
 };
 
 &tlmm {
+	pinctrl-names = "default" , "sleep";
+	pinctrl-0 = <&ap_suspend_default>;
+	pinctrl-1 = <&ap_suspend_sleep>;
+
+	ap_suspend_default: ap-suspend-default {
+		pins = "gpio32";
+		function = "gpio";
+		bias-pull-down;
+		input-enable;
+	};
+
+	ap_suspend_sleep: ap-suspend-sleep {
+		pins = "gpio32";
+		function = "gpio";
+		bias-pull-up;
+		output-high;
+	};
+	
 	disp_bias_drv_default: disp-bias-drv-default {
 		pinmux {
 			pins = "gpio81";
