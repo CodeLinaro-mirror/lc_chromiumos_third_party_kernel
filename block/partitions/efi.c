@@ -639,7 +639,7 @@ static int find_valid_gpt(struct parsed_partitions *state, gpt_header **gpt,
 		err = fops->alternative_gpt_sector(disk, &agpt_sector);
 		if (!err)
 			good_agpt = is_gpt_valid(state, agpt_sector,
-						 &agpt, &aptes);
+						 &agpt, &aptes, NULL);
 	}
 
         /* The obviously unsuccessful case */
