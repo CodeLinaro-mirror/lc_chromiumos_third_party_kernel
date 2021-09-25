@@ -59,7 +59,7 @@ static int ccci_tty_write(struct tty_struct *tty,
 	return ret;
 }
 
-static int ccci_tty_write_room(struct tty_struct *tty)
+static unsigned int ccci_tty_write_room(struct tty_struct *tty)
 {
 	return CCCI_MTU;
 }
@@ -145,7 +145,7 @@ static int tty_ccci_init(struct tty_ccci_ops *ccci_info, struct t7xx_port *port)
 	memcpy(ctlb->ccci_ops, ccci_info, sizeof(struct tty_ccci_ops));
 	port_nr = ctlb->ccci_ops->tty_num;
 
-	tty_drv = alloc_tty_driver(port_nr);
+	tty_drv = tty_alloc_driver(port_nr, 0);
 	if (!tty_drv) {
 		ret = -ENOMEM;
 		goto alloc_fail;
@@ -180,7 +180,7 @@ static int tty_ccci_init(struct tty_ccci_ops *ccci_info, struct t7xx_port *port)
 	return ret;
 
 register_tty_fail:
-	put_tty_driver(tty_drv);
+	tty_driver_kref_put(tty_drv);
 
 alloc_fail:
 	kfree(ctlb->ccci_ops);
@@ -198,7 +198,7 @@ static void tty_ccci_uninit(void)
 	if (ctlb) {
 		tty_drv = ctlb->driver;
 		tty_unregister_driver(tty_drv);
-		put_tty_driver(tty_drv);
+		tty_driver_kref_put(tty_drv);
 
 		kfree(ctlb->ccci_ops);
 		kfree(ctlb);
