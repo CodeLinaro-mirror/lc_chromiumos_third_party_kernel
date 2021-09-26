@@ -202,7 +202,7 @@ static int cpufreq_passive_register_notifier(struct devfreq *devfreq)
 	unsigned int cpu;
 	int ret;
 
-	get_online_cpus();
+	cpus_read_lock();
 
 	p_data->nb.notifier_call = cpufreq_passive_notifier_call;
 	ret = cpufreq_register_notifier(&p_data->nb, CPUFREQ_TRANSITION_NOTIFIER);
@@ -252,7 +252,7 @@ static int cpufreq_passive_register_notifier(struct devfreq *devfreq)
 		}
 	}
 out:
-	put_online_cpus();
+	cpus_read_unlock();
 	if (ret)
 		return ret;
 
