@@ -2689,6 +2689,12 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	}
 
 	if (!ev->status) {
+		int mask = hdev->link_mode;
+		__u8 flags = 0;
+
+		mask |= hci_proto_connect_ind(hdev, &ev->bdaddr, ev->link_type,
+					      &flags);
+
 		conn->handle = __le16_to_cpu(ev->handle);
 
 		if (conn->type == ACL_LINK) {
@@ -2711,6 +2717,19 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 		if (test_bit(HCI_ENCRYPT, &hdev->flags))
 			set_bit(HCI_CONN_ENCRYPT, &conn->flags);
+
+		/* Attempt to remain in the central role if preferred */
+		if ((conn->mode == HCI_ROLE_MASTER && (mask & HCI_LM_MASTER)) &&
+		    (conn->link_policy & HCI_LP_RSWITCH)) {
+			struct hci_cp_write_link_policy cp;
+
+			conn->link_policy &= ~HCI_LP_RSWITCH;
+
+			cp.handle = ev->handle;
+			cp.policy = conn->link_policy;
+			hci_send_cmd(hdev, HCI_OP_WRITE_LINK_POLICY,
+				     sizeof(cp), &cp);
+		}
 
 		/* Get remote features */
 		if (conn->type == ACL_LINK) {
@@ -5416,6 +5435,15 @@ static void hci_le_ext_adv_term_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
 
+	/* Only RTK chips emit HCI_ERROR_CANCELLED_BY_HOST, which they are not
+	 * supposed to do (consult BT spec vol4 Part E sec 7.7.65.18). This
+	 * event is being fired as a result of a hci_cp_le_set_ext_adv_enable
+	 * disable request, which will have its own callback and cleanup via
+	 * the hci_cc_le_set_ext_adv_enable path.
+	 */
+	if (ev->status == HCI_ERROR_CANCELLED_BY_HOST)
+		return;
+
 	adv = hci_find_adv_instance(hdev, ev->handle);
 
 	if (ev->status) {
@@ -5425,6 +5453,12 @@ static void hci_le_ext_adv_term_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		/* Remove advertising as it has been terminated */
 		hci_remove_adv_instance(hdev, ev->handle);
 		mgmt_advertising_removed(NULL, hdev, ev->handle);
+
+		/* If we are no longer advertising, clear HCI_LE_ADV */
+		if (list_empty(&hdev->adv_instances) &&
+		    !hdev->ext_directed_advertising) {
+			hci_dev_clear_flag(hdev, HCI_LE_ADV);
+		}
 
 		return;
 	}
