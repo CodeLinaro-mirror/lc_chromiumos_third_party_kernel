@@ -205,6 +205,10 @@ ap_ts_pen_1v8: &i2c13 {
 	pinctrl-0 = <&edp_bl_pwm>;
 };
 
+&pmk8350_rtc {
+        status = "disabled";
+};
+
 &sound {
 	audio-routing =
 		"IN1_HPHL", "HPHL_OUT",

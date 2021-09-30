@@ -70,6 +70,10 @@
 	status = "okay";
 };
 
+&pmk8350_rtc {
+        status = "disabled";
+};
+
 &tlmm {
 	disp_bias_drv_default: disp-bias-drv-default {
 		pinmux {
