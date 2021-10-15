@@ -9,8 +9,6 @@
 
 #include <linux/tracepoint.h>
 
-#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
-
 #define DECLARE_HOOK DECLARE_TRACE
 
 int android_rvh_probe_register(struct tracepoint *tp, void *probe, void *data);
@@ -111,10 +109,3 @@ int android_rvh_probe_register(struct tracepoint *tp, void *probe, void *data);
 			PARAMS(void *__data, proto))
 
 #endif /* TRACE_HEADER_MULTI_READ */
-
-#else /* !CONFIG_TRACEPOINTS || !CONFIG_ANDROID_VENDOR_HOOKS */
-/* suppress trace hooks */
-#define DECLARE_HOOK DECLARE_EVENT_NOP
-#define DECLARE_RESTRICTED_HOOK(name, proto, args, cond)		\
-	DECLARE_EVENT_NOP(name, PARAMS(proto), PARAMS(args))
-#endif
