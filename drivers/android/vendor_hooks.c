@@ -23,7 +23,6 @@
 #include <trace/hooks/printk.h>
 #include <trace/hooks/gic_v3.h>
 #include <trace/hooks/epoch.h>
-#include <trace/hooks/cpufreq.h>
 #include <trace/hooks/mm.h>
 #include <trace/hooks/preemptirq.h>
 #include <trace/hooks/ftrace_dump.h>
@@ -82,8 +81,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_gic_v3_set_affinity);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_gic_v3_affinity_init);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_show_suspend_epoch_val);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_show_resume_epoch_val);
-EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_show_max_freq);
-EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_freq_table_limits);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_sched_newidle_balance);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_sched_nohz_balancer_kick);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_find_busiest_queue);
