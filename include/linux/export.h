@@ -118,7 +118,7 @@ struct kernel_symbol {
  */
 #define __EXPORT_SYMBOL(sym, sec, ns)
 
-#elif defined(CONFIG_TRIM_UNUSED_KSYMS) && !defined(MODULE)
+#elif defined(CONFIG_TRIM_UNUSED_KSYMS)
 
 #include <generated/autoksyms.h>
 
