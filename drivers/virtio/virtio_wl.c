@@ -1322,7 +1322,7 @@ free_vfds:
 		if (vfds[i])
 			do_vfd_close(vfds[i]);
 		if (fds[i] >= 0)
-			__close_fd(current->files, fds[i]);
+			close_fd(fds[i]);
 	}
 	return ret;
 }
