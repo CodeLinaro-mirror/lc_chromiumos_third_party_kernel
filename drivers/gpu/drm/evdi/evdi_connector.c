@@ -11,16 +11,12 @@
  * more details.
  */
 
-#include <linux/version.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_atomic_helper.h>
-#include "evdi_drm_drv.h"
-
-#if KERNEL_VERSION(5, 1, 0) <= LINUX_VERSION_CODE || defined(EL8)
 #include <drm/drm_probe_helper.h>
-#endif
+#include <drm/drm_atomic_helper.h>
+#include "evdi_drv.h"
 
 /*
  * dummy connector to just get EDID,
@@ -36,20 +32,11 @@ static int evdi_get_modes(struct drm_connector *connector)
 	edid = (struct edid *)evdi_painter_get_edid_copy(evdi);
 
 	if (!edid) {
-#if KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE || defined(EL8)
 		drm_connector_update_edid_property(connector, NULL);
-#else
-		drm_mode_connector_update_edid_property(connector, NULL);
-#endif
 		return 0;
 	}
 
-#if KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE || defined(EL8)
 	ret = drm_connector_update_edid_property(connector, edid);
-#else
-	ret = drm_mode_connector_update_edid_property(connector, edid);
-#endif
-
 	if (!ret)
 		ret = drm_add_edid_modes(connector, edid);
 	else
@@ -86,7 +73,7 @@ evdi_detect(struct drm_connector *connector, __always_unused bool force)
 	struct evdi_device *evdi = connector->dev->dev_private;
 
 	EVDI_CHECKPT();
-	if (evdi_painter_is_connected(evdi->painter)) {
+	if (evdi_painter_is_connected(evdi)) {
 		EVDI_DEBUG("(dev=%d) poll connector state: connected\n",
 			   evdi->dev_index);
 		return connector_status_connected;
@@ -105,7 +92,6 @@ static void evdi_connector_destroy(struct drm_connector *connector)
 
 static struct drm_encoder *evdi_best_encoder(struct drm_connector *connector)
 {
-#if KERNEL_VERSION(5, 5, 0) <= LINUX_VERSION_CODE || defined(EL8)
 	struct drm_encoder *encoder;
 
 	drm_connector_for_each_possible_encoder(connector, encoder) {
@@ -113,11 +99,6 @@ static struct drm_encoder *evdi_best_encoder(struct drm_connector *connector)
 	}
 
 	return NULL;
-#else
-	return drm_encoder_find(connector->dev,
-				NULL,
-				connector->encoder_ids[0]);
-#endif
 }
 
 static struct drm_connector_helper_funcs evdi_connector_helper_funcs = {
@@ -154,10 +135,7 @@ int evdi_connector_init(struct drm_device *dev, struct drm_encoder *encoder)
 
 	evdi->conn = connector;
 
-#if KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE  || defined(EL8)
 	drm_connector_attach_encoder(connector, encoder);
-#else
-	drm_mode_connector_attach_encoder(connector, encoder);
-#endif
+
 	return 0;
 }

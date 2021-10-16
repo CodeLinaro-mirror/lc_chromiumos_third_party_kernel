@@ -11,14 +11,9 @@
  * more details.
  */
 
-#include <linux/version.h>
-#if KERNEL_VERSION(5, 5, 0) <= LINUX_VERSION_CODE || defined(EL8)
-#else
-#include <drm/drmP.h>
-#endif
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
-#include "evdi_drm_drv.h"
+#include "evdi_drv.h"
 
 /* dummy encoder */
 static void evdi_enc_destroy(struct drm_encoder *encoder)
