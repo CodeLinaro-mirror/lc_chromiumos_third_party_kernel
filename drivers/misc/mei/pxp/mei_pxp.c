@@ -30,7 +30,8 @@
  * Return: 0 on Success, <0 on Failure
  */
 static int
-mei_pxp_send_message(struct device *dev, const void *message, size_t size)
+mei_pxp_send_message(struct device *dev, const void *message, size_t size,
+					 u8 vtag)
 {
 	struct mei_cl_device *cldev;
 	ssize_t byte;
@@ -58,7 +59,7 @@ mei_pxp_send_message(struct device *dev, const void *message, size_t size)
  * Return: bytes sent on Success, <0 on Failure
  */
 static int
-mei_pxp_receive_message(struct device *dev, void *buffer, size_t size)
+mei_pxp_receive_message(struct device *dev, void *buffer, size_t size, u8 vtag)
 {
 	struct mei_cl_device *cldev;
 	ssize_t byte;
