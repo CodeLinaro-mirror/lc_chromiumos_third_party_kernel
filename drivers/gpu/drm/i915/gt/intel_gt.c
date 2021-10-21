@@ -21,6 +21,7 @@
 #include "intel_uncore.h"
 #include "intel_pm.h"
 #include "shmem_utils.h"
+#include "pxp/intel_pxp.h"
 
 void intel_gt_init_early(struct intel_gt *gt, struct drm_i915_private *i915)
 {
@@ -709,6 +710,7 @@ int intel_gt_init(struct intel_gt *gt)
 		goto err_gt;
 
 	intel_migrate_init(&gt->migrate, gt);
+	intel_pxp_init(&gt->pxp);
 
 	goto out_fw;
 err_gt:
@@ -744,6 +746,8 @@ void intel_gt_driver_unregister(struct intel_gt *gt)
 	intel_wakeref_t wakeref;
 
 	intel_rps_driver_unregister(&gt->rps);
+
+	intel_pxp_fini(&gt->pxp);
 
 	/*
 	 * Upon unregistering the device to prevent any new users, cancel
