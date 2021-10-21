@@ -124,6 +124,8 @@ struct sta_rec_state {
 	u8 rsv[1];
 } __packed;
 
+#define RA_LEGACY_OFDM GENMASK(13, 6)
+#define RA_LEGACY_CCK  GENMASK(3, 0)
 #define HT_MCS_MASK_NUM 10
 struct sta_rec_ra_info {
 	__le16 tag;
@@ -548,6 +550,7 @@ enum {
 
 /* offload mcu commands */
 enum {
+	MCU_CMD_TEST_CTRL = MCU_CE_PREFIX | 0x01,
 	MCU_CMD_START_HW_SCAN = MCU_CE_PREFIX | 0x03,
 	MCU_CMD_SET_PS_PROFILE = MCU_CE_PREFIX | 0x05,
 	MCU_CMD_SET_CHAN_DOMAIN = MCU_CE_PREFIX | 0x0f,
@@ -844,14 +847,14 @@ struct mt76_connac_gtk_rekey_tlv {
 			* 2: rekey update
 			*/
 	u8 keyid;
-	u8 pad[2];
+	u8 option; /* 1: rekey data update without enabling offload */
+	u8 pad[1];
 	__le32 proto; /* WPA-RSN-WAPI-OPSN */
 	__le32 pairwise_cipher;
 	__le32 group_cipher;
 	__le32 key_mgmt; /* NONE-PSK-IEEE802.1X */
 	__le32 mgmt_group_cipher;
-	u8 option; /* 1: rekey data update without enabling offload */
-	u8 reserverd[3];
+	u8 reserverd[4];
 } __packed;
 
 #define MT76_CONNAC_WOW_MASK_MAX_LEN			16
@@ -1093,4 +1096,6 @@ int mt76_connac_mcu_set_deep_sleep(struct mt76_dev *dev, bool enable);
 void mt76_connac_mcu_coredump_event(struct mt76_dev *dev, struct sk_buff *skb,
 				    struct mt76_connac_coredump *coredump);
 int mt76_connac_mcu_set_rate_txpower(struct mt76_phy *phy);
+int mt76_connac_mcu_set_p2p_oppps(struct ieee80211_hw *hw,
+				  struct ieee80211_vif *vif);
 #endif /* __MT76_CONNAC_MCU_H */
