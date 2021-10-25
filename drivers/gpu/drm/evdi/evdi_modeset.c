@@ -21,6 +21,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_gem_atomic_helper.h>
 #include "evdi_drm.h"
 #include "evdi_drm_drv.h"
 #include "evdi_cursor.h"
@@ -203,8 +204,10 @@ static const struct drm_crtc_funcs evdi_crtc_funcs = {
 };
 
 static void evdi_plane_atomic_update(struct drm_plane *plane,
-				     struct drm_plane_state *old_state)
+				     struct drm_atomic_state *astate)
 {
+	struct drm_plane_state *old_state =
+				drm_atomic_get_old_plane_state(astate, plane);
 	struct drm_plane_state *state;
 	struct evdi_device *evdi;
 	struct evdi_painter *painter;
@@ -268,8 +271,11 @@ static void evdi_cursor_atomic_get_rect(struct drm_clip_rect *rect,
 }
 
 static void evdi_cursor_atomic_update(struct drm_plane *plane,
-				      struct drm_plane_state *old_state)
+				      struct drm_atomic_state *state)
 {
+	struct drm_plane_state *old_state =
+				drm_atomic_get_old_plane_state(state, plane);
+
 	if (plane && plane->state && plane->dev && plane->dev->dev_private) {
 		struct drm_plane_state *state = plane->state;
 		struct evdi_device *evdi = plane->dev->dev_private;
@@ -329,12 +335,12 @@ static void evdi_cursor_atomic_update(struct drm_plane *plane,
 
 static const struct drm_plane_helper_funcs evdi_plane_helper_funcs = {
 	.atomic_update = evdi_plane_atomic_update,
-	.prepare_fb = drm_gem_fb_prepare_fb
+	.prepare_fb = drm_gem_plane_helper_prepare_fb
 };
 
 static const struct drm_plane_helper_funcs evdi_cursor_helper_funcs = {
 	.atomic_update = evdi_cursor_atomic_update,
-	.prepare_fb = drm_gem_fb_prepare_fb
+	.prepare_fb = drm_gem_plane_helper_prepare_fb
 };
 
 static const struct drm_plane_funcs evdi_plane_funcs = {
