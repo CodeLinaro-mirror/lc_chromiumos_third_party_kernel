@@ -2243,6 +2243,7 @@ static long fuse_dev_ioctl(struct file *file, unsigned int cmd,
 	int res;
 	int oldfd;
 	struct fuse_dev *fud = NULL;
+	struct fuse_passthrough_out pto;
 
 	switch (cmd) {
 	case FUSE_DEV_IOC_CLONE:
@@ -2257,7 +2258,8 @@ static long fuse_dev_ioctl(struct file *file, unsigned int cmd,
 				 * uses the same ioctl handler.
 				 */
 				if (old->f_op == file->f_op &&
-				    old->f_cred->user_ns == file->f_cred->user_ns)
+				    old->f_cred->user_ns ==
+					    file->f_cred->user_ns)
 					fud = fuse_get_dev(old);
 
 				if (fud) {
