@@ -9,6 +9,7 @@
 
 #include <dt-bindings/iio/qcom,spmi-adc7-pmr735a.h>
 #include "sc7280-idp.dtsi"
+#include "pm7325b.dtsi"
 #include "pmr735a.dtsi"
 
 / {
@@ -58,6 +59,16 @@
 
 &bluetooth {
 	vddio-supply = <&vreg_l19b_1p8>;
+};
+
+&mdss_dsi {
+       panel@0 {
+               vdda-supply = <&vreg_l8c_1p8>;
+               vdispp-supply = <&lcdb_ldo_vreg>;
+               vdispn-supply = <&lcdb_ncp_vreg>;
+
+               backlight = <&pm7325b_wled>;
+       };
 };
 
 &ipa {
