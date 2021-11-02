@@ -241,8 +241,14 @@ ap_ts_pen_1v8: &i2c13 {
 
 &tlmm {
 	pinctrl-names = "default" , "sleep";
-	pinctrl-0 = <&ap_suspend_default>;
+	pinctrl-0 = <&ap_suspend_default>, <&wlan_msl_io>;
 	pinctrl-1 = <&ap_suspend_sleep>;
+
+	wlan_msl_io: wlan-msl-io {
+		pins ="gpio171";
+		function = "gpio";
+		bias-bus-hold;
+	};
 
 	ap_suspend_default: ap-suspend-default {
 		pins = "gpio32";
