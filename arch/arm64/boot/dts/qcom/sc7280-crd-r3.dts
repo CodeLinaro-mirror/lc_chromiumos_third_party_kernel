@@ -240,9 +240,27 @@ ap_ts_pen_1v8: &i2c13 {
 };
 
 &tlmm {
-	edp_panel_power: edp-panel-power {
-		pins = "gpio80";
+	pinctrl-names = "default" , "sleep";
+	pinctrl-0 = <&ap_suspend_default>;
+	pinctrl-1 = <&ap_suspend_sleep>;
+
+	ap_suspend_default: ap-suspend-default {
+		pins = "gpio32";
 		function = "gpio";
+		bias-pull-down;
+		input-enable;
+	};
+
+	ap_suspend_sleep: ap-suspend-sleep {
+		pins = "gpio32";
+		function = "gpio";
+		bias-pull-up;
+		output-high;
+	};
+
+        edp_panel_power: edp-panel-power {
+                pins = "gpio80";
+                function = "gpio";
 	};
 
 	tp_int_odl: tp-int-odl {
