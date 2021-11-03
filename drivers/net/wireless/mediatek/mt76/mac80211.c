@@ -966,6 +966,7 @@ mt76_check_ccmp_pn(struct sk_buff *skb)
 	struct mt76_wcid *wcid = status->wcid;
 	struct ieee80211_hdr *hdr;
 	u8 tidno = status->qos_ctl & IEEE80211_QOS_CTL_TID_MASK;
+	int security_idx;
 	int ret;
 
 	if (!(status->flag & RX_FLAG_DECRYPTED))
@@ -995,7 +996,7 @@ mt76_check_ccmp_pn(struct sk_buff *skb)
 	    !ieee80211_has_tods(hdr->frame_control))
 		security_idx = IEEE80211_NUM_TIDS;
 	else
-		security_idx = status->tid;
+		security_idx = tidno;
 
 	BUILD_BUG_ON(sizeof(status->iv) != sizeof(wcid->rx_key_pn[0]));
 	ret = memcmp(status->iv, wcid->rx_key_pn[security_idx],
