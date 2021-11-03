@@ -369,10 +369,8 @@ drm_debug_category_printer(enum drm_debug_category category,
 		p.printfn = __drm_printfn_debug_syslog;
 	} else if (drm_debug_trace_enabled(category)) {
 		p.printfn = __drm_printfn_trace;
-	} else {
-		WARN(1, "Debug category %d is inactive.", category);
+	} else
 		p.printfn = __drm_printfn_noop;
-	}
 
 	return p;
 }
