@@ -1139,7 +1139,7 @@ static u8 simd_prefix_to_bytes(const struct x86_emulate_ctxt *ctxt,
 			bytes = 8;
 			break;
 		}
-		/* fallthrough */
+		fallthrough;
 	default:
 		bytes = 16;
 		break;
