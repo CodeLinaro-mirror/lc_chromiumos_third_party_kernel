@@ -46,6 +46,12 @@
 		thermal-sensors = <&pm8350c_temp_alarm>;
 
 		trips {
+			pm8350c_trip_so: trip_so {
+				temperature = <90000>;
+				hysteresis = <0>;
+				type = "passive";
+			};
+
 			pm8350c_trip0: trip0 {
 				temperature = <95000>;
 				hysteresis = <0>;

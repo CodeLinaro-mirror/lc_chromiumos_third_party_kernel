@@ -37,6 +37,12 @@
 		thermal-sensors = <&pm7325_temp_alarm>;
 
 		trips {
+			pm7325_trip_so: trip_so {
+				temperature = <90000>;
+				hysteresis = <0>;
+				type = "passive";
+			};
+
 			pm7325_trip0: trip0 {
 				temperature = <95000>;
 				hysteresis = <0>;
