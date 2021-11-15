@@ -413,6 +413,51 @@
 	vdd-micb-supply = <&vreg_bob>;
 };
 
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi {
+	status = "okay";
+	vdda-supply = "&vreg_l6b_1p2";
+
+	panel@0 {
+		compatible = "truly,nt36672e-fhd-plus-display";
+		reg = <0>;
+
+		reset-gpios = <&tlmm 44 GPIO_ACTIVE_HIGH>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				panel0_in: endpoint {
+					remote-endpoint = <&dsi0_out>;
+				};
+			};
+		};
+	};
+
+	ports {
+		port@1 {
+			endpoint {
+				remote-endpoint = <&panel0_in>;
+				data-lanes = <0 1 2 3>;
+			};
+		};
+	};
+};
+
+&mdss_dsi_phy {
+	status = "okay";
+	vdds-supply = "&vreg_l10c_0p8";
+};
+
+&mdss_mdp {
+	status = "okay";
+};
+
 &pcie1 {
 	status = "okay";
 	perst-gpio = <&tlmm 2 GPIO_ACTIVE_LOW>;
