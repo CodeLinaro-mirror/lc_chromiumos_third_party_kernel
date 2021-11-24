@@ -985,12 +985,8 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 			usage->code = MSC_SERIAL;
 			bit = input->mscbit;
 			max = MSC_MAX;
-			break;
-
-		case 0x6e: /* TransducerSerialNumberSecond32Bits */
 			hidinput_set_battery_sn_64bit(device);
-			usage->type = EV_MSC;
-			return;
+			break;
 
 		default:  goto unknown;
 		}
