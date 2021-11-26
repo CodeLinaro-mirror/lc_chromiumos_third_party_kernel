@@ -292,7 +292,7 @@ static void ccmni_wwan_setup(struct net_device *dev)
 	dev->type = ARPHRD_PPP;
 
 	dev->netdev_ops = &ccmni_netdev_ops;
-	random_ether_addr((u8 *)dev->dev_addr);
+	eth_random_addr((u8 *)dev->dev_addr);
 }
 
 static int ccmni_wwan_newlink(void *ctxt, struct net_device *dev, u32 if_id,
