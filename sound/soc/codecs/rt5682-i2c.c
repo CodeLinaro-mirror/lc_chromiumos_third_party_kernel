@@ -283,7 +283,7 @@ static int rt5682_i2c_probe(struct i2c_client *i2c,
 	if (rt5682->pdata.mclk_name)
 		rt5682->mclk = clk_get(NULL, rt5682->pdata.mclk_name);
 	if (!rt5682->mclk)
-		rt5682->mclk = devm_clk_get_optional(i2c->dev, "mclk");
+		rt5682->mclk = devm_clk_get_optional(&i2c->dev, "mclk");
 	if (IS_ERR(rt5682->mclk))
 		return PTR_ERR(rt5682->mclk);
 
