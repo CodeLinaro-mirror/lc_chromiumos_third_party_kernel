@@ -1197,4 +1197,8 @@ int kvm_arch_update_irqfd_routing(struct kvm *kvm, unsigned int host_irq,
 				  uint32_t guest_irq, bool set);
 #endif /* CONFIG_HAVE_KVM_IRQ_BYPASS */
 
+#ifdef CONFIG_HAVE_KVM_MAY_PREEMPT
+bool kvm_arch_may_preempt(struct kvm_vcpu *vcpu, struct task_struct *prev);
+#endif /* CONFIG_HAVE_KVM_MAY_PREEMPT */
+
 #endif

@@ -3459,7 +3459,7 @@ static const struct nla_policy ifla_stats_policy[IFLA_STATS_MAX + 1] = {
 static size_t if_nlmsg_stats_size(const struct net_device *dev,
 				  u32 filter_mask)
 {
-	size_t size = 0;
+	size_t size = NLMSG_ALIGN(sizeof(struct if_stats_msg));
 
 	if (filter_mask & IFLA_STATS_FILTER_BIT(IFLA_STATS_LINK_64))
 		size += nla_total_size_64bit(sizeof(struct rtnl_link_stats64));

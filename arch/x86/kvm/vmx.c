@@ -8993,6 +8993,21 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	vmx->nested.nested_run_pending = 0;
 
+#ifdef CONFIG_KVM_HETEROGENEOUS_RT
+	vcpu->arch.preempt_count.may_boost = 0;
+	if (vmx->exit_reason == EXIT_REASON_EXTERNAL_INTERRUPT ||
+	    vmx->exit_reason == EXIT_REASON_PREEMPTION_TIMER ||
+	    vmx->exit_reason == EXIT_REASON_MSR_WRITE) {
+		/*
+		 * Boost when MSR write when sending IPI for function call,
+		 * otherwise the sending cpu might not be able to release lock
+		 * and the destination cpu will not be able to progress.
+		 */
+		if (kvm_vcpu_dont_preempt(vcpu))
+			vcpu->arch.preempt_count.may_boost = 1;
+	}
+#endif
+
 	vmx_complete_atomic_exit(vmx);
 	vmx_recover_nmi_blocking(vmx);
 	vmx_complete_interrupts(vmx);

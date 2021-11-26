@@ -88,17 +88,17 @@ config KVM_MMU_AUDIT
 	 This option adds a R/W kVM module parameter 'mmu_audit', which allows
 	 auditing of KVM MMU events at runtime.
 
-config KVM_DEVICE_ASSIGNMENT
-	bool "KVM legacy PCI device assignment support (DEPRECATED)"
-	depends on KVM && PCI && IOMMU_API
-	default n
-	---help---
-	  Provide support for legacy PCI device assignment through KVM.  The
-	  kernel now also supports a full featured userspace device driver
-	  framework through VFIO, which supersedes this support and provides
-	  better security.
+config KVM_HETEROGENEOUS_RT
+	bool "Support for heterogeneous real-time VCPU configurations"
+	depends on KVM
+	select HAVE_KVM_MAY_PREEMPT
+	help
+	 Allows some VCPUs to be real-time. Without this option, if some
+	 VCPUs are real-time while others are not, extremely long latencies
+	 might be experienced. Needs guest with CONFIG_PREEMPT_COUNT_REPORTING
+	 enabled.
 
-	  If unsure, say N.
+         If in doubt, say "N".
 
 # OK, it's a little counter-intuitive to do this, but it puts it neatly under
 # the virtualization menu.

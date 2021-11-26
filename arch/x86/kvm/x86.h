@@ -214,4 +214,7 @@ static inline u64 nsec_to_cycles(struct kvm_vcpu *vcpu, u64 nsec)
 	    __rem;						\
 	 })
 
+
+int kvm_vcpu_dont_preempt(struct kvm_vcpu *vcpu);
+
 #endif
