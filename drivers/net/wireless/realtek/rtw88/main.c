@@ -17,6 +17,7 @@
 #include "tx.h"
 #include "debug.h"
 #include "bf.h"
+#include "vndcmd.h"
 
 bool rtw_disable_lps_deep_mode;
 EXPORT_SYMBOL(rtw_disable_lps_deep_mode);
@@ -507,6 +508,87 @@ int rtw_dump_reg(struct rtw_dev *rtwdev, const u32 addr, const u32 size)
 	return 0;
 }
 EXPORT_SYMBOL(rtw_dump_reg);
+
+void rtw_replace_radar_flag_with_no_ir(struct ieee80211_hw *hw)
+{
+	struct wiphy *wiphy = hw->wiphy;
+	struct rtw_dev *rtwdev = hw->priv;
+	struct ieee80211_channel *ch;
+	struct ieee80211_supported_band *sband;
+	int i;
+
+	if (!wiphy || !wiphy->bands[NL80211_BAND_5GHZ])
+		return;
+
+	/* Currently mac80211 just don't allow active scan on DFS channels
+	 * because DFS master support is not yet implemented for client devices.
+	 * This behavior will make client impossible to connect to hidden AP
+	 * on DFS channels. To practice the feature, a common way is to dismiss
+	 * the limit for a period of time after hearing beacon in DFS channels.
+	 * So we take advantage of beacon hint in cfg80211, by replacing
+	 * IEEE80211_CHAN_RADAR of channel flags with IEEE80211_CHAN_NO_IR.
+	 */
+	sband = wiphy->bands[NL80211_BAND_5GHZ];
+	mutex_lock(&rtwdev->dfs_mutex);
+	rtwdev->dfs_channel_map = 0;
+	for (i = 0; i < sband->n_channels; i++) {
+		ch = &sband->channels[i];
+		if (ch->flags & IEEE80211_CHAN_DISABLED)
+			continue;
+		if (ch->flags & IEEE80211_CHAN_RADAR) {
+			rtw_dbg(rtwdev, RTW_DBG_REGD,
+				"set channel(%d) RADAR flags to NO_IR",
+				ch->hw_value);
+			ch->beacon_found = false;
+			ch->flags |= IEEE80211_CHAN_NO_IR;
+			ch->flags &= ~IEEE80211_CHAN_RADAR;
+			rtwdev->dfs_channel_map |= BIT(i);
+		}
+	}
+	rtwdev->dfs_last_update = jiffies;
+	mutex_unlock(&rtwdev->dfs_mutex);
+}
+
+void rtw_restore_no_ir_flag(struct rtw_dev *rtwdev)
+{
+	struct ieee80211_hw *hw = rtwdev->hw;
+	struct wiphy *wiphy = hw->wiphy;
+	struct ieee80211_channel *ch;
+	struct ieee80211_supported_band *sband;
+	int i;
+
+	if (!wiphy || !wiphy->bands[NL80211_BAND_5GHZ])
+		return;
+
+	if (!rtwdev->dfs_channel_map)
+		return;
+
+	mutex_lock(&rtwdev->dfs_mutex);
+	/* Based on the design of beacon hint, active scan is always allowed
+	 * after beacon is probed in current channel. But we need to avoid it
+	 * once radar signal exits. So restore IEEE80211_CHAN_NO_IR when
+	 * the interval of two scans is longer than 10s, to keep monitoring
+	 * if no beacon is found, maybe due to radar signal.
+	 */
+	if (time_after(rtwdev->dfs_last_update + RTW_DFS_TIMEOUT, jiffies)) {
+		mutex_unlock(&rtwdev->dfs_mutex);
+		return;
+	}
+
+	sband = wiphy->bands[NL80211_BAND_5GHZ];
+	for (i = 0; i < sband->n_channels; i++) {
+		ch = &sband->channels[i];
+		if (rtwdev->dfs_channel_map & BIT(i)) {
+			ch->beacon_found = false;
+			ch->flags |= IEEE80211_CHAN_NO_IR;
+			rtw_dbg(rtwdev, RTW_DBG_REGD,
+				"restore NO_IR flag for channel(%d)\n",
+				 ch->hw_value);
+		}
+	}
+	rtwdev->dfs_last_update = jiffies;
+	mutex_unlock(&rtwdev->dfs_mutex);
+}
 
 void rtw_vif_assoc_changed(struct rtw_vif *rtwvif,
 			   struct ieee80211_bss_conf *conf)
@@ -1862,6 +1944,7 @@ int rtw_core_init(struct rtw_dev *rtwdev)
 
 	rtwdev->sec.total_cam_num = 32;
 	rtwdev->hal.current_channel = 1;
+	rtwdev->dm_info.fix_rate = U8_MAX;
 	set_bit(RTW_BC_MC_MACID, rtwdev->mac_id_map);
 
 	rtw_stats_init(rtwdev);
@@ -1978,6 +2061,8 @@ int rtw_register_hw(struct rtw_dev *rtwdev, struct ieee80211_hw *hw)
 		rtw_err(rtwdev, "failed to init regd\n");
 		return ret;
 	}
+
+	rtw_register_vndcmd(hw);
 
 	ret = ieee80211_register_hw(hw);
 	if (ret) {
