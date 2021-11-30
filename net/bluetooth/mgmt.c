@@ -272,7 +272,7 @@ static const u8 mgmt_status_table[] = {
 	MGMT_STATUS_INVALID_PARAMS,	/* Unsuitable Connection Interval */
 	MGMT_STATUS_TIMEOUT,		/* Directed Advertising Timeout */
 	MGMT_STATUS_AUTH_FAILED,	/* Terminated Due to MIC Failure */
-	MGMT_STATUS_CONNECT_FAILED,	/* Connection Establishment Failed */
+	MGMT_STATUS_CONNECT_NOT_ESTD,	/* Connection Establishment Failed */
 	MGMT_STATUS_CONNECT_FAILED,	/* MAC Connection Failed */
 };
 
@@ -5173,7 +5173,7 @@ static int start_discovery_internal(struct sock *sk, struct hci_dev *hdev,
 	cmd->cmd_complete = generic_cmd_complete;
 
 	hci_discovery_set_state(hdev, DISCOVERY_STARTING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->start_discov_update);
 	err = 0;
 
 failed:
@@ -5304,7 +5304,7 @@ static int start_service_discovery(struct sock *sk, struct hci_dev *hdev,
 	}
 
 	hci_discovery_set_state(hdev, DISCOVERY_STARTING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->start_discov_update);
 	err = 0;
 
 failed:
@@ -5369,7 +5369,7 @@ static int stop_discovery(struct sock *sk, struct hci_dev *hdev, void *data,
 	cmd->cmd_complete = generic_cmd_complete;
 
 	hci_discovery_set_state(hdev, DISCOVERY_STOPPING);
-	queue_work(hdev->req_workqueue, &hdev->discov_update);
+	queue_work(hdev->req_workqueue, &hdev->stop_discov_update);
 	err = 0;
 
 unlock:
