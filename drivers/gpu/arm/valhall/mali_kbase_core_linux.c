@@ -114,6 +114,8 @@
 #include <device/mali_kbase_device.h>
 #include <context/mali_kbase_context.h>
 
+MODULE_IMPORT_NS(DMA_BUF);
+
 /* GPU IRQ Tags */
 #define	JOB_IRQ_TAG	0
 #define MMU_IRQ_TAG	1
