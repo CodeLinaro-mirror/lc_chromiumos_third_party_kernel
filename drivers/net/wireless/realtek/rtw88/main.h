@@ -28,6 +28,11 @@
 
 #define RTW_WATCH_DOG_DELAY_TIME	round_jiffies_relative(HZ * 2)
 
+/* AP need to stop beaconing after hearing radar signal in 10s.
+ * So design 10s to restore NO_IR flag referenced by beacon hint.
+ */
+#define RTW_DFS_TIMEOUT			msecs_to_jiffies(10000)
+
 #define RFREG_MASK			0xfffff
 #define INV_RF_DATA			0xffffffff
 #define TX_PAGE_SIZE_SHIFT		7
@@ -364,6 +369,7 @@ enum rtw_flags {
 	RTW_FLAG_WOWLAN,
 	RTW_FLAG_RESTARTING,
 	RTW_FLAG_RESTART_TRIGGERING,
+	RTW_FLAG_USE_LOWEST_RATE,
 
 	NUM_OF_RTW_FLAGS,
 };
@@ -401,6 +407,13 @@ enum rtw_wow_flags {
 
 	/* keep it last */
 	RTW_WOW_FLAG_MAX,
+};
+
+enum rtw_sar_sources {
+	RTW_SAR_SOURCE_NONE,
+	RTW_SAR_SOURCE_VNDCMD,
+	RTW_SAR_SOURCE_ACPI_STATIC,
+	RTW_SAR_SOURCE_ACPI_DYNAMIC,
 };
 
 /* the power index is represented by differences, which cck-1s & ht40-1s are
@@ -1630,6 +1643,7 @@ struct rtw_dm_info {
 	u8 cck_gi_u_bnd;
 	u8 cck_gi_l_bnd;
 
+	u8 fix_rate;
 	u8 tx_rate;
 	u32 rrsr_val_init;
 	u32 rrsr_mask_min;
@@ -1806,6 +1820,10 @@ struct rtw_fw_state {
 	u32 feature;
 };
 
+struct rtw_sar {
+	enum rtw_sar_sources source;
+};
+
 struct rtw_hal {
 	u32 rcr;
 
@@ -1851,6 +1869,10 @@ struct rtw_hal {
 			  [RTW_CHANNEL_WIDTH_MAX]
 			  [RTW_RATE_SECTION_MAX]
 			  [RTW_MAX_CHANNEL_NUM_5G];
+	s8 tx_pwr_sar_2g[RTW_REGD_MAX][RTW_RF_PATH_MAX][RTW_RATE_SECTION_MAX]
+			[RTW_MAX_CHANNEL_NUM_2G];
+	s8 tx_pwr_sar_5g[RTW_REGD_MAX][RTW_RF_PATH_MAX][RTW_RATE_SECTION_MAX]
+			[RTW_MAX_CHANNEL_NUM_5G];
 	s8 tx_pwr_tbl[RTW_RF_PATH_MAX]
 		     [DESC_RATE_MAX];
 };
@@ -1938,6 +1960,13 @@ struct rtw_dev {
 
 	bool need_rfk;
 	struct completion fw_scan_density;
+
+	struct rtw_sar sar;
+
+	/* protects dfs channel context */
+	struct mutex dfs_mutex;
+	u32 dfs_channel_map;
+	unsigned long dfs_last_update;
 
 	/* hci related data, must be last */
 	u8 priv[] __aligned(sizeof(void *));
@@ -2054,5 +2083,7 @@ void rtw_core_fw_scan_notify(struct rtw_dev *rtwdev, bool start);
 int rtw_dump_fw(struct rtw_dev *rtwdev, const u32 ocp_src, u32 size,
 		u32 fwcd_item);
 int rtw_dump_reg(struct rtw_dev *rtwdev, const u32 addr, const u32 size);
+void rtw_replace_radar_flag_with_no_ir(struct ieee80211_hw *hw);
+void rtw_restore_no_ir_flag(struct rtw_dev *rtwdev);
 
 #endif
