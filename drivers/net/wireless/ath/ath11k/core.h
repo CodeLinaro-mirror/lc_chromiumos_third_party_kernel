@@ -655,6 +655,7 @@ struct ath11k {
 	struct completion completed_11d_scan;
 	enum ath11k_11d_state state_11d;
 	bool regdom_set_by_user;
+	s8 max_allowed_tx_power;
 	int hw_rate_code;
 	u8 twt_enabled;
 	bool nlo_enabled;
