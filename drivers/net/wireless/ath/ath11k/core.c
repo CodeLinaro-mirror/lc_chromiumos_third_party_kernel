@@ -87,6 +87,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.hal_params = &ath11k_hw_hal_params_ipq8074,
 		.supports_dynamic_smps_6ghz = false,
 		.supports_rssi_stats = false,
+		.current_cc_support = false,
 	},
 	{
 		.hw_rev = ATH11K_HW_IPQ6018_HW10,
@@ -141,6 +142,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.hal_params = &ath11k_hw_hal_params_ipq8074,
 		.supports_dynamic_smps_6ghz = false,
 		.supports_rssi_stats = false,
+		.current_cc_support = false,
 	},
 	{
 		.name = "qca6390 hw2.0",
@@ -194,6 +196,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.hal_params = &ath11k_hw_hal_params_qca6390,
 		.supports_dynamic_smps_6ghz = false,
 		.supports_rssi_stats = true,
+		.current_cc_support = true,
 	},
 	{
 		.name = "qcn9074 hw1.0",
@@ -247,6 +250,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.hal_params = &ath11k_hw_hal_params_ipq8074,
 		.supports_dynamic_smps_6ghz = true,
 		.supports_rssi_stats = false,
+		.current_cc_support = false,
 	},
 	{
 		.name = "wcn6855 hw2.0",
@@ -300,6 +304,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.hal_params = &ath11k_hw_hal_params_qca6390,
 		.supports_dynamic_smps_6ghz = false,
 		.supports_rssi_stats = true,
+		.current_cc_support = true,
 	},
 };
 
