@@ -107,7 +107,7 @@ ap_ts_pen_1v8: &i2c13 {
 		interrupt-parent = <&tlmm>;
 		interrupts = <55 IRQ_TYPE_LEVEL_LOW>;
 
-		post-power-on-delay-ms = <500>;
+		post-power-on-delay-ms = <100>;
 		hid-descr-addr = <0x0000>;
 
 		vdd-supply = <&vreg_l19b_1p8>;
