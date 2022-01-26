@@ -88,6 +88,7 @@ static int rpmsg_eptdev_destroy(struct device *dev, void *data)
 	struct rpmsg_eptdev *eptdev = dev_to_eptdev(dev);
 
 	mutex_lock(&eptdev->ept_lock);
+	eptdev->rpdev = NULL;
 	if (eptdev->ept) {
 		rpmsg_destroy_ept(eptdev->ept);
 		eptdev->ept = NULL;
@@ -150,15 +151,24 @@ static int rpmsg_eptdev_open(struct inode *inode, struct file *filp)
 
 	get_device(dev);
 
+	mutex_lock(&eptdev->ept_lock);
+	if (!eptdev->rpdev) {
+		put_device(dev);
+		mutex_unlock(&eptdev->ept_lock);
+		return -ENETRESET;
+	}
+
 	ept = rpmsg_create_ept(rpdev, rpmsg_ept_cb, eptdev, eptdev->chinfo);
 	if (!ept) {
 		dev_err(dev, "failed to open %s\n", eptdev->chinfo.name);
+		mutex_unlock(&eptdev->ept_lock);
 		put_device(dev);
 		return -EINVAL;
 	}
 
 	ept->sig_cb = rpmsg_sigs_cb;
 	eptdev->ept = ept;
+	mutex_unlock(&eptdev->ept_lock);
 	filp->private_data = eptdev;
 
 	return 0;
@@ -290,7 +300,9 @@ static __poll_t rpmsg_eptdev_poll(struct file *filp, poll_table *wait)
 	if (eptdev->sig_pending)
 		mask |= EPOLLPRI;
 
+	mutex_lock(&eptdev->ept_lock);
 	mask |= rpmsg_poll(eptdev->ept, filp, wait);
+	mutex_unlock(&eptdev->ept_lock);
 
 	return mask;
 }
