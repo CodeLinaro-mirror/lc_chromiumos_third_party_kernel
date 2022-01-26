@@ -30,6 +30,7 @@
 
 static dev_t rpmsg_major;
 static struct class *rpmsg_class;
+struct mutex ctrl_lock;
 
 static DEFINE_IDA(rpmsg_ctrl_ida);
 static DEFINE_IDA(rpmsg_ept_ida);
@@ -428,9 +429,12 @@ static int rpmsg_eptdev_create(struct rpmsg_ctrldev *ctrldev,
 	struct device *dev;
 	int ret;
 
+	mutex_lock(&ctrl_lock);
 	eptdev = kzalloc(sizeof(*eptdev), GFP_KERNEL);
-	if (!eptdev)
+	if (!eptdev) {
+		mutex_unlock(&ctrl_lock);
 		return -ENOMEM;
+	}
 
 	dev = &eptdev->dev;
 	eptdev->rpdev = rpdev;
@@ -469,6 +473,7 @@ static int rpmsg_eptdev_create(struct rpmsg_ctrldev *ctrldev,
 	/* We can now rely on the release function for cleanup */
 	dev->release = rpmsg_eptdev_release_device;
 
+	mutex_unlock(&ctrl_lock);
 	return ret;
 
 free_ept_ida:
@@ -479,6 +484,7 @@ free_eptdev:
 	put_device(dev);
 	kfree(eptdev);
 
+	mutex_unlock(&ctrl_lock);
 	return ret;
 }
 
@@ -550,6 +556,7 @@ static int rpmsg_chrdev_probe(struct rpmsg_device *rpdev)
 	if (!ctrldev)
 		return -ENOMEM;
 
+	mutex_init(&ctrl_lock);
 	ctrldev->rpdev = rpdev;
 
 	dev = &ctrldev->dev;
@@ -600,12 +607,14 @@ static void rpmsg_chrdev_remove(struct rpmsg_device *rpdev)
 	int ret;
 
 	/* Destroy all endpoints */
+	mutex_lock(&ctrl_lock);
 	ret = device_for_each_child(&ctrldev->dev, NULL, rpmsg_eptdev_destroy);
 	if (ret)
 		dev_warn(&rpdev->dev, "failed to nuke endpoints: %d\n", ret);
 
 	cdev_device_del(&ctrldev->cdev, &ctrldev->dev);
 	put_device(&ctrldev->dev);
+	mutex_unlock(&ctrl_lock);
 }
 
 static struct rpmsg_driver rpmsg_chrdev_driver = {
