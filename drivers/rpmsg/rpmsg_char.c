@@ -448,7 +448,8 @@ static int rpmsg_eptdev_create(struct rpmsg_ctrldev *ctrldev,
 		goto free_minor_ida;
 	dev->id = ret;
 	dev_set_name(dev, "rpmsg%d", ret);
-
+	
+	cdev_set_parent(&eptdev->cdev, &dev->kobj);
 	ret = cdev_device_add(&eptdev->cdev, &eptdev->dev);
 	if (ret)
 		goto free_ept_ida;
@@ -558,6 +559,7 @@ static int rpmsg_chrdev_probe(struct rpmsg_device *rpdev)
 	dev->id = ret;
 	dev_set_name(&ctrldev->dev, "rpmsg_ctrl%d", ret);
 
+	cdev_set_parent(&ctrldev->cdev, &dev->kobj);
 	ret = cdev_device_add(&ctrldev->cdev, &ctrldev->dev);
 	if (ret)
 		goto free_ctrl_ida;
