@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 /*
  * Copyright (c) 2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -69,6 +70,11 @@ static ssize_t ath11k_thermal_show_temp(struct device *dev,
 
 	mutex_lock(&ar->conf_mutex);
 
+	if (test_bit(ATH11K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)) {
+		ret = -ESHUTDOWN;
+		goto out;
+	}
+
 	/* Can't get temperature when the card is off */
 	if (ar->state != ATH11K_STATE_ON) {
 		ret = -ENETDOWN;
@@ -131,6 +137,9 @@ int ath11k_thermal_set_throttling(struct ath11k *ar, u32 throttle_state)
 
 	lockdep_assert_held(&ar->conf_mutex);
 
+	if (test_bit(ATH11K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags))
+		return 0;
+
 	if (ar->state != ATH11K_STATE_ON)
 		return 0;
 
@@ -161,6 +170,9 @@ int ath11k_thermal_register(struct ath11k_base *sc)
 	struct ath11k *ar;
 	struct ath11k_pdev *pdev;
 	int i, ret;
+
+	if (test_bit(ATH11K_FLAG_REGISTERED, &sc->dev_flags))
+		return 0;
 
 	for (i = 0; i < sc->num_radios; i++) {
 		pdev = &sc->pdevs[i];

@@ -99,6 +99,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.ce_window_idx = 0,
 		.fixed_fw_mem = false,
 		.support_off_channel_tx = false,
+		.non_wow_suspend = false,
 	},
 	{
 		.hw_rev = ATH11K_HW_IPQ6018_HW10,
@@ -164,6 +165,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.ce_window_idx = 0,
 		.fixed_fw_mem = false,
 		.support_off_channel_tx = false,
+		.non_wow_suspend = false,
 	},
 	{
 		.name = "qca6390 hw2.0",
@@ -228,6 +230,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.ce_window_idx = 0,
 		.fixed_fw_mem = false,
 		.support_off_channel_tx = true,
+		.non_wow_suspend = false,
 	},
 	{
 		.name = "qcn9074 hw1.0",
@@ -292,6 +295,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.ce_window_idx = 2,
 		.fixed_fw_mem = false,
 		.support_off_channel_tx = false,
+		.non_wow_suspend = false,
 	},
 	{
 		.name = "wcn6855 hw2.0",
@@ -356,6 +360,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.ce_window_idx = 0,
 		.fixed_fw_mem = false,
 		.support_off_channel_tx = true,
+		.non_wow_suspend = false,
 	},
 	{
 		.name = "wcn6750 hw1.0",
@@ -418,6 +423,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.ce_window_idx = 2,
 		.fixed_fw_mem = true,
 		.support_off_channel_tx = false,
+		.non_wow_suspend = true,
 	},
 };
 
@@ -982,7 +988,6 @@ err_qmi_deinit:
 static void ath11k_core_soc_destroy(struct ath11k_base *ab)
 {
 	ath11k_debugfs_soc_destroy(ab);
-	ath11k_dp_free(ab);
 	ath11k_reg_free(ab);
 	ath11k_qmi_deinit_service(ab);
 }
@@ -1038,11 +1043,10 @@ err_pdev_debug:
 
 static void ath11k_core_pdev_destroy(struct ath11k_base *ab)
 {
-	ath11k_spectral_deinit(ab);
 	ath11k_thermal_unregister(ab);
 	ath11k_mac_unregister(ab);
-	ath11k_hif_irq_disable(ab);
-	ath11k_dp_pdev_free(ab);
+	if (!test_bit(ATH11K_FLAG_DEVICE_STOPPED, &ab->dev_flags))
+		ath11k_core_stop_device(ab);
 	ath11k_debugfs_pdev_destroy(ab);
 }
 
@@ -1228,6 +1232,9 @@ int ath11k_core_qmi_firmware_ready(struct ath11k_base *ab)
 	ath11k_hif_irq_enable(ab);
 	mutex_unlock(&ab->core_lock);
 
+	if (!test_bit(ATH11K_FLAG_REGISTERED, &ab->dev_flags))
+		ath11k_core_stop_device(ab);
+
 	return 0;
 
 err_core_stop:
@@ -1244,10 +1251,7 @@ err_firmware_stop:
 
 static int ath11k_core_reconfigure_on_crash(struct ath11k_base *ab)
 {
-	int ret;
-
 	mutex_lock(&ab->core_lock);
-	ath11k_thermal_unregister(ab);
 	ath11k_hif_irq_disable(ab);
 	ath11k_dp_pdev_free(ab);
 	ath11k_spectral_deinit(ab);
@@ -1257,27 +1261,11 @@ static int ath11k_core_reconfigure_on_crash(struct ath11k_base *ab)
 	mutex_unlock(&ab->core_lock);
 
 	ath11k_dp_free(ab);
-	ath11k_hal_srng_deinit(ab);
+	set_bit(ATH11K_FLAG_DEVICE_STOPPED, &ab->dev_flags);
 
 	ab->free_vdev_map = (1LL << (ab->num_radios * TARGET_NUM_VDEVS)) - 1;
 
-	ret = ath11k_hal_srng_init(ab);
-	if (ret)
-		return ret;
-
-	clear_bit(ATH11K_FLAG_CRASH_FLUSH, &ab->dev_flags);
-
-	ret = ath11k_core_qmi_firmware_ready(ab);
-	if (ret)
-		goto err_hal_srng_deinit;
-
-	clear_bit(ATH11K_FLAG_RECOVERY, &ab->dev_flags);
-
 	return 0;
-
-err_hal_srng_deinit:
-	ath11k_hal_srng_deinit(ab);
-	return ret;
 }
 
 void ath11k_core_halt(struct ath11k *ar)
@@ -1469,7 +1457,6 @@ void ath11k_core_deinit(struct ath11k_base *ab)
 	mutex_lock(&ab->core_lock);
 
 	ath11k_core_pdev_destroy(ab);
-	ath11k_core_stop(ab);
 
 	mutex_unlock(&ab->core_lock);
 
@@ -1526,6 +1513,107 @@ err_sc_free:
 	return NULL;
 }
 EXPORT_SYMBOL(ath11k_core_alloc);
+
+static int ath11k_core_suspend_target(struct ath11k_base *ab, u32 suspend_opt)
+{
+	struct ath11k *ar;
+	struct ath11k_pdev *pdev;
+	unsigned long time_left;
+	int ret;
+	int i;
+
+	for (i = 0; i < ab->num_radios; i++) {
+		pdev = &ab->pdevs[i];
+		ar = pdev->ar;
+
+		reinit_completion(&ab->htc_suspend);
+
+		ret = ath11k_wmi_pdev_suspend(ar, suspend_opt, pdev->pdev_id);
+		if (ret) {
+			ath11k_warn(ab, "could not suspend target (%d)\n", ret);
+			return ret;
+		}
+
+		time_left = wait_for_completion_timeout(&ab->htc_suspend, 3 * HZ);
+
+		if (!time_left) {
+			ath11k_warn(ab, "suspend timed out - target pause event never came\n");
+			return -ETIMEDOUT;
+		}
+	}
+
+	return 0;
+}
+
+void ath11k_core_stop_device(struct ath11k_base *ab)
+{
+	if (!ab->hw_params.non_wow_suspend &&
+	    !test_bit(ATH11K_FLAG_UNREGISTERING, &ab->dev_flags))
+		return;
+
+	ath11k_core_suspend_target(ab, WMI_PDEV_SUSPEND_AND_DISABLE_INTR);
+
+	ath11k_hif_irq_disable(ab);
+	ath11k_core_stop(ab);
+	ath11k_spectral_deinit(ab);
+	ath11k_dp_pdev_free(ab);
+	ath11k_dp_free(ab);
+
+	set_bit(ATH11K_FLAG_DEVICE_STOPPED, &ab->dev_flags);
+}
+
+int ath11k_core_start_device(struct ath11k_base *ab)
+{
+	int i;
+	int ret;
+	struct ath11k_pdev *pdev;
+	struct ath11k *ar;
+
+	if (!ab->hw_params.non_wow_suspend &&
+	    !test_bit(ATH11K_FLAG_RECOVERY, &ab->dev_flags))
+		return 0;
+
+	for (i = 0; i < ab->num_radios; i++) {
+		pdev = &ab->pdevs[i];
+		ar = pdev->ar;
+		if (!ar)
+			continue;
+
+		if (ar->state == ATH11K_STATE_ON)
+			break;
+	}
+
+	if (i == ab->num_radios ||
+	    test_bit(ATH11K_FLAG_RECOVERY, &ab->dev_flags)) {
+		if (!test_bit(ATH11K_FLAG_DEVICE_STOPPED, &ab->dev_flags))
+			return -EAGAIN;
+
+		ath11k_hal_srng_deinit(ab);
+
+		ret = ath11k_hal_srng_init(ab);
+		if (ret) {
+			ath11k_err(ab, "failed to allocate ce pipes: %d\n", ret);
+			return ret;
+		}
+
+		clear_bit(ATH11K_FLAG_CRASH_FLUSH, &ab->dev_flags);
+
+		ret = ath11k_core_qmi_firmware_ready(ab);
+		if (ret) {
+			ath11k_err(ab, "failed to init core: %d\n", ret);
+			goto err_hal_srng_deinit;
+		}
+
+		clear_bit(ATH11K_FLAG_RECOVERY, &ab->dev_flags);
+		clear_bit(ATH11K_FLAG_DEVICE_STOPPED, &ab->dev_flags);
+	}
+
+	return 0;
+
+err_hal_srng_deinit:
+	ath11k_hal_srng_deinit(ab);
+	return ret;
+}
 
 MODULE_DESCRIPTION("Core module for Qualcomm Atheros 802.11ax wireless LAN cards.");
 MODULE_LICENSE("Dual BSD/GPL");

@@ -194,6 +194,7 @@ struct ath11k_hw_params {
 	u8 ce_window_idx;
 	bool fixed_fw_mem;
 	bool support_off_channel_tx;
+	bool non_wow_suspend;
 };
 
 struct ath11k_hw_ops {
