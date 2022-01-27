@@ -5,6 +5,7 @@ config ATH11K
 	depends on CRYPTO_MICHAEL_MIC
 	select ATH_COMMON
 	select QCOM_QMI_HELPERS
+	select WANT_DEV_COREDUMP
 	help
 	  This module adds support for Qualcomm Technologies 802.11ax family of
 	  chipsets.

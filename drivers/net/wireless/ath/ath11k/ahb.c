@@ -15,7 +15,9 @@
 #include "debug.h"
 #include "hif.h"
 #include <linux/remoteproc.h>
+#include <linux/remoteproc/qcom_rproc.h>
 #include "pcic.h"
+#include "coredump.h"
 
 static const struct of_device_id ath11k_ahb_of_match[] = {
 	/* TODO: Should we change the compatible string to something similar
@@ -762,6 +764,74 @@ static int ath11k_ahb_setup_resources(struct ath11k_base *ab)
 	return 0;
 }
 
+static void ath11k_ahb_coredump_msa(struct ath11k_base *ab)
+{
+	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
+	struct ath11k_msa_dump msa_data;
+
+	msa_data.paddr = ab_ahb->fw.msa_paddr;
+	msa_data.vaddr = ab_ahb->fw.msa_vaddr;
+	msa_data.size = ab_ahb->fw.msa_size;
+
+	ath11k_coredump_msa(ab, &msa_data);
+}
+
+static int ath11k_ahb_ssr_notifier(struct notifier_block *nb,
+				   unsigned long action, void *data)
+{
+	struct ath11k_ahb *ab_ahb = container_of(nb, struct ath11k_ahb, nb);
+	struct ath11k_base *ab = ab_ahb->ab;
+	struct qcom_ssr_notify_data *notify_data = data;
+
+	switch (action) {
+	case QCOM_SSR_BEFORE_POWERUP:
+		break;
+	case QCOM_SSR_AFTER_POWERUP:
+		break;
+	case QCOM_SSR_BEFORE_SHUTDOWN:
+		if (notify_data->crashed)
+			ath11k_ahb_coredump_msa(ab);
+		break;
+	case QCOM_SSR_AFTER_SHUTDOWN:
+		break;
+	default:
+		ath11k_err(ab, "received unrecognized event %lu\n", action);
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static int ath11k_ahb_register_ssr_notifier(struct ath11k_base *ab)
+{
+	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
+	void *notifier;
+	int ret;
+
+	ab_ahb->nb.notifier_call = ath11k_ahb_ssr_notifier;
+
+	notifier = qcom_register_ssr_notifier("wpss", &ab_ahb->nb);
+	if (IS_ERR(notifier)) {
+		ret = PTR_ERR(notifier);
+		ath11k_err(ab, "failed to initialize SSR notifier: %d\n", ret);
+		return ret;
+	}
+
+	ab_ahb->notifier = notifier;
+
+	return 0;
+}
+
+static void ath11k_ahb_unregister_ssr_notifier(struct ath11k_base *ab)
+{
+	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
+	int ret;
+
+	ret = qcom_unregister_ssr_notifier(ab_ahb->notifier, &ab_ahb->nb);
+	if (ret)
+		ath11k_err(ab, "error %d unregistering notifier\n", ret);
+}
+
 static int ath11k_ahb_setup_msa_resources(struct ath11k_base *ab)
 {
 	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
@@ -783,6 +853,14 @@ static int ath11k_ahb_setup_msa_resources(struct ath11k_base *ab)
 
 	ab_ahb->fw.msa_paddr = r.start;
 	ab_ahb->fw.msa_size = resource_size(&r);
+	ab_ahb->fw.msa_vaddr = devm_memremap(dev, ab_ahb->fw.msa_paddr,
+					     ab_ahb->fw.msa_size,
+					     MEMREMAP_WT);
+	if (IS_ERR(ab_ahb->fw.msa_vaddr)) {
+		dev_err(dev, "failed to map memory region: %pa\n",
+			&r.start);
+		return PTR_ERR(ab_ahb->fw.msa_vaddr);
+	}
 
 	node = of_parse_phandle(dev->of_node, "memory-region", 1);
 	if (!node)
@@ -798,7 +876,7 @@ static int ath11k_ahb_setup_msa_resources(struct ath11k_base *ab)
 	ab_ahb->fw.ce_paddr = r.start;
 	ab_ahb->fw.ce_size = resource_size(&r);
 
-	return 0;
+	return ath11k_ahb_register_ssr_notifier(ab);
 }
 
 static int ath11k_ahb_fw_resources_init(struct ath11k_base *ab)
@@ -908,6 +986,8 @@ static int ath11k_ahb_fw_resource_deinit(struct ath11k_base *ab)
 	if (ab_ahb->fw.use_tz)
 		return 0;
 
+	ath11k_ahb_unregister_ssr_notifier(ab);
+
 	iommu = ab_ahb->fw.iommu_domain;
 
 	unmapped_size = iommu_unmap(iommu, ab_ahb->fw.msa_paddr, ab_ahb->fw.msa_size);
@@ -931,6 +1011,7 @@ static int ath11k_ahb_fw_resource_deinit(struct ath11k_base *ab)
 static int ath11k_ahb_probe(struct platform_device *pdev)
 {
 	struct ath11k_base *ab;
+	struct ath11k_ahb *ab_ahb;
 	const struct of_device_id *of_id;
 	const struct ath11k_hif_ops *hif_ops;
 	const struct ath11k_pci_ops *pci_ops;
@@ -978,6 +1059,8 @@ static int ath11k_ahb_probe(struct platform_device *pdev)
 	ab->pdev = pdev;
 	ab->hw_rev = hw_rev;
 	platform_set_drvdata(pdev, ab);
+	ab_ahb = ath11k_ahb_priv(ab);
+	ab_ahb->ab = ab;
 
 	ret = ath11k_ahb_setup_resources(ab);
 	if (ret)
