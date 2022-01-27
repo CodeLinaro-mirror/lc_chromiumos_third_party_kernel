@@ -196,6 +196,7 @@ struct ath11k_hw_params {
 	bool support_off_channel_tx;
 	bool non_wow_suspend;
 	bool cold_boot_fw_restart;
+	bool threaded_napi;
 };
 
 struct ath11k_hw_ops {
