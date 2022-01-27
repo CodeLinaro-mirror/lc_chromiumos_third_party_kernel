@@ -1061,6 +1061,7 @@ static int ath11k_ahb_remove(struct platform_device *pdev)
 
 	set_bit(ATH11K_FLAG_UNREGISTERING, &ab->dev_flags);
 	cancel_work_sync(&ab->restart_work);
+	cancel_work_sync(&ab->qmi.event_work);
 
 	ath11k_core_deinit(ab);
 qmi_fail:
@@ -1074,6 +1075,38 @@ qmi_fail:
 	return 0;
 }
 
+static void ath11k_ahb_shutdown(struct platform_device *pdev)
+{
+	struct ath11k_base *ab = platform_get_drvdata(pdev);
+	unsigned long left;
+
+	reinit_completion(&ab->driver_recovery);
+
+	if (test_bit(ATH11K_FLAG_RECOVERY, &ab->dev_flags)) {
+		left = wait_for_completion_timeout(&ab->driver_recovery,
+						   ATH11K_AHB_RECOVERY_TIMEOUT);
+		if (!left)
+			ath11k_warn(ab, "failed to receive recovery response completion\n");
+	}
+
+	set_bit(ATH11K_FLAG_UNREGISTERING, &ab->dev_flags);
+	cancel_work_sync(&ab->restart_work);
+	cancel_work_sync(&ab->qmi.event_work);
+
+	if (!(test_bit(ATH11K_FLAG_REGISTERED, &ab->dev_flags)))
+		goto free_resources;
+
+	ath11k_core_deinit(ab);
+
+free_resources:
+	ath11k_ahb_free_irq(ab);
+	ath11k_hal_srng_deinit(ab);
+	ath11k_ahb_fw_resource_deinit(ab);
+	ath11k_ce_free_pipes(ab);
+	ath11k_core_free(ab);
+	platform_set_drvdata(pdev, NULL);
+}
+
 static struct platform_driver ath11k_ahb_driver = {
 	.driver         = {
 		.name   = "ath11k",
@@ -1081,6 +1114,7 @@ static struct platform_driver ath11k_ahb_driver = {
 	},
 	.probe  = ath11k_ahb_probe,
 	.remove = ath11k_ahb_remove,
+	.shutdown = ath11k_ahb_shutdown,
 };
 
 static int ath11k_ahb_init(void)
