@@ -126,6 +126,12 @@ struct ath11k_hw_hal_params {
 	enum hal_rx_buf_return_buf_manager rx_buf_rbm;
 };
 
+struct ath11k_hw_tcl_wbm_ring_map {
+	u8 tcl_ring_num;
+	u8 wbm_ring_num;
+	u8 rbm_id;
+};
+
 struct ath11k_hw_params {
 	const char *name;
 	u16 hw_rev;
@@ -197,6 +203,7 @@ struct ath11k_hw_params {
 	bool non_wow_suspend;
 	bool cold_boot_fw_restart;
 	bool threaded_napi;
+	const struct ath11k_hw_tcl_wbm_ring_map *tcl_wbm_map;
 };
 
 struct ath11k_hw_ops {
@@ -239,6 +246,7 @@ struct ath11k_hw_ops {
 	u16 (*mpdu_info_get_peerid)(u8 *tlv_data);
 	bool (*rx_desc_mac_addr2_valid)(struct hal_rx_desc *desc);
 	u8* (*rx_desc_mpdu_start_addr2)(struct hal_rx_desc *desc);
+	u32 (*get_ring_selector)(struct sk_buff *skb);
 };
 
 extern const struct ath11k_hw_ops ipq8074_ops;
@@ -251,9 +259,13 @@ extern const struct ath11k_hw_ops wcn6750_ops;
 extern const struct ath11k_hw_ring_mask ath11k_hw_ring_mask_ipq8074;
 extern const struct ath11k_hw_ring_mask ath11k_hw_ring_mask_qca6390;
 extern const struct ath11k_hw_ring_mask ath11k_hw_ring_mask_qcn9074;
+extern const struct ath11k_hw_ring_mask ath11k_hw_ring_mask_wcn6750;
 
 extern const struct ath11k_hw_hal_params ath11k_hw_hal_params_ipq8074;
 extern const struct ath11k_hw_hal_params ath11k_hw_hal_params_qca6390;
+
+extern const struct ath11k_hw_tcl_wbm_ring_map ath11k_hw_tcl_wbm_ring_map_ipq8074[];
+extern const struct ath11k_hw_tcl_wbm_ring_map ath11k_hw_tcl_wbm_ring_map_wcn6750[];
 
 static inline
 int ath11k_hw_get_mac_from_pdev_id(struct ath11k_hw_params *hw,
