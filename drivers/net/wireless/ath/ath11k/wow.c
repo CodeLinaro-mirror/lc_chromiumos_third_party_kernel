@@ -65,6 +65,13 @@ int ath11k_wow_wakeup(struct ath11k_base *ab)
 	struct ath11k *ar = ath11k_ab_to_ar(ab, 0);
 	int ret;
 
+	/* In the case of WCN6750, WoW wakeup is done
+	 * by sending SMP2P power save exit message
+	 * to the target processor.
+	 */
+	if (ab->hw_params.smp2p_wow_exit)
+		return 0;
+
 	reinit_completion(&ab->wow.wakeup_completed);
 
 	ret = ath11k_wmi_wow_host_wakeup_ind(ar);

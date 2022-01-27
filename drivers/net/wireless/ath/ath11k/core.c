@@ -103,6 +103,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.non_wow_suspend = false,
 		.threaded_napi = false,
 		.tcl_wbm_map = ath11k_hw_tcl_wbm_ring_map_ipq8074,
+		.smp2p_wow_exit = false,
 	},
 	{
 		.hw_rev = ATH11K_HW_IPQ6018_HW10,
@@ -172,6 +173,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.non_wow_suspend = false,
 		.threaded_napi = false,
 		.tcl_wbm_map = ath11k_hw_tcl_wbm_ring_map_ipq8074,
+		.smp2p_wow_exit = false,
 	},
 	{
 		.name = "qca6390 hw2.0",
@@ -240,6 +242,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.non_wow_suspend = false,
 		.threaded_napi = false,
 		.tcl_wbm_map = ath11k_hw_tcl_wbm_ring_map_ipq8074,
+		.smp2p_wow_exit = false,
 	},
 	{
 		.name = "qcn9074 hw1.0",
@@ -308,6 +311,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.non_wow_suspend = false,
 		.threaded_napi = false,
 		.tcl_wbm_map = ath11k_hw_tcl_wbm_ring_map_ipq8074,
+		.smp2p_wow_exit = false,
 	},
 	{
 		.name = "wcn6855 hw2.0",
@@ -376,6 +380,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.non_wow_suspend = false,
 		.threaded_napi = false,
 		.tcl_wbm_map = ath11k_hw_tcl_wbm_ring_map_ipq8074,
+		.smp2p_wow_exit = false,
 	},
 	{
 		.name = "wcn6750 hw1.0",
@@ -442,6 +447,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.non_wow_suspend = true,
 		.threaded_napi = true,
 		.tcl_wbm_map = ath11k_hw_tcl_wbm_ring_map_wcn6750,
+		.smp2p_wow_exit = true,
 	},
 };
 

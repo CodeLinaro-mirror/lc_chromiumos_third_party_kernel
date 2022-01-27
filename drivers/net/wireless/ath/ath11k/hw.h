@@ -204,6 +204,7 @@ struct ath11k_hw_params {
 	bool cold_boot_fw_restart;
 	bool threaded_napi;
 	const struct ath11k_hw_tcl_wbm_ring_map *tcl_wbm_map;
+	bool smp2p_wow_exit;
 };
 
 struct ath11k_hw_ops {
