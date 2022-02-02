@@ -1958,7 +1958,7 @@
 			phy-names = "pciephy";
 
 			pinctrl-names = "default";
-			pinctrl-0 = <&pcie1_clkreq_n>;
+			pinctrl-0 = <&pcie1_clkreq_n>, <&pcie1_reset_n>, <&pcie1_wake_n>;
 
 			iommus = <&apps_smmu 0x1c80 0x1>;
 
@@ -4080,6 +4080,14 @@
 			pcie1_clkreq_n: pcie1-clkreq-n {
 				pins = "gpio79";
 				function = "pcie1_clkreqn";
+			};
+
+			pcie1_reset_n: pcie1-reset-n {
+				function = "gpio";
+			};
+
+			pcie1_wake_n: pcie1-wake-n {
+				function = "gpio";
 			};
 
 			qspi_clk: qspi-clk {
