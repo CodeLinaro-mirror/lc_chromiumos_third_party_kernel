@@ -3166,6 +3166,8 @@ static int nvme_suspend(struct device *dev)
 	    (ndev->ctrl.quirks & NVME_QUIRK_SIMPLE_SUSPEND))
 		return nvme_disable_prepare_reset(ndev, true);
 
+	return nvme_disable_prepare_reset(ndev, true);
+
 	nvme_start_freeze(ctrl);
 	nvme_wait_freeze(ctrl);
 	nvme_sync_queues(ctrl);
