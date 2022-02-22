@@ -167,6 +167,15 @@ ap_ts_pen_1v8: &i2c13 {
 	status = "okay";
 };
 
+&mdss_dsi {
+       status = "disabled";
+
+};
+
+&mdss_dsi_phy {
+       status = "disabled";
+};
+
 &nvme_3v3_regulator {
 	gpio = <&tlmm 51 GPIO_ACTIVE_HIGH>;
 };
