@@ -456,6 +456,7 @@ static void aspm_calc_l1ss_info(struct pcie_link_state *link,
 	u32 val1, val2, scale1, scale2;
 	u32 t_common_mode, t_power_on, l1_2_threshold, scale, value;
 	u32 ctl1 = 0, ctl2 = 0;
+	u32 cap;
 	u32 pctl1, pctl2, cctl1, cctl2;
 	u32 pl1_2_enables, cl1_2_enables;
 
@@ -492,9 +493,14 @@ static void aspm_calc_l1ss_info(struct pcie_link_state *link,
 	 * Table 5-11.  T(POWER_OFF) is at most 2us and T(L1.2) is at
 	 * least 4us.
 	 */
-	l1_2_threshold = 2 + 4 + t_common_mode + t_power_on;
-	encode_l12_threshold(l1_2_threshold, &scale, &value);
-	ctl1 |= t_common_mode << 8 | scale << 29 | value << 16;
+	pcie_capability_read_dword(child, PCI_EXP_DEVCAP2, &cap);
+	if (!(cap & PCI_EXP_DEVCAP2_LTR)) {
+		l1_2_threshold = 2 + 4 + t_common_mode + t_power_on;
+		encode_l12_threshold(l1_2_threshold, &scale, &value);
+		ctl1 |= scale << 29 | value << 16;
+	}
+
+	ctl1 |= t_common_mode;
 
 	/* Some broken devices only support dword access to L1 SS */
 	pci_read_config_dword(parent, parent->l1ss + PCI_L1SS_CTL1, &pctl1);
