@@ -1178,7 +1178,7 @@ static ssize_t ath11k_write_twt_add_dialog(struct file *file,
 
 	buf[ret] = '\0';
 	ret = sscanf(buf,
-		     "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx %u %u %u %u %u %hhu %hhu %hhu %hhu %hhu",
+		     "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx %u %u %u %u %u %hhu %hhu %hhu %hhu %hhu %u %u",
 		     &params.peer_macaddr[0],
 		     &params.peer_macaddr[1],
 		     &params.peer_macaddr[2],
@@ -1194,8 +1194,10 @@ static ssize_t ath11k_write_twt_add_dialog(struct file *file,
 		     &params.flag_bcast,
 		     &params.flag_trigger,
 		     &params.flag_flow_type,
-		     &params.flag_protection);
-	if (ret != 16)
+		     &params.flag_protection,
+		     &params.b_twt_persistence,
+		     &params.b_twt_recommendation);
+	if (ret != 18)
 		return -EINVAL;
 
 	/* In the case of station vif, TWT is entirely handled by

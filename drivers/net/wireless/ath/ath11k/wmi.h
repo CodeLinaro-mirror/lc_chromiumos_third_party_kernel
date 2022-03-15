@@ -5173,6 +5173,8 @@ struct wmi_twt_add_dialog_params_cmd {
 	u32 wake_dura_us;
 	u32 sp_offset_us;
 	u32 flags;
+	u32 b_twt_persistence;
+	u32 b_twt_recommendation;
 } __packed;
 
 struct wmi_twt_add_dialog_params {
@@ -5188,6 +5190,8 @@ struct wmi_twt_add_dialog_params {
 	u8 flag_trigger;
 	u8 flag_flow_type;
 	u8 flag_protection;
+	u32 b_twt_persistence;
+	u32 b_twt_recommendation;
 } __packed;
 
 enum  wmi_twt_add_dialog_status {

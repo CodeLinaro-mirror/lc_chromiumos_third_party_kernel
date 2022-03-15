@@ -3209,12 +3209,14 @@ int ath11k_wmi_send_twt_add_dialog_cmd(struct ath11k *ar,
 		cmd->flags |= WMI_TWT_ADD_DIALOG_FLAG_FLOW_TYPE;
 	if (params->flag_protection)
 		cmd->flags |= WMI_TWT_ADD_DIALOG_FLAG_PROTECTION;
+	cmd->b_twt_persistence = params->b_twt_persistence;
+	cmd->b_twt_recommendation = params->b_twt_recommendation;
 
 	ath11k_dbg(ar->ab, ATH11K_DBG_WMI,
-		   "wmi add twt dialog vdev %u dialog id %u wake interval %u mantissa %u wake duration %u service period offset %u flags 0x%x\n",
+		   "wmi add twt dialog vdev %u dialog id %u wake interval %u mantissa %u wake duration %u service period offset %u flags 0x%x bcast_twt persistence %u bcast_twt recommendation %u\n",
 		   cmd->vdev_id, cmd->dialog_id, cmd->wake_intvl_us,
 		   cmd->wake_intvl_mantis, cmd->wake_dura_us, cmd->sp_offset_us,
-		   cmd->flags);
+		   cmd->flags, cmd->b_twt_persistence, cmd->b_twt_recommendation);
 
 	ret = ath11k_wmi_cmd_send(wmi, skb, WMI_TWT_ADD_DIALOG_CMDID);
 
