@@ -6095,7 +6095,8 @@ void ath11k_wmi_fw_stats_fill(struct ath11k *ar,
 			      struct ath11k_fw_stats *fw_stats, u32 stats_id,
 			      char *buf);
 int ath11k_wmi_simulate_radar(struct ath11k *ar);
-int ath11k_wmi_send_twt_enable_cmd(struct ath11k *ar, u32 pdev_id);
+int ath11k_wmi_send_twt_enable_cmd(struct ath11k *ar, u32 pdev_id,
+				   u32 sta_cong_timer_ms);
 int ath11k_wmi_send_twt_disable_cmd(struct ath11k *ar, u32 pdev_id);
 int ath11k_wmi_send_twt_add_dialog_cmd(struct ath11k *ar,
 				       struct wmi_twt_add_dialog_params *params);

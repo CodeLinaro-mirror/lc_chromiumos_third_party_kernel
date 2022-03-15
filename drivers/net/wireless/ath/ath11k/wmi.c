@@ -3092,8 +3092,8 @@ int ath11k_wmi_pdev_pktlog_disable(struct ath11k *ar)
 	return ret;
 }
 
-int
-ath11k_wmi_send_twt_enable_cmd(struct ath11k *ar, u32 pdev_id)
+int ath11k_wmi_send_twt_enable_cmd(struct ath11k *ar, u32 pdev_id,
+				   u32 sta_cong_timer_ms)
 {
 	struct ath11k_pdev_wmi *wmi = ar->wmi;
 	struct ath11k_base *ab = wmi->wmi_ab->ab;
@@ -3111,7 +3111,7 @@ ath11k_wmi_send_twt_enable_cmd(struct ath11k *ar, u32 pdev_id)
 	cmd->tlv_header = FIELD_PREP(WMI_TLV_TAG, WMI_TAG_TWT_ENABLE_CMD) |
 			  FIELD_PREP(WMI_TLV_LEN, len - TLV_HDR_SIZE);
 	cmd->pdev_id = pdev_id;
-	cmd->sta_cong_timer_ms = ATH11K_TWT_DEF_STA_CONG_TIMER_MS;
+	cmd->sta_cong_timer_ms = sta_cong_timer_ms;
 	cmd->default_slot_size = ATH11K_TWT_DEF_DEFAULT_SLOT_SIZE;
 	cmd->congestion_thresh_setup = ATH11K_TWT_DEF_CONGESTION_THRESH_SETUP;
 	cmd->congestion_thresh_teardown =

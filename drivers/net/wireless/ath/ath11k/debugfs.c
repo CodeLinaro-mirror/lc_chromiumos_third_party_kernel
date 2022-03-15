@@ -1163,10 +1163,11 @@ static ssize_t ath11k_write_twt_add_dialog(struct file *file,
 {
 	struct ath11k_vif *arvif = file->private_data;
 	struct wmi_twt_add_dialog_params params = { 0 };
+	struct ath11k *ar = arvif->ar;
 	u8 buf[128] = {0};
 	int ret;
 
-	if (arvif->ar->twt_enabled == 0) {
+	if (ar->twt_enabled == 0) {
 		ath11k_err(arvif->ar->ab, "twt support is not enabled\n");
 		return -EOPNOTSUPP;
 	}
@@ -1197,13 +1198,33 @@ static ssize_t ath11k_write_twt_add_dialog(struct file *file,
 	if (ret != 16)
 		return -EINVAL;
 
+	/* In the case of station vif, TWT is entirely handled by
+	 * the firmware based on the input parameters in the TWT enable
+	 * WMI command that is sent to the target during assoc.
+	 * For manually testing the TWT feature, we need to first disable
+	 * TWT and send enable command again with sta_cong_timer_ms set to 0.
+	 */
+	if (arvif->vif->type == NL80211_IFTYPE_STATION) {
+		ath11k_wmi_send_twt_disable_cmd(ar, ar->pdev->pdev_id);
+		ath11k_wmi_send_twt_enable_cmd(ar, ar->pdev->pdev_id, 0);
+	}
+
 	params.vdev_id = arvif->vdev_id;
 
 	ret = ath11k_wmi_send_twt_add_dialog_cmd(arvif->ar, &params);
 	if (ret)
-		return ret;
+		goto err_twt_add_dialog;
 
 	return count;
+
+err_twt_add_dialog:
+	if (arvif->vif->type == NL80211_IFTYPE_STATION) {
+		ath11k_wmi_send_twt_disable_cmd(ar, ar->pdev->pdev_id);
+		ath11k_wmi_send_twt_enable_cmd(ar, ar->pdev->pdev_id,
+					       ATH11K_TWT_DEF_STA_CONG_TIMER_MS);
+	}
+
+	return ret;
 }
 
 static ssize_t ath11k_write_twt_del_dialog(struct file *file,
@@ -1212,10 +1233,11 @@ static ssize_t ath11k_write_twt_del_dialog(struct file *file,
 {
 	struct ath11k_vif *arvif = file->private_data;
 	struct wmi_twt_del_dialog_params params = { 0 };
+	struct ath11k *ar = arvif->ar;
 	u8 buf[64] = {0};
 	int ret;
 
-	if (arvif->ar->twt_enabled == 0) {
+	if (ar->twt_enabled == 0) {
 		ath11k_err(arvif->ar->ab, "twt support is not enabled\n");
 		return -EOPNOTSUPP;
 	}
@@ -1241,6 +1263,12 @@ static ssize_t ath11k_write_twt_del_dialog(struct file *file,
 	ret = ath11k_wmi_send_twt_del_dialog_cmd(arvif->ar, &params);
 	if (ret)
 		return ret;
+
+	if (arvif->vif->type == NL80211_IFTYPE_STATION) {
+		ath11k_wmi_send_twt_disable_cmd(ar, ar->pdev->pdev_id);
+		ath11k_wmi_send_twt_enable_cmd(ar, ar->pdev->pdev_id,
+					       ATH11K_TWT_DEF_STA_CONG_TIMER_MS);
+	}
 
 	return count;
 }
@@ -1347,7 +1375,8 @@ static const struct file_operations ath11k_fops_twt_resume_dialog = {
 
 int ath11k_debugfs_add_interface(struct ath11k_vif *arvif)
 {
-	if (arvif->vif->type == NL80211_IFTYPE_AP && !arvif->debugfs_twt) {
+	if ((arvif->vif->type == NL80211_IFTYPE_AP ||
+	    arvif->vif->type == NL80211_IFTYPE_STATION) && !arvif->debugfs_twt) {
 		arvif->debugfs_twt = debugfs_create_dir("twt",
 							arvif->vif->debugfs_dir);
 		if (!arvif->debugfs_twt || IS_ERR(arvif->debugfs_twt)) {
