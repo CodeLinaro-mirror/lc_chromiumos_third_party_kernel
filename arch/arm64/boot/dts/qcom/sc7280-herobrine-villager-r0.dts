@@ -12,6 +12,8 @@
 / {
 	model = "Google Villager (rev0+)";
 	compatible = "google,villager", "qcom,sc7280";
+
+	/* BOARD-SPECIFIC TOP LEVEL NODES */
 };
 
 /*
@@ -56,6 +58,34 @@ ap_tp_i2c: &i2c0 {
 
 &ap_sar_sensor1 {
 	status = "okay";
+};
+
+&mdss_edp {
+	status = "okay";
+};
+
+&mdss_edp_phy {
+	status = "okay";
+};
+
+ts_i2c: &i2c13 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	ap_ts: touchscreen@5c {
+		compatible = "hid-over-i2c";
+		reg = <0x5c>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&ts_int_conn>, <&ts_rst_conn>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <55 IRQ_TYPE_LEVEL_LOW>;
+
+		post-power-on-delay-ms = <500>;
+		hid-descr-addr = <0x0000>;
+
+		vdd-supply = <&ts_avdd>;
+	};
 };
 
 &mdss_edp {
