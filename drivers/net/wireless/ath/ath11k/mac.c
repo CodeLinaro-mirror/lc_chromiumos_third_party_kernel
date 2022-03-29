@@ -6099,6 +6099,12 @@ static int ath11k_mac_op_add_interface(struct ieee80211_hw *hw,
 		goto err;
 	}
 
+	/* In the case of hardware restart, twt debugfs entries
+	 * in the arvif are still valid, remove them before
+	 * arvif is memset to 0.
+	 */
+	ath11k_debugfs_remove_interface(arvif);
+
 	memset(arvif, 0, sizeof(*arvif));
 
 	arvif->ar = ar;
@@ -6282,7 +6288,7 @@ static int ath11k_mac_op_add_interface(struct ieee80211_hw *hw,
 
 	ret = ath11k_debugfs_add_interface(arvif);
 	if (ret)
-		goto err_peer_del;
+		ath11k_warn(ab, "failed to create interface debugfs files: %d\n", ret);
 
 	if (ath11k_hw_supports_6g_cc_ext(ar)) {
 		struct cur_regulatory_info *reg_info;

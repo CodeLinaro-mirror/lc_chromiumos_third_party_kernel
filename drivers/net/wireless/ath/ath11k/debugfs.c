@@ -1406,6 +1406,8 @@ int ath11k_debugfs_add_interface(struct ath11k_vif *arvif)
 
 void ath11k_debugfs_remove_interface(struct ath11k_vif *arvif)
 {
-	debugfs_remove_recursive(arvif->debugfs_twt);
-	arvif->debugfs_twt = NULL;
+	if (arvif->debugfs_twt) {
+		debugfs_remove_recursive(arvif->debugfs_twt);
+		arvif->debugfs_twt = NULL;
+	}
 }
