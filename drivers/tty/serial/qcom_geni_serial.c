@@ -1481,6 +1481,10 @@ static int __maybe_unused qcom_geni_serial_sys_suspend(struct device *dev)
 	struct uart_port *uport = &port->uport;
 	struct qcom_geni_private_data *private_data = uport->private_data;
 
+	/* do a stop_rx here, start_rx is handled in uart_resume_port by call to setermios */
+	if (uart_console(uport) && !console_suspend_enabled)
+		uport->ops->stop_rx(uport);
+
 	/*
 	 * This is done so we can hit the lowest possible state in suspend
 	 * even with no_console_suspend
