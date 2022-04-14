@@ -1,0 +1,44 @@
+/*
+Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+SPDX-License-Identifier: GPL-2.0-only
+*/
+
+&pm8008_bus {
+	pm8008: pmic@8 {
+		compatible = "qcom,pm8008";
+		reg = <0x8>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#interrupt-cells = <2>;
+
+		pm8008_regulators: regulators {
+			pm8008_l1: ldo1 {
+				regulator-name = "pm8008_l1";
+			};
+
+			pm8008_l2: ldo2 {
+				regulator-name = "pm8008_l2";
+			};
+
+			pm8008_l3: ldo3 {
+				regulator-name = "pm8008_l3";
+			};
+
+			pm8008_l4: ldo4 {
+				regulator-name = "pm8008_l4";
+			};
+
+			pm8008_l5: ldo5 {
+				regulator-name = "pm8008_l5";
+			};
+
+			pm8008_l6: ldo6 {
+				regulator-name = "pm8008_l6";
+			};
+
+			pm8008_l7: ldo7 {
+				regulator-name = "pm8008_l7";
+			};
+		};
+	};
+};
