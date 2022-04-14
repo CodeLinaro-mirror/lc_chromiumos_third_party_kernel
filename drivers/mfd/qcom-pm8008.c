@@ -9,6 +9,7 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
+#include <linux/mfd/qcom_pm8008.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
@@ -56,8 +57,10 @@ enum {
 #define PM8008_PERIPH_OFFSET(paddr)	(paddr - PM8008_PERIPH_0_BASE)
 
 struct pm8008_data {
+	bool ready;
 	struct device *dev;
-	struct regmap *regmap;
+	struct i2c_client *clients[PM8008_NUM_CLIENTS];
+	struct regmap *regmap[PM8008_NUM_CLIENTS];
 	struct gpio_desc *reset_gpio;
 	int irq;
 	struct regmap_irq_chip_data *irq_data;
@@ -152,9 +155,20 @@ static struct regmap_config qcom_mfd_regmap_cfg = {
 	.max_register	= 0xFFFF,
 };
 
+struct regmap *pm8008_get_regmap(struct pm8008_data *chip, u8 sid)
+{
+	if (!chip || !chip->ready) {
+		pr_err("pm8008 chip not initialized\n");
+		return NULL;
+	}
+
+	return chip->regmap[sid];
+}
+
 static int pm8008_init(struct pm8008_data *chip)
 {
 	int rc;
+	struct regmap *regmap = pm8008_get_regmap(chip, PM8008_INFRA_SID);
 
 	/*
 	 * Set TEMP_ALARM peripheral's TYPE so that the regmap-irq framework
@@ -162,19 +176,19 @@ static int pm8008_init(struct pm8008_data *chip)
 	 * This is required to enable the writing of TYPE registers in
 	 * regmap_irq_sync_unlock().
 	 */
-	rc = regmap_write(chip->regmap,
+	rc = regmap_write(regmap,
 			 (PM8008_TEMP_ALARM_ADDR | INT_SET_TYPE_OFFSET),
 			 BIT(0));
 	if (rc)
 		return rc;
 
 	/* Do the same for GPIO1 and GPIO2 peripherals */
-	rc = regmap_write(chip->regmap,
+	rc = regmap_write(regmap,
 			 (PM8008_GPIO1_ADDR | INT_SET_TYPE_OFFSET), BIT(0));
 	if (rc)
 		return rc;
 
-	rc = regmap_write(chip->regmap,
+	rc = regmap_write(regmap,
 			 (PM8008_GPIO2_ADDR | INT_SET_TYPE_OFFSET), BIT(0));
 
 	return rc;
@@ -186,6 +200,7 @@ static int pm8008_probe_irq_peripherals(struct pm8008_data *chip,
 	int rc, i;
 	struct regmap_irq_type *type;
 	struct regmap_irq_chip_data *irq_data;
+	struct regmap *regmap = pm8008_get_regmap(chip, PM8008_INFRA_SID);
 
 	rc = pm8008_init(chip);
 	if (rc) {
@@ -209,7 +224,7 @@ static int pm8008_probe_irq_peripherals(struct pm8008_data *chip,
 				IRQ_TYPE_LEVEL_HIGH | IRQ_TYPE_LEVEL_LOW);
 	}
 
-	rc = devm_regmap_add_irq_chip(chip->dev, chip->regmap, client_irq,
+	rc = devm_regmap_add_irq_chip(chip->dev, regmap, client_irq,
 			IRQF_SHARED, 0, &pm8008_irq_chip, &irq_data);
 	if (rc) {
 		dev_err(chip->dev, "Failed to add IRQ chip: %d\n", rc);
@@ -221,19 +236,38 @@ static int pm8008_probe_irq_peripherals(struct pm8008_data *chip,
 
 static int pm8008_probe(struct i2c_client *client)
 {
-	int rc;
+	int rc, i;
 	struct pm8008_data *chip;
+	struct device_node *node = client->dev.of_node;
 
 	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
 
 	chip->dev = &client->dev;
-	chip->regmap = devm_regmap_init_i2c(client, &qcom_mfd_regmap_cfg);
-	if (!chip->regmap)
-		return -ENODEV;
 
-	i2c_set_clientdata(client, chip);
+	for (i = 0; i < PM8008_NUM_CLIENTS; i++) {
+		if (i == 0) {
+			chip->clients[i] = client;
+		} else {
+			chip->clients[i] = i2c_new_dummy_device(client->adapter,
+								client->addr + i);
+			if (IS_ERR(chip->clients[i])) {
+				dev_err(&client->dev, "can't attach client %d\n", i);
+				return PTR_ERR(chip->clients[i]);
+			}
+			chip->clients[i]->dev.of_node = of_node_get(node);
+		}
+
+		chip->regmap[i] = devm_regmap_init_i2c(chip->clients[i],
+							&qcom_mfd_regmap_cfg);
+		if (!chip->regmap[i])
+			return -ENODEV;
+
+		i2c_set_clientdata(chip->clients[i], chip);
+	}
+
+	chip->ready = true;
 
 	if (of_property_read_bool(chip->dev->of_node, "interrupt-controller")) {
 		rc = pm8008_probe_irq_peripherals(chip, client->irq);
