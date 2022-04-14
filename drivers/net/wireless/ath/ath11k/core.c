@@ -1579,7 +1579,13 @@ void ath11k_core_stop_device(struct ath11k_base *ab)
 	ath11k_core_suspend_target(ab, WMI_PDEV_SUSPEND_AND_DISABLE_INTR);
 
 	ath11k_hif_irq_disable(ab);
-	ath11k_core_stop(ab);
+	ath11k_hif_stop(ab);
+
+	if (!test_bit(ATH11K_FLAG_CRASH_FLUSH, &ab->dev_flags))
+		ath11k_qmi_firmware_stop(ab);
+
+	ath11k_wmi_detach(ab);
+	ath11k_dp_pdev_reo_cleanup(ab);
 	ath11k_spectral_deinit(ab);
 	ath11k_dp_pdev_free(ab);
 	ath11k_dp_free(ab);
