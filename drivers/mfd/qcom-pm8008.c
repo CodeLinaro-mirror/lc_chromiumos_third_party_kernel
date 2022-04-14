@@ -9,6 +9,7 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
+#include <linux/mfd/core.h>
 #include <linux/mfd/qcom_pm8008.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
@@ -28,6 +29,10 @@
 #define INT_EN_SET_OFFSET		0x15
 #define INT_EN_CLR_OFFSET		0x16
 #define INT_LATCHED_STS_OFFSET		0x18
+
+static const struct mfd_cell pm8008_regulator_devs[] = {
+	MFD_CELL_NAME("qcom-pm8008-regulator"),
+};
 
 enum {
 	PM8008_MISC,
@@ -281,6 +286,14 @@ static int pm8008_probe(struct i2c_client *client)
 		return PTR_ERR(chip->reset_gpio);
 	}
 	gpiod_set_value(chip->reset_gpio, 1);
+
+	rc = devm_mfd_add_devices(&chip->clients[PM8008_REGULATORS_SID]->dev,
+			0, pm8008_regulator_devs, ARRAY_SIZE(pm8008_regulator_devs),
+			NULL, 0, NULL);
+	if (rc) {
+		dev_err(chip->dev, "Failed to add regulators: %d\n", rc);
+		return rc;
+	}
 
 	return devm_of_platform_populate(chip->dev);
 }
