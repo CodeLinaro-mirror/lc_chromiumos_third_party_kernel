@@ -456,7 +456,7 @@ ap_sar_sensor_i2c: &i2c1 {
 };
 
 hp_i2c: &i2c2 {
-	status = "okay";
+	status = "disabled";
 	clock-frequency = <400000>;
 
 	alc5682: codec@1a {
