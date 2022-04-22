@@ -154,6 +154,10 @@ ap_ts_pen_1v8: &i2c13 {
 	status = "okay";
 };
 
+&wcd9385 {
+	status = "okay";
+};
+
 /* PINCTRL - BOARD-SPECIFIC */
 
 /*
