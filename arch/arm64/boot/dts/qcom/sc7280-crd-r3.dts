@@ -40,6 +40,15 @@
 		pinctrl-0 = <&edp_panel_power>;
 	};
 
+	edp_backlight: edp-backlight {
+		compatible = "pwm-backlight";
+
+		power-supply = <&vreg_edp_bp>;
+		pwms = <&pm8350c_pwm 3 65535>;
+
+		enable-gpios = <&pm8350c_gpios 7 GPIO_ACTIVE_HIGH>;
+	};
+
 	vreg_edp_bp: vreg-edp-bp-regulator {
 		compatible = "regulator-fixed";
 		regulator-name = "vreg_edp_bp";
@@ -130,6 +139,7 @@ ap_ts_pen_1v8: &i2c13 {
 		edp_panel: edp-panel {
 			compatible = "edp-panel";
 
+			backlight = <&edp_backlight>;
 			power-supply = <&edp_3v3_regulator>;
 			ports {
 				#address-cells = <1>;
@@ -177,6 +187,13 @@ ap_ts_pen_1v8: &i2c13 {
 		function = "func1";
 		qcom,drive-strength = <PMIC_GPIO_STRENGTH_LOW>;
 	};
+};
+
+&pm8350c_pwm {
+	status = "okay";
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&edp_bl_pwm>;
 };
 
 &sound {
