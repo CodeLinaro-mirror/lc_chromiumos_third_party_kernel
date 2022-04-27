@@ -144,6 +144,20 @@ ap_ts_pen_1v8: &i2c13 {
  * - If a pin is not hooked up on Qcard, it gets no name.
  */
 
+&mi2s1_data0 {
+	drive-strength = <6>;
+	bias-disable;
+};
+
+&mi2s1_sclk {
+	drive-strength = <6>;
+	bias-disable;
+};
+
+&mi2s1_ws {
+	drive-strength = <6>;
+};
+
 &pm8350c_gpios {
 	gpio-line-names = "FLASH_STROBE_1",		/* 1 */
 			  "AP_SUSPEND",
