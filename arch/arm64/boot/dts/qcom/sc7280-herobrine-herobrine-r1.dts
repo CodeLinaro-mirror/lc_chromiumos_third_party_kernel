@@ -75,6 +75,10 @@ ap_tp_i2c: &i2c0 {
 	};
 };
 
+&hp_i2c {
+	status = "okay";
+};
+
 /*
  * The touchscreen connector might come off the Qcard, at least in the case of
  * eDP. Like the trackpad, we'll put it in the board device tree file since

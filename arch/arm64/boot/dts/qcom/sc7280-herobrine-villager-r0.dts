@@ -60,6 +60,10 @@ ap_tp_i2c: &i2c0 {
 	status = "okay";
 };
 
+&hp_i2c {
+	status = "okay";
+};
+
 &mdss_edp {
 	status = "okay";
 };
