@@ -184,6 +184,10 @@ struct ath11k_hw_params {
 	bool supports_dynamic_smps_6ghz;
 	bool supports_rssi_stats;
 	bool current_cc_support;
+	bool m3_fw_support;
+	bool fixed_bdf_addr;
+	bool fixed_mem_region;
+	bool static_window_map;
 };
 
 struct ath11k_hw_ops {
