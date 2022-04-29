@@ -391,6 +391,7 @@ static const struct ath11k_hw_params ath11k_hw_params[] = {
 		.supports_sta_ps = true,
 		.cold_boot_calib = false,
 		.supports_suspend = false,
+		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9074),
 		.supports_regdb = true,
 		.fix_l1ss = false,
 		.max_tx_ring = DP_TCL_NUM_RING_MAX_QCA6390,
