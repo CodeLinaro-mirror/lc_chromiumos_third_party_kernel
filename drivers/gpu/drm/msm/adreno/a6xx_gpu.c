@@ -1770,6 +1770,8 @@ static u32 adreno_7c3_get_speed_bin(u32 fuse)
 		return 0;
 	else if (fuse == 190)
 		return 1;
+	else if (fuse == 96)
+		return 2;
 
 	return UINT_MAX;
 }
