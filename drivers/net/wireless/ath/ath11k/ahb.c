@@ -1171,11 +1171,11 @@ static int ath11k_ahb_probe(struct platform_device *pdev)
 	ab_ahb = ath11k_ahb_priv(ab);
 	ab_ahb->ab = ab;
 
-	ret = ath11k_ahb_setup_resources(ab);
+	ret = ath11k_core_pre_init(ab);
 	if (ret)
 		goto err_core_free;
 
-	ret = ath11k_core_pre_init(ab);
+	ret = ath11k_ahb_setup_resources(ab);
 	if (ret)
 		goto err_core_free;
 
