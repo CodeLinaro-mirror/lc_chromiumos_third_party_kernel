@@ -4,6 +4,7 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
@@ -57,6 +58,7 @@ enum {
 struct pm8008_data {
 	struct device *dev;
 	struct regmap *regmap;
+	struct gpio_desc *reset_gpio;
 	int irq;
 	struct regmap_irq_chip_data *irq_data;
 };
@@ -238,6 +240,13 @@ static int pm8008_probe(struct i2c_client *client)
 		if (rc)
 			dev_err(chip->dev, "Failed to probe irq periphs: %d\n", rc);
 	}
+
+	chip->reset_gpio = devm_gpiod_get(chip->dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(chip->reset_gpio)) {
+		dev_err(chip->dev, "failed to acquire reset gpio\n");
+		return PTR_ERR(chip->reset_gpio);
+	}
+	gpiod_set_value(chip->reset_gpio, 1);
 
 	return devm_of_platform_populate(chip->dev);
 }
